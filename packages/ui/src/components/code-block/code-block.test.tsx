@@ -89,4 +89,23 @@ describe("CodeBlock", () => {
     const { container } = render(<CodeBlock code={"a long line"} wrap />);
     expect(lines(container)[0]!.hasAttribute("data-wrap")).toBe(true);
   });
+
+  test("marks highlight ranges across the highlighted pieces and the current one is scrolled to", () => {
+    const code = '{\n  "name": "Ana",\n  "other": "ana"\n}';
+    const starts = [code.indexOf("Ana"), code.indexOf("ana")];
+    const { container } = render(<CodeBlock code={code} language="json" marks={{ starts, length: 3 }} currentMark={1} />);
+    const marks = [...container.querySelectorAll<HTMLElement>("mark")];
+    expect(marks.map((m) => m.textContent)).toEqual(["Ana", "ana"]);
+    expect(marks.map((m) => m.hasAttribute("data-current"))).toEqual([false, true]);
+    expect(container.textContent).toContain('"name": "Ana"');
+  });
+
+  test("a mark that spans pieces is cut at each and a virtualized block scrolls to the current mark's line", () => {
+    const code = Array.from({ length: 5000 }, (_, i) => `line ${i} "value ${i}"`).join("\n");
+    const at = code.indexOf('"value 4000"');
+    const ref = createRef<HTMLDivElement>();
+    const { container } = render(<CodeBlock ref={ref} language="json" code={code} marks={{ starts: [at], length: 12 }} currentMark={0} />);
+    const scroller = container.querySelector('[data-slot="code-block-scroller"]') as HTMLElement;
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+  });
 });

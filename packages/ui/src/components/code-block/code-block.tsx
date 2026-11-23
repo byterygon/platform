@@ -14,7 +14,9 @@ import { Checkmark, Copy } from "@/lib/icons";
 // @lezer/highlight colours only the lines on screen. Line numbers, highlighted lines, a title bar
 // and a copy button are optional. More than `virtualizeAfter` lines (1,000) are virtualized: only
 // the lines in view are in the DOM, between two spacers, so a megabyte of SQL stays fast; lines
-// then keep to one line each (`wrap` is ignored). Copy always copies the whole text.
+// then keep to one line each (`wrap` is ignored). Copy always copies the whole text. `marks`
+// highlights ranges of the text (a find bar's matches, which the caller computes) and `currentMark`
+// is the one the view scrolls to.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const codeBlockVariants = {
@@ -43,6 +45,7 @@ const classes = {
   content: "min-w-0 flex-1 pe-inset-sm in-data-[numbers=false]:ps-inset-sm",
   copy: "shrink-0",
   status: "sr-only",
+  mark: "rounded-xs bg-editor-match text-editor-fg data-current:bg-editor-selection",
 } as const;
 
 /** Lezer highlight tags to the syntax.* text colours, written out for Tailwind. */
@@ -99,6 +102,10 @@ export interface CodeBlockProps {
   onCopy?: (code: string) => void;
   /** Virtualize above this many lines. */
   virtualizeAfter?: number;
+  /** Ranges of the text to mark, such as a find bar's matches: the offsets where each starts (ascending, not overlapping) and their common length. */
+  marks?: { starts: readonly number[]; length: number } | undefined;
+  /** The index in `marks` of the current match: marked more strongly, and scrolled into view when it changes. */
+  currentMark?: number | undefined;
   /** Names the code region (focusable, so keyboard users can scroll it). */
   "aria-label"?: string;
   /** Extra classes on the frame (give it a height or a max-h-* class to scroll), merged after the component's own. */
@@ -120,6 +127,8 @@ export function CodeBlock({
   copyable = appearance === "editor",
   onCopy,
   virtualizeAfter = 1000,
+  marks,
+  currentMark,
   "aria-label": ariaLabel,
   className,
   ref,
@@ -163,29 +172,98 @@ export function CodeBlock({
     };
   }, [virtual]);
 
+  const markStarts = marks?.starts;
+  const markLength = marks?.length ?? 0;
+  // The current mark comes into view: a virtualized block scrolls to its line, the others to its element.
+  const lineOfOffset = useCallback(
+    (offset: number) => {
+      let lo = 0;
+      let hi = starts.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >>> 1;
+        if (starts[mid]! <= offset) lo = mid;
+        else hi = mid - 1;
+      }
+      return lo;
+    },
+    [starts],
+  );
+  const currentStart = currentMark !== undefined ? markStarts?.[currentMark] : undefined;
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element || currentStart === undefined) return;
+    if (virtual) {
+      const line = lineOfOffset(currentStart);
+      const top = line * view.lineHeight;
+      const visible = element.clientHeight || view.lineHeight * 40;
+      if (top < element.scrollTop || top + view.lineHeight > element.scrollTop + visible) {
+        element.scrollTop = Math.max(0, top - visible / 2);
+        setView((previous) => ({ ...previous, scrollTop: element.scrollTop }));
+      }
+    } else element.querySelector<HTMLElement>("mark[data-current]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the view's size is read when the current mark changes, not tracked
+  }, [currentStart, virtual, lineOfOffset]);
+
   const overscan = 20;
   const viewport = view.viewport || view.lineHeight * 40;
   const first = virtual ? Math.max(0, Math.floor(view.scrollTop / view.lineHeight) - overscan) : 0;
   const last = virtual ? Math.min(count, Math.ceil((view.scrollTop + viewport) / view.lineHeight) + overscan) : count;
 
+  // The first mark that ends after `offset`, by binary search.
+  const firstMarkAfter = (offset: number) => {
+    if (!markStarts) return 0;
+    let lo = 0;
+    let hi = markStarts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (markStarts[mid]! + markLength <= offset) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+
   const renderLine = (index: number) => {
     const from = starts[index]!;
     const to = index + 1 < count ? starts[index + 1]! - 1 : text.length;
     const pieces: ReactNode[] = [];
+    let key = 0;
+    let at = from;
+    let nextMark = markStarts && markLength > 0 ? firstMarkAfter(from) : -1;
+    // Puts a piece of the line in, cut where the marks in it start and stop.
+    const put = (piece: string, cls: string | undefined) => {
+      const end = at + piece.length;
+      let cursor = at;
+      while (nextMark !== -1 && nextMark < markStarts!.length && markStarts![nextMark]! < end) {
+        const start = markStarts![nextMark]!;
+        const stop = start + markLength;
+        const a = Math.max(start, cursor);
+        const b = Math.min(stop, end);
+        if (a > cursor) pieces.push(cls ? <span key={key++} className={cls}>{piece.slice(cursor - at, a - at)}</span> : piece.slice(cursor - at, a - at));
+        if (b > a) {
+          pieces.push(
+            <mark key={key++} data-slot="code-block-mark" data-current={nextMark === currentMark ? "" : undefined} className={cn(classes.mark, cls)}>
+              {piece.slice(a - at, b - at)}
+            </mark>,
+          );
+        }
+        cursor = b;
+        if (stop <= end) nextMark += 1;
+        else break;
+      }
+      if (cursor < end) pieces.push(cls ? <span key={key++} className={cls}>{piece.slice(cursor - at)}</span> : piece.slice(cursor - at));
+      at = end;
+    };
     if (tree) {
-      let key = 0;
       highlightCode(
         text,
         tree,
         highlighter,
-        (piece, cls) => {
-          pieces.push(cls ? <span key={key++} className={cls}>{piece}</span> : piece);
-        },
+        (piece, cls) => put(piece, cls || undefined),
         () => {},
         from,
         to,
       );
-    } else pieces.push(text.slice(from, to));
+    } else put(text.slice(from, to), undefined);
     const number = startLine + index;
     return (
       <div key={index} data-slot="code-block-line" data-highlighted={highlighted.has(number) ? "" : undefined} data-wrap={wraps ? "" : undefined} className={cn(classes.line)}>

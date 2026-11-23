@@ -76,6 +76,16 @@
       "description": "Virtualize above this many lines."
     },
     {
+      "name": "marks",
+      "type": "{ starts: readonly number[]; length: number }",
+      "description": "Ranges of the text to mark, such as a find bar's matches: the offsets where each starts (ascending, not overlapping) and their common length."
+    },
+    {
+      "name": "currentMark",
+      "type": "number",
+      "description": "The index in marks of the current match: marked more strongly, and scrolled into view when it changes."
+    },
+    {
       "name": "aria-label",
       "type": "string",
       "description": "Names the code region; defaults to a string title or \"Code\"."

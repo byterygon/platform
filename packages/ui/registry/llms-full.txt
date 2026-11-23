@@ -896,7 +896,7 @@ Usage: Use CodeBlock to show code the user reads or copies but does not edit: a 
 
 - Wraps: no Base UI part
 - appearance: editor, inset
-- Props: code (string); appearance ("editor" | "inset", default "editor"); language ("text" | "sql" | "json", default "text"); lineNumbers (boolean); startLine (number, default 1); highlightLines (number[]); wrap (boolean, default false); title (ReactNode); copyable (boolean, default "true in the editor appearance"); onCopy ((code: string) => void); virtualizeAfter (number, default 1000); aria-label (string); className (string); ref (Ref<HTMLDivElement>)
+- Props: code (string); appearance ("editor" | "inset", default "editor"); language ("text" | "sql" | "json", default "text"); lineNumbers (boolean); startLine (number, default 1); highlightLines (number[]); wrap (boolean, default false); title (ReactNode); copyable (boolean, default "true in the editor appearance"); onCopy ((code: string) => void); virtualizeAfter (number, default 1000); marks ({ starts: readonly number[]; length: number }); currentMark (number); aria-label (string); className (string); ref (Ref<HTMLDivElement>)
 - States: highlighted (data-highlighted), wrap (data-wrap), focus-visible (focus-visible)
 - Tokens: color.accent.subtle-fg, color.bg.inset, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.ring, color.ring-inner, editor.bg, editor.fg, editor.gutter, editor.line-highlight, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.lg, radius.md, ring.inner-width, ring.width, size.control.sm, size.icon.md, space.inline.sm, space.inline.xs, space.inset.sm, space.inset.xs, syntax.comment, syntax.constant, syntax.identifier, syntax.keyword, syntax.number, syntax.operator, syntax.string, syntax.type, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight
 - Accessibility: The code is in <pre><code> inside a focusable role="region" named by aria-label or the title, so keyboard users can scroll it with the arrow keys. Line numbers are aria-hidden, so screen readers read the code, not the numbers. The copy button is an IconButton ("Copy code", then "Copied"), and a polite status announces "Copied to the clipboard". Virtualized blocks keep only the lines in view in the DOM; screen readers read those, and Copy gives the whole text. Colours are the editor.* and syntax.* roles, which the token build checks for contrast on editor.bg.
@@ -2723,30 +2723,36 @@ export function InputGroupRealistic() {
 
 ### JsonViewer
 
-[json-viewer.json](json-viewer.json): A JSON value as a keyboard-navigable, virtualized tree in the editor's syntax colours; objects and arrays expand and collapse.
+[json-viewer.json](json-viewer.json): A JSON value as a keyboard-navigable, virtualized tree or as text, in the editor's syntax colours, with a toolbar (Copy, Expand all, Collapse all, Expand to depth, Find, Tree | Text) and a context menu on every row.
 
-Usage: Use JsonViewer to explore a JSON value: DBee's value viewer for json and jsonb cells, a plugin manifest, an API response in diagnostics. Pass value (parsed) or text (parsed here; invalid JSON shows an alert with the parser's message). defaultExpandDepth sets how much is open at first. Give it a height (h-panel-sm, h-full in a sized panel): it renders only the rows in view, so large arrays stay fast. onActiveChange gives the JSON Pointer of the row the keyboard is on. To show JSON as text, use CodeBlock with language="json"; to edit it, CodeInput. Pass a stable value (memoize it): a new value object resets what is open.
+Usage: Use JsonViewer to read any JSON value: a payload, an inspect result, a schema, a response, DBee's value viewer for json and jsonb cells. One component gives every place the same tools: Copy (the whole value, formatted or minified), Expand all (capped at maxExpandRows, with a message), Collapse all, Expand to depth, Find (Mod+F, in keys and values of the tree or in the text, with a count, next and previous and case), and a Tree | Text switch. Pass value (parsed) or text (parsed here; invalid JSON shows an alert with the parser's message). defaultExpandDepth sets how much is open at first. defaultMode="text" starts in Text (a request body, an event as stored); mode and onModeChange let the app remember the choice. A row has a context menu and keys: Copy value (Mod+C), Copy path in jq style such as .items[0].id (Mod+Shift+C) and Copy key (Mod+Alt+C). The tool's own buttons go in the toolbar through `actions`; do not import app code into the component. Give it a height (h-panel-sm, h-full in a sized panel): it renders only the rows in view, so large arrays stay fast. onActiveChange gives the JSON Pointer of the row the keyboard is on. Use CodeBlock for code that is not data (a command, a snippet), CodeEditor to edit JSON. Pass a stable value (memoize it): a new value object resets what is open.
 
 - Wraps: no Base UI part
-- Props: value (unknown); text (string); defaultExpandDepth (number, default 1); aria-label (string, default "\"JSON\""); onActiveChange ((path: string, value: unknown) => void); maxStringLength (number, default 1000); overscan (number, default 10); invalidText (ReactNode, default "\"Not valid JSON:\""); className (string); ref (Ref<HTMLDivElement>)
-- States: active (data-active), expanded (data-expanded), hover (hover), focus-visible (focus-visible), invalid (data-invalid)
-- Tokens: color.border.subtle, color.interactive.hover, color.ring, color.ring-inner, color.status.danger.border, color.status.danger.fg, editor.bg, editor.fg, editor.gutter, editor.line-highlight, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.lg, ring.inner-width, ring.width, size.control.xs, size.icon.md, size.icon.sm, size.icon.xs, space.inline.xs, space.inset.sm, syntax.constant, syntax.identifier, syntax.number, syntax.operator, syntax.string, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
-- Accessibility: The ARIA treeview pattern: one tab stop (role="tree") with aria-activedescendant naming the active row (always rendered, even outside the window); rows are role="treeitem" with aria-level, aria-setsize, aria-posinset and aria-expanded on containers. Keys: Up and Down move, Right opens a container then enters it, Left closes it then goes to its parent, Home and End go to the ends, Enter and Space toggle. Keys, indices and values are text; colour (syntax.*) only repeats the kind, and strings keep their quotes. Invalid text renders role="alert" with the parser's message. Virtualized: only rows in view are in the DOM, so screen readers move row by row with the keys rather than reading the whole value.
+- Props: value (unknown); text (string); defaultExpandDepth (number, default 1); aria-label (string, default "\"JSON\""); onActiveChange ((path: string, value: unknown) => void); maxStringLength (number, default 1000); overscan (number, default 10); invalidText (ReactNode, default "\"Not valid JSON:\""); mode ("tree" | "text"); defaultMode ("tree" | "text", default "\"tree\""); onModeChange ((mode: "tree" | "text") => void); toolbar (boolean, default true); actions (ReactNode); maxExpandRows (number, default 200000); onCopy ((kind: "value" | "path" | "key" | "formatted" | "minified", text: string) => void); className (string); ref (Ref<HTMLDivElement>)
+- States: active (data-active), expanded (data-expanded), match (data-match), current-match (data-current-match), hover (hover), focus-visible (focus-visible), invalid (data-invalid)
+- Tokens: border.width.1, color.accent.subtle-fg, color.bg.layer, color.border.default, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.interactive.selected, color.ring, color.ring-inner, color.status.danger.border, color.status.danger.fg, editor.bg, editor.fg, editor.gutter, editor.line-highlight, editor.match, editor.selection, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.lg, radius.md, ring.inner-width, ring.width, size.control.md, size.control.sm, size.control.xs, size.icon.md, size.icon.sm, size.icon.xs, space.inline.sm, space.inline.xs, space.inset.sm, space.inset.xs, syntax.constant, syntax.identifier, syntax.number, syntax.operator, syntax.string, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1-strong.leading, text.caption-1-strong.size, text.caption-1-strong.tracking, text.caption-1-strong.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
+- Accessibility: The ARIA treeview pattern: one tab stop (role="tree") with aria-activedescendant naming the active row (always rendered, even outside the window); rows are role="treeitem" with aria-level, aria-setsize, aria-posinset and aria-expanded on containers. Keys: Up and Down move, Right opens a container then enters it, Left closes it then goes to its parent, Home and End go to the ends, Enter and Space toggle; Mod+C, Mod+Shift+C and Mod+Alt+C copy the active row's value, jq path and key; Mod+F opens Find, Enter and Shift+Enter (or F3) step through the matches, Escape closes it. The toolbar is role="toolbar" with one tab stop and arrow keys between its buttons; the Tree | Text switch is a group of two pressed-state buttons. Find announces its count (3 of 17) in a polite live region; a copy announces what it copied in a status region. Keys, indices and values are text; colour (syntax.*) only repeats the kind, and strings keep their quotes. A matching row is marked by a background, and the count says where the match is. Invalid text renders role="alert" with the parser's message. Virtualized: only rows in view are in the DOM, so screen readers move row by row with the keys rather than reading the whole value. Text mode is a focusable, scrollable region of selectable text.
 
 Examples (JsonViewerMinimal, JsonViewerRealistic):
 
 ```tsx
-import { useMemo } from "react";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { useMemo, useState } from "react";
+import { JsonViewer, type JsonViewerMode } from "@/components/ui/json-viewer";
+import { ToolbarButton } from "@/components/ui/toolbar";
 
-/** The smallest useful JsonViewer: a small object. */
+/** The smallest useful JsonViewer: a small object, with the toolbar's Copy, Expand all, Find and Tree | Text. */
 export function JsonViewerMinimal() {
-  return <JsonViewer aria-label="Cell value" value={{ id: 1204, status: "open", paid: false, note: null }} className="h-panel-xs max-w-panel-sm" />;
+  return <JsonViewer aria-label="Cell value" value={{ id: 1204, status: "open", paid: false, note: null }} className="h-panel-sm max-w-panel-md" />;
 }
 
-/** A jsonb cell with nesting and a long string, an array of 100,000 events (virtualized), and invalid JSON text. */
+/**
+ * A jsonb cell with nesting and a long string; an array of 100,000 events (virtualized in the tree
+ * and in the text); a request read as text, with the mode remembered by the app and a tool's own
+ * button in the `actions` slot; and invalid JSON text.
+ */
 export function JsonViewerRealistic() {
   const events = useMemo(() => ({ total: 100_000, items: Array.from({ length: 100_000 }, (_, i) => ({ id: i + 1, type: i % 3 ? "view" : "click" })) }), []);
+  const [mode, setMode] = useState<JsonViewerMode>("text");
   return (
     <div className="flex w-full min-w-0 max-w-panel-xl flex-wrap items-start gap-gap-lg">
       <JsonViewer
@@ -2760,9 +2766,17 @@ export function JsonViewerRealistic() {
           shipped_at: null,
           notes: "Leave the parcel with the neighbour at number 14 if nobody answers; the customer asked twice for a call before delivery, and asked that the courier not ring the bell after 21:00.",
         }}
-        className="h-panel-sm w-panel-md"
+        className="h-panel-md w-panel-md"
       />
-      <JsonViewer aria-label="events" value={events} defaultExpandDepth={2} className="h-panel-sm w-panel-sm" />
+      <JsonViewer aria-label="events" value={events} defaultExpandDepth={2} className="h-panel-md w-panel-md" />
+      <JsonViewer
+        aria-label="request"
+        mode={mode}
+        onModeChange={setMode}
+        value={{ method: "POST", path: "/orders", headers: { "content-type": "application/json" }, body: { sku: "A-1", quantity: 3 } }}
+        actions={<ToolbarButton>Run jq…</ToolbarButton>}
+        className="h-panel-md w-panel-md"
+      />
       <JsonViewer aria-label="broken value" text={'{"id": 1, "status": open}'} className="w-panel-sm" />
     </div>
   );

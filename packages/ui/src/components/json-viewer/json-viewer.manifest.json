@@ -3,11 +3,13 @@
   "schemaVersion": 1,
   "name": "json-viewer",
   "title": "JsonViewer",
-  "description": "A JSON value as a keyboard-navigable, virtualized tree in the editor's syntax colours; objects and arrays expand and collapse.",
-  "usage": "Use JsonViewer to explore a JSON value: DBee's value viewer for json and jsonb cells, a plugin manifest, an API response in diagnostics. Pass value (parsed) or text (parsed here; invalid JSON shows an alert with the parser's message). defaultExpandDepth sets how much is open at first. Give it a height (h-panel-sm, h-full in a sized panel): it renders only the rows in view, so large arrays stay fast. onActiveChange gives the JSON Pointer of the row the keyboard is on. To show JSON as text, use CodeBlock with language=\"json\"; to edit it, CodeInput. Pass a stable value (memoize it): a new value object resets what is open.",
+  "description": "A JSON value as a keyboard-navigable, virtualized tree or as text, in the editor's syntax colours, with a toolbar (Copy, Expand all, Collapse all, Expand to depth, Find, Tree | Text) and a context menu on every row.",
+  "usage": "Use JsonViewer to read any JSON value: a payload, an inspect result, a schema, a response, DBee's value viewer for json and jsonb cells. One component gives every place the same tools: Copy (the whole value, formatted or minified), Expand all (capped at maxExpandRows, with a message), Collapse all, Expand to depth, Find (Mod+F, in keys and values of the tree or in the text, with a count, next and previous and case), and a Tree | Text switch. Pass value (parsed) or text (parsed here; invalid JSON shows an alert with the parser's message). defaultExpandDepth sets how much is open at first. defaultMode=\"text\" starts in Text (a request body, an event as stored); mode and onModeChange let the app remember the choice. A row has a context menu and keys: Copy value (Mod+C), Copy path in jq style such as .items[0].id (Mod+Shift+C) and Copy key (Mod+Alt+C). The tool's own buttons go in the toolbar through `actions`; do not import app code into the component. Give it a height (h-panel-sm, h-full in a sized panel): it renders only the rows in view, so large arrays stay fast. onActiveChange gives the JSON Pointer of the row the keyboard is on. Use CodeBlock for code that is not data (a command, a snippet), CodeEditor to edit JSON. Pass a stable value (memoize it): a new value object resets what is open.",
   "status": "experimental",
   "base": null,
-  "dependencies": [],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
     {
       "name": "value",
@@ -55,14 +57,52 @@
       "description": "Shown before the parser's message for invalid text."
     },
     {
+      "name": "mode",
+      "type": "\"tree\" | \"text\"",
+      "description": "The view, controlled: the tree or the pretty-printed text. Pair it with onModeChange."
+    },
+    {
+      "name": "defaultMode",
+      "type": "\"tree\" | \"text\"",
+      "default": "\"tree\"",
+      "description": "The view at first when mode is not given."
+    },
+    {
+      "name": "onModeChange",
+      "type": "(mode: \"tree\" | \"text\") => void",
+      "description": "Called when the Tree | Text switch changes the view, so the app can remember the choice."
+    },
+    {
+      "name": "toolbar",
+      "type": "boolean",
+      "default": true,
+      "description": "Shows the toolbar. Find stays on Mod+F without it."
+    },
+    {
+      "name": "actions",
+      "type": "ReactNode",
+      "description": "The tool's own buttons, at the end of the toolbar (ToolbarButtons or ToolbarGroups)."
+    },
+    {
+      "name": "maxExpandRows",
+      "type": "number",
+      "default": 200000,
+      "description": "The most rows Expand all, Expand to depth and defaultExpandDepth open; a message says when it stopped there."
+    },
+    {
+      "name": "onCopy",
+      "type": "(kind: \"value\" | \"path\" | \"key\" | \"formatted\" | \"minified\", text: string) => void",
+      "description": "Called after something was copied."
+    },
+    {
       "name": "className",
       "type": "string",
-      "description": "Extra classes; give it a height."
+      "description": "Extra classes for the frame; give it a height."
     },
     {
       "name": "ref",
       "type": "Ref<HTMLDivElement>",
-      "description": "Reaches the tree element."
+      "description": "Reaches the tree element (null in text mode)."
     }
   ],
   "variants": {},
@@ -70,17 +110,37 @@
     {
       "name": "root",
       "element": "div",
-      "description": "role=\"tree\", the scroll container in editor.bg; data-slot=\"json-viewer\", data-invalid."
+      "description": "The frame in editor.bg: toolbar, find bar, the view; data-slot=\"json-viewer\", data-mode, data-invalid."
+    },
+    {
+      "name": "toolbar",
+      "element": "div",
+      "description": "role=\"toolbar\": Copy, Expand all, Collapse all, Depth, Find, Tree | Text, then the actions slot; data-slot=\"json-viewer-toolbar\"."
+    },
+    {
+      "name": "find",
+      "element": "div",
+      "description": "role=\"search\": the find field, the count (3 of 17), previous, next, match case, close; data-slot=\"json-viewer-find\"."
+    },
+    {
+      "name": "tree",
+      "element": "div",
+      "description": "role=\"tree\", the scroll container of the rows; data-slot=\"json-viewer-tree\"."
     },
     {
       "name": "row",
       "element": "div",
-      "description": "role=\"treeitem\" of size.control.xs; data-slot=\"json-viewer-row\", data-kind, data-active."
+      "description": "role=\"treeitem\" of size.control.xs; data-slot=\"json-viewer-row\", data-kind, data-active, data-match, data-current-match."
     },
     {
       "name": "chevron",
       "element": "span",
       "description": "Turns when a container opens; data-slot=\"json-viewer-chevron\", data-expanded."
+    },
+    {
+      "name": "notice",
+      "element": "p",
+      "description": "Says how many rows Expand all opened when it stopped at maxExpandRows; data-slot=\"json-viewer-notice\"."
     }
   ],
   "states": [
@@ -111,6 +171,16 @@
       "description": "An open container's chevron, turned a quarter."
     },
     {
+      "name": "match",
+      "variant": "data-match",
+      "description": "A row that matches Find: editor.match."
+    },
+    {
+      "name": "current-match",
+      "variant": "data-current-match",
+      "description": "The match Find is on: editor.selection."
+    },
+    {
       "name": "hover",
       "variant": "hover",
       "description": "Pointer over a row: color.interactive.hover."
@@ -130,8 +200,17 @@
     }
   ],
   "tokens": [
+    "border.width.1",
+    "color.accent.subtle-fg",
+    "color.bg.layer",
+    "color.border.default",
     "color.border.subtle",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.interactive.active",
     "color.interactive.hover",
+    "color.interactive.selected",
     "color.ring",
     "color.ring-inner",
     "color.status.danger.border",
@@ -140,19 +219,26 @@
     "editor.fg",
     "editor.gutter",
     "editor.line-highlight",
+    "editor.match",
+    "editor.selection",
     "font.mono",
     "font.sans",
     "motion.duration.faster",
     "motion.easing.easy-ease",
     "radius.lg",
+    "radius.md",
     "ring.inner-width",
     "ring.width",
+    "size.control.md",
+    "size.control.sm",
     "size.control.xs",
     "size.icon.md",
     "size.icon.sm",
     "size.icon.xs",
+    "space.inline.sm",
     "space.inline.xs",
     "space.inset.sm",
+    "space.inset.xs",
     "syntax.constant",
     "syntax.identifier",
     "syntax.number",
@@ -162,6 +248,14 @@
     "text.body-1.size",
     "text.body-1.tracking",
     "text.body-1.weight",
+    "text.caption-1-strong.leading",
+    "text.caption-1-strong.size",
+    "text.caption-1-strong.tracking",
+    "text.caption-1-strong.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
     "text.code-sm.leading",
     "text.code-sm.size",
     "text.code-sm.tracking",
@@ -173,9 +267,11 @@
   },
   "accessibility": [
     "The ARIA treeview pattern: one tab stop (role=\"tree\") with aria-activedescendant naming the active row (always rendered, even outside the window); rows are role=\"treeitem\" with aria-level, aria-setsize, aria-posinset and aria-expanded on containers.",
-    "Keys: Up and Down move, Right opens a container then enters it, Left closes it then goes to its parent, Home and End go to the ends, Enter and Space toggle.",
-    "Keys, indices and values are text; colour (syntax.*) only repeats the kind, and strings keep their quotes.",
+    "Keys: Up and Down move, Right opens a container then enters it, Left closes it then goes to its parent, Home and End go to the ends, Enter and Space toggle; Mod+C, Mod+Shift+C and Mod+Alt+C copy the active row's value, jq path and key; Mod+F opens Find, Enter and Shift+Enter (or F3) step through the matches, Escape closes it.",
+    "The toolbar is role=\"toolbar\" with one tab stop and arrow keys between its buttons; the Tree | Text switch is a group of two pressed-state buttons.",
+    "Find announces its count (3 of 17) in a polite live region; a copy announces what it copied in a status region.",
+    "Keys, indices and values are text; colour (syntax.*) only repeats the kind, and strings keep their quotes. A matching row is marked by a background, and the count says where the match is.",
     "Invalid text renders role=\"alert\" with the parser's message.",
-    "Virtualized: only rows in view are in the DOM, so screen readers move row by row with the keys rather than reading the whole value."
+    "Virtualized: only rows in view are in the DOM, so screen readers move row by row with the keys rather than reading the whole value. Text mode is a focusable, scrollable region of selectable text."
   ]
 }

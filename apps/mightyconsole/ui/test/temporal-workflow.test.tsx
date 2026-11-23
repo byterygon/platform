@@ -185,7 +185,7 @@ describe("Workflow tab (spec §9.3)", () => {
     expect(aside().textContent).toContain("Scheduled");
     // Its events, the first unfolded to its attributes; the others unfold on a click.
     const events = byRole("region", "Events", aside()) ?? aside().querySelector('[aria-label="Events"]')!;
-    const rows = Array.from(events.querySelectorAll<HTMLElement>("button[aria-expanded]"));
+    const rows = Array.from(events.querySelectorAll<HTMLElement>("button[aria-expanded]")).filter((b) => !b.closest('[role="toolbar"]')); // the JSON views' own toolbars have menu buttons too (TSK-112)
     expect(rows.map((b) => b.textContent)).toEqual([expect.stringContaining("ActivityTaskScheduled")]);
     expect(rows[0]!.getAttribute("aria-expanded")).toBe("true");
     expect(aside().querySelector('[aria-label="Attributes of event 3"]')).not.toBeNull();
