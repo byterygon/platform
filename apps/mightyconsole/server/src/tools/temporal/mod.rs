@@ -809,7 +809,7 @@ impl TemporalPayloadApi {
         Ok(large::node(&handle.value.large, &input)?)
     }
 
-    /// A jq program on a large payload, run on the server; only its results travel (1 MiB, 10 s).
+    /// A jq program on a large payload, run on the server; only its results travel (spec §5.4.1).
     #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
     async fn query(&self, ctx: Ctx, input: PayloadQueryInput) -> ToolResult<PayloadQueryOutput> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;

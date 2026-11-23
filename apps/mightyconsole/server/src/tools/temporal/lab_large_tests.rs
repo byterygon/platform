@@ -133,6 +133,7 @@ async fn jq_runs_on_the_server() {
             conn_id: String::new(),
             payload_id: id,
             jq: ".items | map(select(.qty == 0)) | length".into(),
+            timeout_ms: Some(10_000),
         },
     )
     .await

@@ -11,20 +11,19 @@
 //!   sequence, timestamp }`. It matches when it yields at least one value that is neither
 //!   `false` nor `null`; a program that fails on a message is no match, reported as an error.
 //!
-//! jq programs run to completion: one that never ends (`[range(1e18)]`) stalls its stream until
-//! the stream is stopped (spec Open question 35).
+//! jq programs are compiled by [`crate::jq`], which refuses the builtins that reach outside the
+//! value (spec §5.4.1). They run to completion: one that never ends (`[range(1e18)]`) stalls its
+//! stream until the stream is stopped (spec Open questions 35 and 65 (f)).
 
-use std::fmt;
+use std::ops::ControlFlow;
 
-use jaq_core::load::{Arena, File, Loader};
-use jaq_core::{Ctx, Vars, data, unwrap_valr};
 use jaq_json::Val;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::error::Position;
+use crate::jq::JqProgram;
 use crate::message::Header;
 use crate::schema::subject_matches;
 
@@ -153,7 +152,7 @@ pub struct FilterIssue {
 }
 
 impl FilterIssue {
-    fn new(part: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn new(part: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             part: part.into(),
             message: message.into(),
@@ -237,18 +236,6 @@ impl Text {
     }
 }
 
-type JqFilter = jaq_core::compile::Filter<jaq_core::Native<data::JustLut<Val>>>;
-
-struct Jq {
-    filter: JqFilter,
-}
-
-impl fmt::Debug for Jq {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Jq")
-    }
-}
-
 /// A compiled filter.
 #[derive(Debug)]
 pub struct CompiledFilter {
@@ -258,7 +245,7 @@ pub struct CompiledFilter {
     text: Option<String>,
     time: (Option<i64>, Option<i64>),
     position: (Option<i128>, Option<i128>),
-    jq: Option<Jq>,
+    jq: Option<JqProgram>,
 }
 
 impl CompiledFilter {
@@ -307,8 +294,8 @@ impl CompiledFilter {
             .filter(|j| !j.is_empty())
         {
             None => None,
-            Some(code) => match compile_jq(code) {
-                Ok(filter) => Some(Jq { filter }),
+            Some(code) => match JqProgram::compile(code) {
+                Ok(program) => Some(program),
                 Err(mut e) => {
                     issues.append(&mut e);
                     None
@@ -389,56 +376,10 @@ impl CompiledFilter {
             return Outcome::NoMatch;
         }
         if let Some(jq) = &self.jq {
-            return run_jq(&jq.filter, m);
+            return run_jq(jq, m);
         }
         Outcome::Match
     }
-}
-
-/// What a jq program gave on one value ([`run_jq_value`]).
-#[derive(Debug, Clone, PartialEq)]
-pub struct JqResults {
-    /// The outputs, in order, until `max_bytes` of their JSON text.
-    pub results: Vec<serde_json::Value>,
-    /// The JSON text of the outputs kept.
-    pub bytes: usize,
-    /// Outputs were left out: over `max_bytes`, or past the deadline.
-    pub truncated: bool,
-}
-
-/// Runs a jq program on one JSON value (a large Temporal payload kept on the server). Outputs are
-/// kept until their JSON text passes `max_bytes`; the deadline is checked between outputs, so a
-/// single output that never ends is not cut. Errors name the part `jq` with the position.
-pub fn run_jq_value(
-    code: &str,
-    input: &serde_json::Value,
-    max_bytes: usize,
-    deadline: Option<std::time::Instant>,
-) -> Result<JqResults, Vec<FilterIssue>> {
-    let filter = compile_jq(code.trim())?;
-    let value: Val = Deserialize::deserialize(input)
-        .map_err(|e| vec![FilterIssue::new("jq", format!("jq input: {e}"))])?;
-    let ctx = Ctx::<data::JustLut<Val>>::new(&filter.lut, Vars::new([]));
-    let mut out = JqResults {
-        results: Vec::new(),
-        bytes: 0,
-        truncated: false,
-    };
-    for result in filter.id.run((ctx, value)).map(unwrap_valr) {
-        let v = result.map_err(|e| vec![FilterIssue::new("jq", format!("jq: {e}"))])?;
-        let text = v.to_string();
-        let json: serde_json::Value =
-            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::Value::String(text.clone()));
-        if out.bytes + text.len() > max_bytes
-            || deadline.is_some_and(|d| std::time::Instant::now() > d)
-        {
-            out.truncated = true;
-            break;
-        }
-        out.bytes += text.len();
-        out.results.push(json);
-    }
-    Ok(out)
 }
 
 /// Checks a filter (`messaging.filter.check`).
@@ -495,82 +436,6 @@ fn parse_position(s: Option<&str>, part: &str, issues: &mut Vec<FilterIssue>) ->
     }
 }
 
-fn offset_in(code: &str, s: &str) -> Option<usize> {
-    let start = code.as_ptr() as usize;
-    let at = s.as_ptr() as usize;
-    (at >= start && at <= start + code.len()).then(|| at - start)
-}
-
-fn jq_issue(code: &str, span: &str, message: String) -> FilterIssue {
-    let mut issue = FilterIssue::new("jq", message);
-    if let Some(offset) = offset_in(code, span) {
-        let p = Position::of_offset(code, offset);
-        issue.line = Some(p.line);
-        issue.column = Some(p.column);
-    }
-    issue
-}
-
-fn compile_jq(code: &str) -> Result<JqFilter, Vec<FilterIssue>> {
-    let defs = jaq_core::defs()
-        .chain(jaq_std::defs())
-        .chain(jaq_json::defs());
-    let funs = jaq_core::funs()
-        .chain(jaq_std::funs())
-        .chain(jaq_json::funs());
-    let loader = Loader::new(defs);
-    let arena = Arena::default();
-    let modules = loader
-        .load(&arena, File { code, path: () })
-        .map_err(|errs| {
-            let mut out = Vec::new();
-            for (_, e) in errs {
-                match e {
-                    jaq_core::load::Error::Io(v) => {
-                        out.extend(
-                            v.into_iter()
-                                .map(|(s, m)| jq_issue(code, s, format!("cannot load {s}: {m}"))),
-                        );
-                    }
-                    jaq_core::load::Error::Lex(v) => {
-                        out.extend(v.into_iter().map(|(exp, s)| {
-                            jq_issue(code, s, format!("expected {}", exp.as_str()))
-                        }));
-                    }
-                    jaq_core::load::Error::Parse(v) => {
-                        out.extend(v.into_iter().map(|(exp, s)| {
-                            let found = if s.is_empty() {
-                                "the end".to_owned()
-                            } else {
-                                format!("{:?}", s.chars().take(20).collect::<String>())
-                            };
-                            jq_issue(code, s, format!("expected {}, found {found}", exp.as_str()))
-                        }));
-                    }
-                }
-            }
-            out
-        })?;
-    jaq_core::Compiler::default()
-        .with_funs(funs)
-        .compile(modules)
-        .map_err(|errs| {
-            errs.into_iter()
-                .flat_map(|(_, v)| v)
-                .map(|(s, undefined)| {
-                    let what = match undefined {
-                        jaq_core::compile::Undefined::Mod => "module",
-                        jaq_core::compile::Undefined::Var => "variable",
-                        jaq_core::compile::Undefined::Label => "label",
-                        jaq_core::compile::Undefined::Filter(_) => "filter",
-                        _ => "name",
-                    };
-                    jq_issue(code, s, format!("undefined {what} {s}"))
-                })
-                .collect()
-        })
-}
-
 /// The object a jq program reads: headers as `{ name: value }`, a repeated name as an array of
 /// its values, binary values as base64.
 fn jq_input(m: &FilterInput<'_>) -> serde_json::Value {
@@ -608,23 +473,25 @@ fn jq_input(m: &FilterInput<'_>) -> serde_json::Value {
     })
 }
 
-fn run_jq(filter: &JqFilter, m: &FilterInput<'_>) -> Outcome {
+fn run_jq(program: &JqProgram, m: &FilterInput<'_>) -> Outcome {
     let input: Val = match serde::Deserialize::deserialize(jq_input(m)) {
         Ok(v) => v,
         Err(e) => return Outcome::JqError(format!("jq input: {e}")),
     };
-    let ctx = Ctx::<data::JustLut<Val>>::new(&filter.lut, Vars::new([]));
-    for out in filter.id.run((ctx, input)).map(unwrap_valr) {
-        match out {
-            Ok(v) => {
-                if !matches!(v, Val::Null | Val::Bool(false)) {
-                    return Outcome::Match;
-                }
-            }
-            Err(e) => return Outcome::JqError(format!("jq: {e}")),
+    let mut matched = false;
+    let run = program.run(input, |v| {
+        if matches!(v, Val::Null | Val::Bool(false)) {
+            ControlFlow::Continue(())
+        } else {
+            matched = true;
+            ControlFlow::Break(())
         }
+    });
+    match run {
+        Err(e) => Outcome::JqError(e),
+        Ok(()) if matched => Outcome::Match,
+        Ok(()) => Outcome::NoMatch,
     }
-    Outcome::NoMatch
 }
 
 #[cfg(test)]
@@ -816,6 +683,29 @@ mod tests {
     }
 
     #[test]
+    fn the_filter_refuses_what_a_query_refuses() {
+        // One compiler for the filter and the query (spec §5.4.1): `halt` would end the server,
+        // `env` would leak its environment through matches.
+        for code in [
+            "env.HOME != null",
+            "halt",
+            "$ENV | length > 0",
+            "debug",
+            "input",
+        ] {
+            let issues = check(&Filter {
+                jq: Some(code.into()),
+                ..Filter::default()
+            });
+            assert_eq!(issues.len(), 1, "{code}: {issues:?}");
+            assert!(
+                issues[0].message.contains("is not available"),
+                "{code}: {issues:?}"
+            );
+        }
+    }
+
+    #[test]
     fn compiled_filters_can_cross_threads() {
         fn send_sync<T: Send + Sync>() {}
         send_sync::<CompiledFilter>();
@@ -869,25 +759,5 @@ mod tests {
             })
             .is_empty()
         );
-    }
-    #[test]
-    fn a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit() {
-        let value = json!({ "items": [{ "qty": 0 }, { "qty": 3 }, { "qty": 0 }] });
-        let out = run_jq_value(
-            ".items | map(select(.qty == 0)) | length",
-            &value,
-            1024,
-            None,
-        )
-        .unwrap();
-        assert_eq!(out.results, vec![json!(2)]);
-        assert!(!out.truncated);
-        let many = run_jq_value(".items[]", &value, 20, None).unwrap();
-        assert_eq!(many.results, vec![json!({ "qty": 0 }), json!({ "qty": 3 })]);
-        assert!(many.truncated);
-        let bad = run_jq_value(".items | nope", &value, 1024, None).unwrap_err();
-        assert_eq!(bad[0].part, "jq");
-        let failed = run_jq_value(".items + 1", &value, 1024, None).unwrap_err();
-        assert!(failed[0].message.starts_with("jq: "), "{:?}", failed);
     }
 }

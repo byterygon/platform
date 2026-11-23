@@ -1705,7 +1705,7 @@ impl ValuesApi {
         Ok(large::node(&handle.value.values, &input)?)
     }
 
-    /// A jq program on a kept value, run on the server; only its results travel (1 MiB, 10 s).
+    /// A jq program on a kept value, run on the server; only its results travel (spec §5.4.1).
     #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
     async fn query(
         &self,

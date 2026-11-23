@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 use ts_rs::TS;
 
 use super::TOOL;
-use crate::core::{ErrorPosition, ToolError};
+use crate::core::ToolError;
 
 /// Decoded JSON over this many bytes is kept on the server and sent as a stub.
 pub const STUB_OVER: usize = 64 * 1024;
@@ -34,9 +34,6 @@ pub const IDLE: Duration = Duration::from_secs(10 * 60);
 /// Children per page, by default and at most.
 pub const PAGE: usize = 50;
 pub const MAX_PAGE: usize = 200;
-/// jq's results are cut at this much JSON text, and its run at this time.
-pub const QUERY_BYTES: usize = 1024 * 1024;
-pub const QUERY_TIME: Duration = Duration::from_secs(10);
 /// What is stubbed and how much of it is previewed (TSK-109): payloads over `over` bytes of
 /// decoded JSON, with their first `preview` bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -581,8 +578,12 @@ pub fn node(store: &LargePayloads, input: &PayloadNodeInput) -> Result<PayloadNo
 pub struct PayloadQueryInput {
     pub conn_id: String,
     pub payload_id: String,
-    /// A jq program, run by jaq.
+    /// A jq program, run by jaq in a worker (spec §5.4.1).
     pub jq: String,
+    /// The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -593,61 +594,36 @@ pub struct PayloadQueryOutput {
     pub results: Vec<Value>,
     /// The results' JSON text, in bytes.
     pub bytes: usize,
-    /// Results were left out: over 1 MiB, or past 10 seconds.
+    /// Results were left out: over 1 MiB, or past the deadline (`stopped` says which).
     pub truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stopped: Option<crate::core::jq::Stopped>,
     pub ms: u64,
 }
 
-/// jq on a kept payload, on a blocking thread; only the results travel.
+/// jq on a kept payload, in a worker with the limits of spec §5.4.1; only the results travel.
 pub async fn query(
     store: &LargePayloads,
     input: PayloadQueryInput,
 ) -> Result<PayloadQueryOutput, ToolError> {
     let kept = store.require(&input.payload_id)?;
-    if input.jq.trim().is_empty() {
-        return Err(ToolError::invalid(TOOL, "jq", "a jq program is required"));
-    }
-    let started = Instant::now();
-    let code = input.jq.clone();
-    let run = tokio::task::spawn_blocking(move || {
-        message_codecs::filter::run_jq_value(
-            &code,
-            &kept.value,
-            QUERY_BYTES,
-            Some(Instant::now() + QUERY_TIME),
-        )
-    });
-    let out = tokio::time::timeout(QUERY_TIME + Duration::from_secs(1), run)
-        .await
-        .map_err(|_| ToolError::invalid(TOOL, "jq", "the program ran for over 10 seconds"))?
-        .map_err(|e| {
-            ToolError::new(
-                crate::core::ToolErrorKind::Remote,
-                TOOL,
-                format!("jq stopped: {e}"),
-            )
-        })?
-        .map_err(|issues| {
-            let first = issues.into_iter().next();
-            let mut error = ToolError::invalid(
-                TOOL,
-                "jq",
-                first
-                    .as_ref()
-                    .map_or_else(|| "jq failed".to_owned(), |i| i.message.clone()),
-            );
-            if let Some(i) = first
-                && let (Some(line), Some(column)) = (i.line, i.column)
-            {
-                error.position = Some(ErrorPosition { line, column });
-            }
-            error
-        })?;
+    let value = serde_json::to_vec(&kept.value)
+        .map_err(|e| ToolError::invalid(TOOL, "value", format!("cannot write the value: {e}")))?;
+    let out = crate::core::jq::run(
+        TOOL,
+        &input.jq,
+        value,
+        crate::core::jq::MAX_KEPT_INPUT_BYTES,
+        crate::core::jq::timeout(input.timeout_ms),
+    )
+    .await?;
     Ok(PayloadQueryOutput {
         results: out.results,
         bytes: out.bytes,
-        truncated: out.truncated,
-        ms: started.elapsed().as_millis() as u64,
+        truncated: out.stopped.is_some(),
+        stopped: out.stopped,
+        ms: out.ms,
     })
 }
 
@@ -823,6 +799,7 @@ mod tests {
             conn_id: String::new(),
             payload_id: id.clone(),
             jq: jq.into(),
+            timeout_ms: None,
         };
         let out = query(&store, q(".items | map(select(.qty == 0)) | length"))
             .await

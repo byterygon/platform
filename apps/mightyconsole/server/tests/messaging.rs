@@ -252,6 +252,109 @@ async fn the_messaging_procedures() {
     not_found_connection(&tab.error(15, Code::NotFound).await);
 }
 
+/// `messaging.query` (TSK-113, spec §5.4.1): jq on a value in a worker. Results come back as a
+/// list with their count; a refused builtin is `Invalid` at its position; a program that never
+/// ends or overflows its stack is stopped and the server goes on answering; cancelling a call
+/// ends its run.
+#[tokio::test]
+async fn a_jq_query_runs_in_a_worker_and_the_server_stays_responsive() {
+    let t = start().await;
+    let browser = t.browser().await;
+    let mut tab = t.tab(&browser).await;
+    let doc = json!({ "orders": [
+        { "id": 1, "status": "paid", "total": 12.5 },
+        { "id": 2, "status": "open", "total": 3 },
+        { "id": 3, "status": "paid", "total": 7 }
+    ] });
+    let text = doc.to_string();
+    tab.call(
+        1,
+        "messaging.query",
+        json!({ "text": text, "jq": ".orders | group_by(.status) | map({status: .[0].status, n: length})" }),
+    )
+    .await;
+    let out = tab.result(1).await;
+    assert_eq!(out["count"], 1);
+    assert_eq!(
+        out["results"],
+        json!([[{ "status": "open", "n": 1 }, { "status": "paid", "n": 2 }]])
+    );
+    assert!(out.get("stopped").is_none(), "{out}");
+    tab.call(
+        2,
+        "messaging.query",
+        json!({ "text": text, "jq": ".orders[].id" }),
+    )
+    .await;
+    let out = tab.result(2).await;
+    assert_eq!(
+        (out["count"].clone(), out["results"].clone()),
+        (json!(3), json!([1, 2, 3]))
+    );
+
+    // A refused builtin, at its position.
+    tab.call(
+        3,
+        "messaging.query",
+        json!({ "text": text, "jq": ".orders |\n env" }),
+    )
+    .await;
+    let details = tab.error(3, Code::InvalidArgument).await.details.unwrap();
+    assert_eq!(details["field"], "jq");
+    assert_eq!(details["position"]["line"], 2);
+
+    // A program that never ends, and one that overflows its stack: stopped, words for each.
+    tab.call(
+        4,
+        "messaging.query",
+        json!({ "text": "null", "jq": "def f: f; f", "timeoutMs": 500 }),
+    )
+    .await;
+    let err = tab.error(4, Code::InvalidArgument).await;
+    assert!(err.message.contains("was stopped"), "{}", err.message);
+    tab.call(
+        5,
+        "messaging.query",
+        json!({ "text": "null", "jq": "def f: 1 + f; f" }),
+    )
+    .await;
+    let err = tab.error(5, Code::InvalidArgument).await;
+    assert!(
+        err.message.contains("recursed too deeply"),
+        "{}",
+        err.message
+    );
+
+    // Endless results stop at the output cap.
+    tab.call(
+        6,
+        "messaging.query",
+        json!({ "text": "null", "jq": "range(1e18)" }),
+    )
+    .await;
+    let out = tab.result(6).await;
+    assert_eq!(out["stopped"], "output");
+    assert!(out["bytes"].as_u64().unwrap() <= 1024 * 1024);
+
+    // Cancelling a call that runs forever: the server answers the next call at once.
+    tab.call(
+        7,
+        "messaging.query",
+        json!({ "text": "null", "jq": "def f: f; f", "timeoutMs": 30000 }),
+    )
+    .await;
+    tab.client.cancel(7).await;
+    let started = std::time::Instant::now();
+    tab.call(
+        8,
+        "messaging.query",
+        json!({ "text": "[1,2]", "jq": "add" }),
+    )
+    .await;
+    assert_eq!(tab.result(8).await["results"], json!([3]));
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
 #[tokio::test]
 async fn messages_travel_as_arrow_batches_and_a_large_payload_is_cut() {
     let t = start().await;

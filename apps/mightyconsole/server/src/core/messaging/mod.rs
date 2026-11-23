@@ -244,6 +244,39 @@ pub struct InspectInput {
     pub message_type: Option<String>,
 }
 
+/// `messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar
+/// and Profile, spec §5.6), run in a worker with the limits of §5.4.1.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryInput {
+    /// The value's JSON text, at most 8 MiB.
+    pub text: String,
+    /// A jq program, run by jaq.
+    pub jq: String,
+    /// The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryOutput {
+    /// The program's outputs, in order.
+    #[ts(type = "unknown[]")]
+    #[schemars(with = "Vec<serde_json::Value>")]
+    pub results: Vec<serde_json::Value>,
+    /// How many outputs `results` holds.
+    pub count: u32,
+    /// The results' JSON text, in bytes.
+    pub bytes: u64,
+    /// Why the run returned before the program ended: the 1 MiB cap, or the deadline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stopped: Option<super::jq::Stopped>,
+    pub ms: u64,
+}
+
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterCheckInput {
@@ -453,7 +486,7 @@ fn cut(mut text: String, max: usize) -> String {
 
 // --- Procedures -------------------------------------------------------------------------------
 
-/// `messaging.decode` and `messaging.encode`.
+/// `messaging.decode`, `messaging.encode` and `messaging.query`.
 pub struct MessagingApi(pub Arc<Hub>);
 
 #[rpc::router(namespace = "messaging")]
@@ -485,6 +518,31 @@ impl MessagingApi {
             bytes: BASE64.encode(&e.bytes),
             schema_id: e.schema_id,
             schema_ref: e.schema_ref,
+        })
+    }
+
+    /// Runs a jq program on a JSON value in a worker (spec §5.4.1); only the results travel back.
+    #[rpc::query(
+        perm = "messaging.read",
+        risk = Risk::Read,
+        timeout_default = "35s",
+        timeout_max = "35s"
+    )]
+    async fn query(&self, _ctx: Ctx, input: QueryInput) -> ToolResult<QueryOutput> {
+        let out = super::jq::run(
+            SYSTEM,
+            &input.jq,
+            input.text.into_bytes(),
+            super::jq::MAX_TEXT_INPUT_BYTES,
+            super::jq::timeout(input.timeout_ms),
+        )
+        .await?;
+        Ok(QueryOutput {
+            count: out.results.len() as u32,
+            results: out.results,
+            bytes: out.bytes as u64,
+            stopped: out.stopped,
+            ms: out.ms,
         })
     }
 }

@@ -891,6 +891,72 @@ async fn browse_from_first_last_a_sequence_and_a_time_and_follow() {
     assert_eq!(left, 0, "ephemeral consumers left on ORDERS");
 }
 
+/// The message detail's Query (TSK-113, spec §5.4.1): jq on a NATS message's decoded value as
+/// the UI holds it, and on the 1.5 MiB message loaded whole, which is over the inline cap but
+/// under the query's 8 MiB.
+#[tokio::test]
+async fn a_jq_query_on_a_nats_message() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    tab.call(
+        3,
+        "nats.js.streams.browse",
+        json!({ "connId": conn, "streamId": "q-1", "stream": "ORDERS", "start": { "from": "first" },
+                "follow": false, "limit": 1 }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 3).await;
+    let text = column(&batches, "payloadText")[0].clone().unwrap();
+    let out = call(
+        &mut tab,
+        4,
+        "messaging.query",
+        json!({ "text": text, "jq": ".id, .region, (.amount | type)" }),
+    )
+    .await;
+    assert_eq!(out["results"], json!(["ord-00000", "eu", "number"]));
+    assert_eq!(out["count"], 3);
+
+    tab.call(
+        5,
+        "nats.js.streams.browse",
+        json!({ "connId": conn, "streamId": "q-2", "stream": "ORDERS", "start": { "from": "first" },
+                "follow": false, "subject": "orders.large" }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 5).await;
+    let seq = u64s(&batches, "sequence")[0];
+    let full = call(
+        &mut tab,
+        6,
+        "nats.js.streams.getMessage",
+        json!({ "connId": conn, "stream": "ORDERS", "sequence": seq }),
+    )
+    .await;
+    let out = call(
+        &mut tab,
+        7,
+        "messaging.query",
+        json!({ "text": s(&full["payloadText"]), "jq": "{id, note: (.note | length)}" }),
+    )
+    .await;
+    assert_eq!(
+        out["results"],
+        json!([{ "id": "ord-large", "note": 1536 * 1024 }])
+    );
+    // `.` on it: the result is over 1 MiB, so nothing comes back and the reply says why.
+    let out = call(
+        &mut tab,
+        8,
+        "messaging.query",
+        json!({ "text": s(&full["payloadText"]), "jq": "." }),
+    )
+    .await;
+    assert_eq!(out["stopped"], "output");
+    assert_eq!(out["count"], 0);
+}
+
 #[tokio::test]
 async fn consumers_list_info_create_and_delete() {
     let (_t, mut tab) = setup().await;
