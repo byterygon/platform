@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { JsonView } from "@/app/json-view";
 import { CodeBlock } from "@/components/ui/code-block";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { HexView } from "@/components/ui/hex-view";
@@ -466,6 +467,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
               {formatCount(result.results.length)} {result.results.length === 1 ? "result" : "results"}, {formatBytes(result.bytes)}
               {result.truncated ? ", cut at 1 MiB" : ""} · on the server, {result.ms} ms
             </p>
+            {/* json-exception: jq prints a sequence of JSON values, one after another, which is not one JSON value */}
             <CodeBlock code={result.results.map((r) => JSON.stringify(r, null, 2)).join("\n")} language="json" appearance="inset" copyable aria-label="jq results" className="max-h-panel-sm" />
           </div>
         ) : null}
@@ -496,7 +498,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
                   {rows}
                 </ul>
               ) : (
-                <CodeBlock code={JSON.stringify(root.node.value, null, 2)} language="json" appearance="inset" aria-label={label} />
+                <JsonView modeKey="temporal.payload.value" value={root.node.value} aria-label={label} className="max-h-panel-sm" />
               )
             ) : !error ? (
               <p role="status" className="px-inset-sm text-body-1 text-fg-muted">
@@ -507,6 +509,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
             text !== null ? (
               <div className="flex flex-col gap-stack-xs">
                 <p className="px-inset-sm text-caption-1 text-fg-muted">The first {formatBytes(Math.min(new TextEncoder().encode(text).byteLength, 64 * 1024))} of {formatBytes(stub.decodedBytes)} of JSON; download the decoded JSON for all of it.</p>
+                {/* json-exception: the first 64 KiB of the JSON, cut mid-text, so not a JSON value */}
                 <CodeBlock code={text} language="json" appearance="inset" lineNumbers aria-label={`${label} as text`} virtualizeAfter={2000} />
               </div>
             ) : (

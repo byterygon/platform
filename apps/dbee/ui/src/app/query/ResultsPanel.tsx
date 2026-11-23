@@ -6,6 +6,7 @@ import { type CellPos, columnFormat, DataGrid, type DataGridHandle, type Selecti
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeInput } from "@/components/ui/code-input";
+import { JsonViewer } from "@/components/ui/json-viewer";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
@@ -18,6 +19,15 @@ import { benchHook } from "../bench";
 import { ErrorAlert } from "../ErrorAlert";
 import { formatCount, formatElapsed } from "../messages";
 import type { Run } from "../store";
+
+const isJson = (text: string) => {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export function statusLine(run: Run | null): string {
   if (run === null) return "";
@@ -156,10 +166,17 @@ export function ResultsPanel({ run, onExport, onRemedy, columnWidths, onColumnWi
           <SheetBody className="flex flex-col gap-stack-sm">
             {typeof viewed === "string" ? (
               <>
-                <CodeInput aria-label="Cell value" multiline rows={12} readOnly pretty language={viewedFormat?.family === "json" ? "json" : "text"} value={viewed} />
-                <Button appearance="secondary" size="small" onClick={() => void navigator.clipboard?.writeText(viewed)}>
-                  Copy value
-                </Button>
+                {viewedFormat?.family === "json" && isJson(viewed) ? (
+                  // The JSON view has its own Copy, Find and Tree | Text (TSK-112).
+                  <JsonViewer aria-label="Cell value" text={viewed} defaultExpandDepth={2} className="h-panel-md" />
+                ) : (
+                  <>
+                    <CodeInput aria-label="Cell value" multiline rows={12} readOnly pretty language={viewedFormat?.family === "json" ? "json" : "text"} value={viewed} />
+                    <Button appearance="secondary" size="small" onClick={() => void navigator.clipboard?.writeText(viewed)}>
+                      Copy value
+                    </Button>
+                  </>
+                )}
               </>
             ) : (
               <p className="text-body text-fg-muted">NULL</p>

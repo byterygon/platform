@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { EmptyLine, ErrorState } from "@/app/states";
 import type { MightyClient } from "@/app/client";
 import { Play } from "@/lib/icons";
@@ -103,7 +103,7 @@ export function QueriesPanel({ client, connId, namespace, workflowId, runId, act
           <PayloadView client={client} connId={connId} stub={largeOf(result.value)!} label="Query result" fileName={`${workflowId}-query`} note={note} />
         </div>
       ) : result ? (
-        <JsonViewer value={result.value} defaultExpandDepth={3} aria-label="Query result" className="max-h-panel-md" />
+        <JsonView modeKey="temporal.query.result" value={result.value} defaultExpandDepth={3} aria-label="Query result" className="max-h-panel-md" />
       ) : error ? null : (
         <EmptyLine>The result shows here.</EmptyLine>
       )}

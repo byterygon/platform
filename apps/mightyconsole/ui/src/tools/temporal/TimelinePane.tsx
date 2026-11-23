@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { CopyButton, NoticeContext } from "@/app/page";
 import { EmptyLine } from "@/app/states";
 import { cn } from "@/lib/cn";
@@ -141,7 +141,7 @@ function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo
                 {isOpen ? (
                   <div className="flex flex-col gap-stack-xs ps-inline-xl pe-inline-sm pb-stack-sm">
                     <span className="text-caption-1 text-fg-muted">{payloadLabel(e.encodings)}</span>
-                    <JsonViewer value={e.attributes} defaultExpandDepth={2} aria-label={`Attributes of event ${e.eventId}`} />
+                    <JsonView modeKey="temporal.event.attributes" value={e.attributes} defaultExpandDepth={2} aria-label={`Attributes of event ${e.eventId}`} />
                   </div>
                 ) : null}
               </li>

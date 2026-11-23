@@ -16,7 +16,7 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CopyButton, NoticeContext, Page, PageHeader } from "@/app/page";
@@ -291,9 +291,8 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
               <span className="flex-1">
                 <span className={mono}>docker inspect {o.name}</span> · environment values included
               </span>
-              <CopyButton value={JSON.stringify(data.inspect, null, 2)} what="inspect JSON" />
             </div>
-            <JsonViewer value={data.inspect} aria-label={`docker inspect ${o.name}`} defaultExpandDepth={1} className="min-h-0 flex-1" />
+            <JsonView modeKey="docker.container.inspect" value={data.inspect} aria-label={`docker inspect ${o.name}`} defaultExpandDepth={1} className="min-h-0 flex-1" />
           </TabsContent>
         </Tabs>
       ) : null}

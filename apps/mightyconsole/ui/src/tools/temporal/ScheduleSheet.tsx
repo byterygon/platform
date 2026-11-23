@@ -11,6 +11,7 @@ import { useContext, useEffect, useMemo, useState, type KeyboardEvent } from "re
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { JsonView } from "@/app/json-view";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
@@ -409,7 +410,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
 
             {asJson && form ? (
               <section aria-label="The request" className="flex flex-col gap-stack-sm">
-                <CodeBlock code={JSON.stringify({ scheduleId, schedule: form }, null, 2)} language="json" title="The request" copyable />
+                <JsonView modeKey="temporal.schedule.request" defaultMode="text" value={{ scheduleId, schedule: form }} aria-label="The request" className="max-h-panel-md" />
                 <CodeBlock code={cli} title={`temporal schedule ${editing ? "update" : "create"}`} wrap copyable />
                 <Button appearance="secondary" size="small" className="self-start" onClick={() => void copyCli()}>
                   <Icon icon={Code} /> Copy as CLI command

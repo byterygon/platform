@@ -32,9 +32,11 @@ export interface Settings extends Appearance {
   consumeLimit: number;
   /** The order of a Temporal workflow's History and Timeline (TSK-109): newest first unless changed. */
   historyOrder: "newest" | "oldest";
+  /** The view each JSON view was last left in, by its `modeKey` (TSK-112): tree or text. A view without an entry starts in its own default. */
+  jsonModes: Record<string, "tree" | "text">;
 }
 
-export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest" };
+export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest", jsonModes: {} };
 
 export interface Layout {
   sidebarOpen: boolean;
@@ -431,6 +433,14 @@ export function tabIdOf(tool: string, profileId: string, kind: string, params: R
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 const num = (v: unknown, fallback: number, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : fallback);
 
+/** The persisted JSON view choices: only string keys with "tree" or "text" survive. */
+function jsonModes(value: unknown): Record<string, "tree" | "text"> {
+  const out: Record<string, "tree" | "text"> = {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return out;
+  for (const [key, mode] of Object.entries(value)) if (mode === "tree" || mode === "text") out[key] = mode;
+  return out;
+}
+
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
 export async function loadPersisted(storage: AppStorage, tools: readonly string[]): Promise<Persisted> {
   const [tabsDoc, layoutDoc, treeDoc, settingsDoc] = await Promise.all([
@@ -484,6 +494,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
       logBuffer: num(s.logBuffer, DEFAULT_SETTINGS.logBuffer, 1000, 1_000_000),
       consumeLimit: num(s.consumeLimit, DEFAULT_SETTINGS.consumeLimit, 1, 100_000),
       historyOrder: s.historyOrder === "oldest" ? "oldest" : "newest",
+      jsonModes: jsonModes(s.jsonModes),
     },
   };
 }

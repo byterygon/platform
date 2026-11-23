@@ -8,6 +8,7 @@ import { useCallback, useState } from "react";
 import { isRpcError } from "@byterygon/ambidex";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { JsonView } from "@/app/json-view";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -214,7 +215,7 @@ export function PublishTab({ tab, profile, connId, client, useTabActions, update
                     <CopyButton value={reply.reply.subject ?? reply.reply.source} what="reply subject" />· {formatSize(reply.reply.payloadSize)} · {reply.reply.payloadCodec}
                     {reply.reply.schemaRef ? ` · ${reply.reply.schemaRef}` : ""}
                   </p>
-                  <CodeBlock aria-label="Reply payload" code={shown.text} language={shown.json ? "json" : "text"} copyable wrap className="max-h-panel-sm" />
+                  {shown.json ? <JsonView modeKey="nats.publish.reply" defaultMode="text" text={shown.text} aria-label="Reply payload" className="max-h-panel-sm" /> : <CodeBlock aria-label="Reply payload" code={shown.text} language="text" copyable wrap className="max-h-panel-sm" />}
                   {reply.reply.headers && reply.reply.headers.length > 0 ? (
                     <ul aria-label="Reply headers" className="flex flex-col gap-stack-xs text-caption-1">
                       {reply.reply.headers.map((h, i) => (

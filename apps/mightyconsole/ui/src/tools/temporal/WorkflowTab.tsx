@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -609,7 +609,7 @@ export function largestPayloads(events: readonly HistoryEvent[]): { eventId: num
 function Values({ values, what, client, connId, note, workflowId, context, onReload }: { values: unknown; what: "Input" | "Result"; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; workflowId: string; context: PayloadContext; onReload(): void }) {
   const list = Array.isArray(values) ? values : [values];
   if (connId === null || !list.some((v) => largeOf(v) !== null)) {
-    return <JsonViewer value={values} defaultExpandDepth={3} aria-label={`Workflow ${what.toLowerCase()}`} className="max-h-panel-sm" />;
+    return <JsonView modeKey="temporal.workflow.payload" value={values} defaultExpandDepth={3} aria-label={`Workflow ${what.toLowerCase()}`} className="max-h-panel-sm" />;
   }
   return (
     <div className="flex flex-col gap-stack-md">
@@ -621,7 +621,7 @@ function Values({ values, what, client, connId, note, workflowId, context, onRel
             <PayloadView client={client} connId={connId} stub={stub} label={label} fileName={`${workflowId}-${what.toLowerCase()}-${i + 1}`} context={context} note={note} onReload={onReload} />
           </div>
         ) : (
-          <JsonViewer key={i} value={v} defaultExpandDepth={3} aria-label={label} className="max-h-panel-sm" />
+          <JsonView modeKey="temporal.workflow.payload" key={i} value={v} defaultExpandDepth={3} aria-label={label} className="max-h-panel-sm" />
         );
       })}
     </div>
@@ -675,12 +675,12 @@ function InputResultPanel({ store, shown, detail, client, connId, note, workflow
       )}
       {hasMemo ? (
         <Section title="Memo">
-          <JsonViewer value={detail.memo} defaultExpandDepth={2} aria-label="Memo" className="max-h-panel-sm" />
+          <JsonView modeKey="temporal.workflow.memo" value={detail.memo} defaultExpandDepth={2} aria-label="Memo" className="max-h-panel-sm" />
         </Section>
       ) : null}
       {hasSearch ? (
         <Section title="Search attributes">
-          <JsonViewer value={detail.searchAttributes} defaultExpandDepth={2} aria-label="Search attributes" className="max-h-panel-sm" />
+          <JsonView modeKey="temporal.workflow.search-attributes" value={detail.searchAttributes} defaultExpandDepth={2} aria-label="Search attributes" className="max-h-panel-sm" />
         </Section>
       ) : null}
     </div>

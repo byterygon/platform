@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -261,17 +261,17 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
                 ) : null}
               </DescriptionList>
               <h3 className="flex items-center gap-inline-sm text-subtitle-2 text-fg">
-                Config <CopyButton value={JSON.stringify(a.config, null, 2)} what="the config" />
+                Config
               </h3>
-              <JsonViewer value={a.config} aria-label="Config" className="h-panel-xs" />
+              <JsonView modeKey="langgraph.assistant.config" value={a.config} aria-label="Config" className="h-panel-xs" />
               <h3 className="flex items-center gap-inline-sm text-subtitle-2 text-fg">
-                Context <CopyButton value={JSON.stringify(a.context, null, 2)} what="the context" />
+                Context
               </h3>
-              <JsonViewer value={a.context} aria-label="Context" className="h-panel-xs" />
+              <JsonView modeKey="langgraph.assistant.context" value={a.context} aria-label="Context" className="h-panel-xs" />
               <h3 className="flex items-center gap-inline-sm text-subtitle-2 text-fg">
-                Metadata <CopyButton value={JSON.stringify(a.metadata, null, 2)} what="the metadata" />
+                Metadata
               </h3>
-              <JsonViewer value={a.metadata} aria-label="Metadata" className="h-panel-xs" />
+              <JsonView modeKey="langgraph.assistant.metadata" value={a.metadata} aria-label="Metadata" className="h-panel-xs" />
             </>
           ) : assistant.loading ? (
             <LoadingRows label="Loading the assistant" />

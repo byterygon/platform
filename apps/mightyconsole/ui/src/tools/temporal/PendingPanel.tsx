@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CopyButton, LinkButton, NoticeContext, gutterTable } from "@/app/page";
 import { cn } from "@/lib/cn";
@@ -196,7 +196,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
           <h3 className="text-body-1-strong text-fg">Workflow task</h3>
           <span className="text-body-1 text-fg-muted">{task ? stateLabel(obj(task)["state"]) || "Pending" : "None pending"}</span>
         </div>
-        {task ? <JsonViewer value={task} defaultExpandDepth={1} aria-label="Pending workflow task" className="max-h-panel-sm shrink-0 px-inset-lg" /> : null}
+        {task ? <JsonView modeKey="temporal.pending.task" value={task} defaultExpandDepth={1} aria-label="Pending workflow task" className="max-h-panel-sm shrink-0 px-inset-lg" /> : null}
       </div>
       {picked ? (
         <aside aria-label="Pending activity" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">

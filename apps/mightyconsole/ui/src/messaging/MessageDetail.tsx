@@ -1,7 +1,7 @@
 // The detail pane of MessageViewer (Mightyconsole spec §5.6): Value, Key, Headers, Raw, Schema and
 // Metadata of one message, all read from its batch (Load full payload and the schema text are the
 // only calls).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { HexView } from "@/components/ui/hex-view";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyLine } from "@/app/states";
 import type { MessageRow } from "./arrow";
@@ -23,9 +23,21 @@ export type SchemaLoader = (ref: NonNullable<ReturnType<typeof parseSchemaRef>>)
 
 const JSON_CODECS = new Set(["json", "cbor", "msgpack", "avro", "protobuf", "jsonschema"]);
 
+/** A schema's text: a JSON value (JSON Schema, Avro) in the JSON view, anything else (Protobuf) as plain text. */
+function SchemaText({ text }: { text: string }) {
+  const json = useMemo(() => {
+    try {
+      return { value: JSON.parse(text) as unknown };
+    } catch {
+      return null;
+    }
+  }, [text]);
+  return json ? <JsonView modeKey="messaging.message.schema" defaultMode="text" value={json.value} aria-label="Schema" className="max-h-panel-md" /> : <CodeBlock code={text} language="text" aria-label="Schema" />;
+}
+
 function ValueView({ text, codec, raw, label }: { text: string | null; codec: string | null; raw: Uint8Array | null; label: string }) {
   if (raw === null && text === null) return <EmptyLine>No {label.toLowerCase()}.</EmptyLine>;
-  if (text !== null && codec !== null && JSON_CODECS.has(codec)) return <JsonViewer aria-label={label} text={text} defaultExpandDepth={2} className="min-h-0 flex-1" />;
+  if (text !== null && codec !== null && JSON_CODECS.has(codec)) return <JsonView modeKey="messaging.message.value" aria-label={label} text={text} defaultExpandDepth={2} className="min-h-0 flex-1" />;
   // The Text view: read-only Monaco (TSK-93), with find, selection and line numbers.
   if (text !== null && codec !== "hex") return <CodeEditor language="plaintext" readOnly variant="ghost" aria-label={label} value={text} className="h-auto min-h-0 flex-1" />;
   return <HexView aria-label={label} bytes={raw ?? new Uint8Array()} className="min-h-0 flex-1" />;
@@ -170,7 +182,7 @@ export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadS
                     Show the schema
                   </Button>
                 ) : (
-                  <CodeBlock code={schemaText} language="json" />
+                  <SchemaText text={schemaText} />
                 )
               ) : null}
             </>
