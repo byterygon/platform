@@ -5,14 +5,14 @@
 // pull; Clear empties the view and keeps the stream. Shared by every message screen: the tool
 // gives its system (columns and words), the stream and its row actions.
 import { DataGrid, type DataGridHandle, type ResultProgress, type SelectionInfo } from "@byterygon/data-grid";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { EmptyLine, ErrorState, LiveBadge } from "@/app/states";
-import { ArrowDownload, Copy, Pause, Play, Stop, Subtract } from "@/lib/icons";
+import { ArrowDownload, Copy, PanelBottom, PanelLeft, Pause, Play, Stop, Subtract, Window } from "@/lib/icons";
 import type { LastPosition } from "@/gen/api";
 import type { ArrowBatch } from "@byterygon/ambidex/arrow";
 import { bigAt, columnIndex, dropFront, intAt, locate, type MessageRow, projectStream, readMessage, textAt } from "./arrow";
@@ -20,7 +20,13 @@ import { COLUMNS, LABELS, type MessageLabels, type MessageSystem } from "./colum
 import { MessageDetail, type SchemaLoader } from "./MessageDetail";
 import type { DecodeAs } from "./schemas/DecodeAs";
 import { exportObject, toJsonLines } from "./export";
+import { DETAIL_PANE_LIMITS } from "@/app/store";
+import { displayBinding, matchesBinding } from "@/app/shortcuts";
+import { useDetailPane } from "./detail-pane";
 import type { LiveTail } from "./useLiveTail";
+
+/** Maximizes or restores the message detail, from anywhere in the view (DOC-21 §5.6; listed in the shortcuts dialog). */
+export const DETAIL_KEY = "Alt+Shift+D";
 
 /** Messages a live view keeps, by default (spec §5.5, Settings). */
 export const DEFAULT_MAX_MESSAGES = 10_000;
@@ -51,12 +57,16 @@ export interface MessageViewerProps {
   onPositions?: (positions: LastPosition[]) => void;
   /** "Decode as…" on messages that did not decode. */
   decodeAs?: DecodeAs;
+  /** Names this kind of view in the settings: its detail pane's side, size and maximized state are kept under it. */
+  paneKey?: string;
 }
 
 /** A message list with a detail pane, on a live or finite message stream. */
-export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions, decodeAs }: MessageViewerProps) {
+export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions, decodeAs, paneKey }: MessageViewerProps) {
   const labels = { ...LABELS[system], ...labelsProp };
   const grid = useRef<DataGridHandle | null>(null);
+  const view = useRef<HTMLDivElement | null>(null);
+  const pane = useDetailPane(paneKey, view);
   const [fields, setFields] = useState<Record<string, number> | null>(null);
   const [selected, setSelected] = useState<{ row: number; message: MessageRow } | null>(null);
   const [rows, setRows] = useState(0);
@@ -135,12 +145,19 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
     setSelected(null);
   };
 
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (matchesBinding(event.nativeEvent, DETAIL_KEY)) {
+      event.preventDefault();
+      pane.toggleMaximized();
+    }
+  };
+
   const running = tail.status === "live" || tail.status === "paused";
   const live = tail.status === "idle" ? null : tail.status === "ended" ? { status: "ended" as const } : { status: tail.status, ...(tail.progress ? { ratePerSec: tail.progress.ratePerSec, dropped: tail.progress.dropped } : {}) };
   const p = tail.progress;
   const s = tail.summary;
   return (
-    <div data-slot="message-viewer" className="flex min-h-0 flex-1 flex-col">
+    <div ref={view} data-slot="message-viewer" onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
       <Toolbar aria-label={`${labels.items} actions`}>
         <ToolbarGroup>
           <ToolbarButton render={<Button appearance="primary" disabled={running} />} onClick={() => tail.start(tail.status === "ended")}>
@@ -164,6 +181,27 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
           </ToolbarButton>
         </ToolbarGroup>
         {live ? <LiveBadge live={live} unit={`${labels.items}/s`} /> : null}
+        <ToolbarGroup className="ms-auto">
+          <ToolbarButton
+            render={<Button appearance="subtle" size="small" />}
+            aria-label={pane.side === "right" ? "Show the detail below the list" : "Show the detail to the right of the list"}
+            title={pane.side === "right" ? "Show the detail below the list" : "Show the detail to the right of the list"}
+            disabled={pane.maximized}
+            onClick={pane.toggleSide}
+          >
+            <Icon icon={pane.side === "right" ? PanelBottom : PanelLeft} />
+          </ToolbarButton>
+          <ToolbarButton
+            render={<Button appearance="subtle" size="small" />}
+            aria-label={pane.maximized ? "Restore the detail" : "Maximize the detail"}
+            aria-pressed={pane.maximized}
+            aria-keyshortcuts="Alt+Shift+D"
+            title={`${pane.maximized ? "Restore the detail" : "Maximize the detail"} (${displayBinding(DETAIL_KEY)})`}
+            onClick={pane.toggleMaximized}
+          >
+            <Icon icon={pane.maximized ? Subtract : Window} />
+          </ToolbarButton>
+        </ToolbarGroup>
       </Toolbar>
       {controls}
       {tail.error ? <ErrorState error={tail.error} onRetry={() => tail.start(true)} /> : null}
@@ -178,8 +216,14 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
         {s ? <span>Ended ({endText(s.endReason)}): scanned {s.scanned.toLocaleString()}, matched {s.matched.toLocaleString()}</span> : null}
       </p>
       {projected ? (
-        <Resizable aria-label={`${labels.items} and detail`} orientation="vertical" className="min-h-0 flex-1">
-          <ResizablePanel defaultSize={60} minSize={20}>
+        <Resizable
+          aria-label={`${labels.items} and detail`}
+          orientation={pane.side === "right" ? "horizontal" : "vertical"}
+          sizes={pane.maximized ? [0, 100] : [100 - pane.size, pane.size]}
+          onSizesChange={(sizes) => !pane.maximized && sizes[1] !== undefined && pane.setSize(sizes[1])}
+          className="min-h-0 flex-1"
+        >
+          <ResizablePanel minSize={pane.maximized ? 0 : 100 - DETAIL_PANE_LIMITS.max} maxSize={pane.maximized ? 100 : 100 - DETAIL_PANE_LIMITS.min}>
             <DataGrid
               ref={grid}
               stream={projected.grid}
@@ -193,8 +237,14 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
               className="size-full"
             />
           </ResizablePanel>
-          <ResizableHandle aria-label="Resize the detail pane" />
-          <ResizablePanel minSize={15}>
+          <ResizableHandle
+            withGrip
+            disabled={pane.maximized}
+            aria-label="Resize the detail pane"
+            onDoubleClick={pane.toggleMaximized}
+            className="bg-border-default data-[orientation=horizontal]:after:-inset-x-[var(--by-size-control-xs)] data-[orientation=vertical]:after:-inset-y-[var(--by-size-control-xs)]"
+          />
+          <ResizablePanel minSize={pane.maximized ? 100 : DETAIL_PANE_LIMITS.min} maxSize={100}>
             {selected ? (
               <MessageDetail
                 message={selected.message}

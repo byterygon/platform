@@ -94,6 +94,7 @@ export const ACTIONS: readonly Action[] = [
 export const LOCAL_KEYS: readonly { label: string; keys: readonly string[] }[] = [
   { label: "Terminal: copy, paste (Ctrl+C goes to the process)", keys: ["Mod+Shift+C", "Mod+Shift+V"] },
   { label: "Tree: move, collapse and expand, type-ahead", keys: ["↑", "↓", "←", "→", "Home", "End"] },
+  { label: "Message detail: maximize or restore (a double click on its handle does too)", keys: ["Alt+Shift+D"] },
 ];
 
 export const actionById = (id: ActionId): Action => ACTIONS.find((a) => a.id === id)!;

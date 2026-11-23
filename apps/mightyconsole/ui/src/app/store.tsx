@@ -34,9 +34,21 @@ export interface Settings extends Appearance {
   historyOrder: "newest" | "oldest";
   /** The view each JSON view was last left in, by its `modeKey` (TSK-112): tree or text. A view without an entry starts in its own default. */
   jsonModes: Record<string, "tree" | "text">;
+  /** The message detail pane of each kind of tab that has one (TSK-112): its size, side and whether it fills the view. */
+  detailPanes: Record<string, DetailPane>;
 }
 
-export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest", jsonModes: {} };
+/** A message view's detail pane. `size` is the detail's percent of the view; `side` null follows the view's width. */
+export interface DetailPane {
+  size: number;
+  side: "bottom" | "right" | null;
+  maximized: boolean;
+}
+
+export const DETAIL_PANE_LIMITS = { min: 20, max: 80 } as const;
+export const DEFAULT_DETAIL_PANE: DetailPane = { size: 50, side: null, maximized: false };
+
+export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest", jsonModes: {}, detailPanes: {} };
 
 export interface Layout {
   sidebarOpen: boolean;
@@ -441,6 +453,22 @@ function jsonModes(value: unknown): Record<string, "tree" | "text"> {
   return out;
 }
 
+/** The persisted detail panes: a bad size or side falls back to the default, a bad entry is dropped. */
+function detailPanes(value: unknown): Record<string, DetailPane> {
+  const out: Record<string, DetailPane> = {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return out;
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const pane = raw as Partial<Record<keyof DetailPane, unknown>>;
+    out[key] = {
+      size: typeof pane.size === "number" && Number.isFinite(pane.size) ? Math.min(DETAIL_PANE_LIMITS.max, Math.max(DETAIL_PANE_LIMITS.min, pane.size)) : DEFAULT_DETAIL_PANE.size,
+      side: pane.side === "bottom" || pane.side === "right" ? pane.side : null,
+      maximized: pane.maximized === true,
+    };
+  }
+  return out;
+}
+
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
 export async function loadPersisted(storage: AppStorage, tools: readonly string[]): Promise<Persisted> {
   const [tabsDoc, layoutDoc, treeDoc, settingsDoc] = await Promise.all([
@@ -495,6 +523,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
       consumeLimit: num(s.consumeLimit, DEFAULT_SETTINGS.consumeLimit, 1, 100_000),
       historyOrder: s.historyOrder === "oldest" ? "oldest" : "newest",
       jsonModes: jsonModes(s.jsonModes),
+      detailPanes: detailPanes(s.detailPanes),
     },
   };
 }

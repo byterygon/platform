@@ -84,7 +84,7 @@
     {
       "name": "ResizableHandle",
       "slot": "resizable-handle",
-      "description": "The boundary between two panels; withGrip draws a grip, disabled fixes it, aria-label names it."
+      "description": "The boundary between two panels; withGrip draws a grip, disabled fixes it, onDoubleClick is called on a double click (a pane that maximizes and restores), aria-label names it."
     }
   ],
   "states": [
