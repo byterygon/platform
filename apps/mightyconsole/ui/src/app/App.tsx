@@ -16,7 +16,7 @@ import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resi
 import { Sidebar, SidebarContent, SidebarHeader, SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/ui/status-bar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Toast, useToast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AppEvent, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
@@ -47,6 +47,7 @@ import { DisconnectedState, ErrorState, liveText } from "./states";
 import { type ConnState, type MissingLink, type State, tabIdOf, useStore } from "./store";
 import { Supervisor } from "./supervisor";
 import { canGo, initialHistory } from "./tab-history";
+import { TabStrip, groupOfValue } from "./tab-strip";
 
 /** A resize handle in the gap between two layers (TSK-64). */
 const gapHandle =
@@ -701,6 +702,16 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     autoConnected.current.delete(id);
     dispatch({ type: "closeTab", id });
   };
+  /** Closes several tabs (a group's menu): those holding state stay, and the first of them asks (§3.2). */
+  const closeMany = (ids: readonly string[]) => {
+    const holds = (id: string) => {
+      const live = stateRef.current.live[id];
+      return isGuarded(id) || (live !== undefined && live !== null && live.status !== "ended");
+    };
+    for (const id of ids) if (!holds(id)) closeTab(id, true);
+    const asking = ids.find(holds);
+    if (asking) closeTab(asking);
+  };
 
   const useTabActionsFor = useCallback(
     (tabId: string) =>
@@ -1057,7 +1068,13 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   return (
     <NoticeContext value={notify}>
     <SidebarProvider open={state.layout.sidebarOpen} onOpenChange={(open) => dispatch({ type: "layout", layout: { sidebarOpen: open } })} className="h-full">
-      <Tabs value={missingLink ? LINK_TAB : (state.activeTab ?? "")} onValueChange={(v) => v !== LINK_TAB && dispatch({ type: "activateTab", id: String(v) })} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
+      <Tabs value={missingLink ? LINK_TAB : (state.activeTab ?? "")} onValueChange={(v) => {
+          const value = String(v);
+          const group = groupOfValue(value);
+          // A folded group's chip opens the group on its last focused tab (DOC-21 §3.2.1).
+          if (group !== null) dispatch({ type: "openGroup", tool: group });
+          else if (value !== LINK_TAB) dispatch({ type: "activateTab", id: value });
+        }} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
         <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
           <SidebarTrigger />
           <span className="flex shrink-0 items-center gap-inline-md pe-inline-lg text-body-1-strong">
@@ -1065,36 +1082,29 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             Mightyconsole
           </span>
           {state.tabs.length > 0 || missingLink ? (
-            <TabsList aria-label="Tabs" onReorder={(value, index) => dispatch({ type: "reorderTab", id: String(value), index })} className="min-w-0 border-b-0">
-              {state.tabs.map((t) => {
-                const live = state.live[t.id];
-                const conn = state.conns[t.profileId];
-                // The mockup's tab: the tool's mark first, then the title, then its state (live, connecting, failed).
-                const tabTool = toolById(tools, t.tool);
-                const tabState =
-                  conn?.status === "connecting" ? (
-                    <Spinner size="sm" label="Connecting" />
-                  ) : conn?.status === "failed" ? (
-                    <span role="img" aria-label="error" className="size-inline-md shrink-0 rounded-full bg-danger" />
-                  ) : live?.status === "live" ? (
-                    // A tab that is not the active one holds its live view (DOC-21 §3.2, TSK-107): the dot stays and says so.
-                    <span role="img" aria-label={t.id === state.activeTab ? "live" : BACKGROUND_LIVE} title={t.id === state.activeTab ? "Live" : BACKGROUND_LIVE} className="size-inline-md shrink-0 rounded-full bg-success" />
-                  ) : null;
-                return (
-                  <TabsTrigger key={t.id} value={t.id} icon={tabTool ? <Icon icon={toolIcon(tabTool)} /> : undefined} onClose={() => closeTab(t.id)} onAuxClick={(e) => e.button === 1 && closeTab(t.id)} className="ps-inline-md">
-                    <span className="flex min-w-0 items-center gap-inline-sm">
-                      <span className="truncate">{t.title}</span>
-                      {tabState}
-                    </span>
-                  </TabsTrigger>
-                );
-              })}
-              {missingLink ? (
-                <TabsTrigger value={LINK_TAB} icon={linkTool ? <Icon icon={toolIcon(linkTool)} /> : undefined} onClose={() => dispatch({ type: "missingLink", link: null })} className="ps-inline-md">
-                  <span className="truncate">{missingLink.title}</span>
-                </TabsTrigger>
-              ) : null}
-            </TabsList>
+            <TabStrip
+              tools={tools}
+              tabs={state.tabs}
+              groups={state.groups}
+              activeTab={state.activeTab}
+              live={state.live}
+              conns={state.conns}
+              profileName={(id) => profileById(id)?.name ?? id}
+              missingLink={missingLink}
+              linkTab={LINK_TAB}
+              onCloseLink={() => dispatch({ type: "missingLink", link: null })}
+              onClose={(id) => closeTab(id)}
+              onCloseMany={closeMany}
+              onMoveTab={(id, index) => dispatch({ type: "moveTab", id, index })}
+              onMoveGroup={(tool, index) => dispatch({ type: "moveGroup", tool, index })}
+              onOpenGroup={(tool) => dispatch({ type: "openGroup", tool })}
+              onCopyLink={(id) => {
+                const t = state.tabs.find((x) => x.id === id);
+                const tabTool = t ? toolById(tools, t.tool) : undefined;
+                const profile = t ? profileById(t.profileId) : undefined;
+                if (t && tabTool && profile) void copyLink(placeHref(tabTool, profile, t));
+              }}
+            />
           ) : null}
           <span className="flex-1" />
           <Button appearance="secondary" className="w-panel-xs justify-start font-normal text-fg-muted" aria-haspopup="dialog" onClick={() => dispatch({ type: "palette", open: true })}>
@@ -1410,7 +1420,6 @@ interface TabBodyProps {
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
 /** What the dot of a live tab in the background says. */
-const BACKGROUND_LIVE = "Live, paused in the background (catches up when shown)";
 
 function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, trust, tabProps, nav, guard }: TabBodyProps) {
   const t = toolById(tools, tab.tool);

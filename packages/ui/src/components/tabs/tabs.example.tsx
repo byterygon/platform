@@ -1,8 +1,9 @@
 import { Icon } from "@/components/icon/icon";
 import { useState } from "react";
 import { IconButton } from "@/components/icon-button/icon-button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs/tabs";
-import { Add } from "@/lib/icons";
+import { Badge } from "@/components/badge/badge";
+import { Tabs, TabsContent, TabsLabel, TabsList, TabsTrigger } from "@/components/tabs/tabs";
+import { Add, Clock, Flash } from "@/lib/icons";
 
 /** The smallest useful Tabs: the sections of the Settings dialog. */
 export function TabsMinimal() {
@@ -42,9 +43,20 @@ const PlusIcon = () => <Icon icon={Add} />;
  * DBee's query tabs: enclosed and small, each closable (the button, or Delete) and reorderable
  * (drag, or Alt+Shift+Arrow), with a status before the title and a disabled tab; below them the
  * results' tabs, each with its count in its own badge (`count`): neutral by default, a tone for
- * what needs attention, a count of 0 hidden unless asked for, a large one shortened (48k).
+ * what needs attention, a count of 0 hidden unless asked for, a large one shortened (48k). Then a
+ * strip grouped by tool, as Mightyconsole's: the open group's heading (TabsLabel) and tabs, and a
+ * folded group's chip that never goes into "More tabs" (keepVisible).
  */
 export function TabsRealistic() {
+  return (
+    <div className="flex w-full flex-col gap-stack-lg">
+      <QueryTabs />
+      <GroupedTabs />
+    </div>
+  );
+}
+
+function QueryTabs() {
   const [tabs, setTabs] = useState<QueryTab[]>([
     { id: "q1", title: "select * from orders limit 1000;", running: true },
     { id: "q2", title: "Orders by region", modified: true },
@@ -136,6 +148,55 @@ function ResultTabs() {
       <TabsContent value="plan" className="text-body text-fg">
         The query plan.
       </TabsContent>
+    </Tabs>
+  );
+}
+
+/** Mightyconsole's strip grouped by tool: NATS open behind its heading, Temporal folded to a chip. */
+function GroupedTabs() {
+  const [active, setActive] = useState("orders");
+  const nats = ["orders", "payments"];
+  return (
+    <Tabs value={active} onValueChange={(value) => setActive(value === "group:temporal" ? "workflows" : (value as string))} className="w-full">
+      <TabsList aria-label="Tabs" className="border-b-0">
+        {nats.includes(active) ? (
+          <TabsLabel value="group:nats" icon={<Icon icon={Flash} />} className="rounded-s-lg bg-neutral-subtle text-body-1-strong">
+            NATS<span className="sr-only">, 2 tabs</span>
+            <Badge aria-hidden="true">2</Badge>
+          </TabsLabel>
+        ) : (
+          <TabsTrigger value="orders" keepVisible icon={<Icon icon={Flash} />} count={2} countLabel={["tab", "tabs"]}>
+            <span className="sr-only">NATS</span>
+          </TabsTrigger>
+        )}
+        {nats.includes(active)
+          ? nats.map((id, i) => (
+              <TabsTrigger key={id} value={id} className={i === nats.length - 1 ? "rounded-e-lg bg-neutral-subtle" : "bg-neutral-subtle"}>
+                {id === "orders" ? "ORDERS" : "PAYMENTS"}
+              </TabsTrigger>
+            ))
+          : null}
+        {active === "workflows" ? (
+          <>
+            <TabsLabel value="group:temporal" icon={<Icon icon={Clock} />} className="rounded-s-lg bg-neutral-subtle text-body-1-strong">
+              Temporal<span className="sr-only">, 1 tab</span>
+              <Badge aria-hidden="true">1</Badge>
+            </TabsLabel>
+            <TabsTrigger value="workflows" className="rounded-e-lg bg-neutral-subtle">
+              Workflows
+            </TabsTrigger>
+          </>
+        ) : (
+          <TabsTrigger value="group:temporal" keepVisible icon={<Icon icon={Clock} />} count={1} countLabel={["tab", "tabs"]}>
+            <span className="sr-only">Temporal</span>
+          </TabsTrigger>
+        )}
+      </TabsList>
+      {[...nats, "workflows"].map((id) => (
+        <TabsContent key={id} value={id} className="text-body text-fg">
+          The {id} tab.
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }

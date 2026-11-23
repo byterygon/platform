@@ -1331,7 +1331,7 @@
       "name": "tabs",
       "type": "registry:ui",
       "title": "Tabs",
-      "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge.",
+      "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge, and be grouped behind headings that never overflow.",
       "dependencies": [
         "@base-ui/react"
       ],

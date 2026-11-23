@@ -2,7 +2,7 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { $, $$, click, focus, honoursReducedMotion, key, waitFor } from "../../../test/interact.ts";
 import { axeViolations, cleanup, render } from "../../../test/render.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger, formatTabCount } from "./tabs";
+import { Tabs, TabsContent, TabsLabel, TabsList, TabsTrigger, formatTabCount } from "./tabs";
 
 afterEach(cleanup);
 
@@ -338,6 +338,65 @@ describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
     await focus(tab("b"));
     await key("Delete");
     await waitFor(() => expect(overflowing()).toEqual(["Query e", "Query f"]));
+  });
+
+  // A grouped strip (Mightyconsole's tab groups): a group's heading, its tabs, then a folded group's chip.
+  function GroupedTabs({ onReorder }: { onReorder?: (value: string | number, index: number) => void }) {
+    const [active, setActive] = useState("a");
+    return (
+      <Tabs value={active} onValueChange={(value) => setActive(value as string)}>
+        <TabsList aria-label="Tabs" {...(onReorder ? { onReorder } : {})}>
+          <TabsLabel value="group:x">Group X, 4 tabs</TabsLabel>
+          {["a", "b", "c", "d"].map((t) => (
+            <TabsTrigger key={t} value={t}>
+              Query {t}
+            </TabsTrigger>
+          ))}
+          <TabsTrigger value="group:y" keepVisible count={2} countLabel={["tab", "tabs"]}>
+            Group Y
+          </TabsTrigger>
+        </TabsList>
+        {["a", "b", "c", "d"].map((t) => (
+          <TabsContent key={t} value={t}>
+            Panel {t}
+          </TabsContent>
+        ))}
+      </Tabs>
+    );
+  }
+
+  test("keepVisible tabs and labels stay in the strip; the other tabs go into More tabs first", async () => {
+    stub();
+    stripWidth = 350;
+    const { container } = render(<GroupedTabs />);
+    // 350 px less the 32 px button: the label, the selected tab and the kept chip take 300 px.
+    expect(overflowing()).toEqual(["Query b", "Query c", "Query d"]);
+    expect($('[data-value="group:y"]')!.hasAttribute("data-overflow")).toBe(false);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("a TabsLabel is not a tab: it is never selected and the arrow keys pass it", async () => {
+    stub();
+    render(<GroupedTabs />);
+    expect($$('[role="tab"]').map((t) => t.textContent)).toEqual(["Query a", "Query b", "Query c", "Query d", "Group Y, 2 tabs2"]);
+    const label = $('[data-slot="tabs-label-item"]')!;
+    expect(label.textContent).toBe("Group X, 4 tabs");
+    expect(label.closest("[tabindex]")).toBeNull();
+    await focus(tab("a"));
+    await key("End");
+    expect(document.activeElement?.textContent).toContain("Group Y");
+    await key("ArrowRight");
+    expect(document.activeElement).toBe(tab("a"));
+  });
+
+  test("labels take part in reordering: onReorder counts every item of the strip", async () => {
+    stub();
+    const moves: [string | number, number][] = [];
+    render(<GroupedTabs onReorder={(value, index) => moves.push([value, index])} />);
+    expect($('[data-value="group:x"]')!.getAttribute("draggable")).toBe("true");
+    await focus(tab("a"));
+    await key("ArrowLeft", document.activeElement, { altKey: true, shiftKey: true });
+    expect(moves).toEqual([["a", 0]]);
   });
 });
 

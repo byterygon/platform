@@ -354,6 +354,58 @@ async function main(): Promise<number> {
     await run(page, press(menuItem("smoke")));
     await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "the link opened with smoke");
 
+    // 3d. Tab groups (DOC-21 §3.2.1, TSK-111): ten tabs of four tools, at 1440 px, in groups with
+    // no "More tabs"; a folded group's chip opens it on its last focused tab; a reload keeps the
+    // groups, their order and the focused tab. NATS and LangGraph profiles that never connect (port 9).
+    for (const [tool, name, field, value] of [
+      ["NATS", "edge", "Servers", "nats://127.0.0.1:9"],
+      ["LangGraph", "agents", "URL", "http://127.0.0.1:9"],
+    ] as const) {
+      await pressUntil(page, visible("button", tool), `__mc.has("No ${tool} connections yet")`, `the ${tool} connection list`);
+      await run(page, `__mc.click(__mc.button("Add connection"))`);
+      await until(page, `__mc.field("Name")`, `the ${tool} profile sheet`);
+      await run(page, `__mc.type(__mc.field("Name"), ${JSON.stringify(name)})`);
+      await run(page, `__mc.field(${JSON.stringify(field)}) && __mc.type(__mc.field(${JSON.stringify(field)}), ${JSON.stringify(value)})`);
+      await run(page, `__mc.click(__mc.button("Save"))`);
+      await until(page, `__mc.item(${JSON.stringify(name)})`, `the saved ${tool} profile`);
+    }
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    const groupTabs = [
+      ["/echo/smoke/ping", "Ping"],
+      ["/temporal/lab/orders/schedules", "Schedules"],
+      ["/nats/edge/server", "Server"],
+      ["/temporal/lab/orders/workflows/order-1/history", "order-1"],
+      ["/langgraph/agents/threads", "Threads"],
+      ["/nats/edge/streams", "Streams"],
+      ["/echo/smoke/messages", "Messages"],
+    ] as const;
+    for (const [path, title] of groupTabs) {
+      await page.navigate(`${origin}${path}`);
+      await until(page, `location.pathname === ${JSON.stringify(path)} && ${selected(title)}`, `the tab of ${path}`);
+      await savedTab(page, title, 15_000);
+    }
+    const stripItems = `[...document.querySelectorAll("[role=tablist][aria-label=Tabs] [data-slot=tabs-item]")]`;
+    const tabCount = await run(page, `${stripItems}.length`);
+    const savedTabs = await page.evaluate<number>(`new Promise((resolve) => { const o = indexedDB.open("mightyconsole"); o.onsuccess = () => { const g = o.result.transaction("workspace").objectStore("workspace").get("tabs"); g.onsuccess = () => { resolve(g.result?.tabs?.length ?? 0); o.result.close(); }; }; })`);
+    check(savedTabs >= 10, `tab groups: ${savedTabs} tabs saved, the walk needs ten`);
+    const groupValues = `${stripItems}.map((i) => i.dataset.value).filter((v) => v.startsWith("group:"))`;
+    await until(page, `${groupValues}.join() === "group:echo,group:temporal,group:nats,group:langgraph"`, "four groups in the order of each tool's first tab");
+    const moreHidden = `(() => { const more = document.querySelector("[data-slot=tabs-strip] [data-slot=dropdown-menu-trigger]"); return !more || more.hidden || !more.checkVisibility(); })()`;
+    check((await run(page, moreHidden)) === true, `tab groups: ten tabs of four tools need "More tabs" at 1440 px (${String(tabCount)} items)`);
+    if (process.env["MIGHTYCONSOLE_SHOTS"]) await page.screenshot(join(process.env["MIGHTYCONSOLE_SHOTS"], "tab-groups-echo.png"));
+    // The Temporal chip opens Temporal on order-1, focused there last.
+    const chip = (label: string) => `[...document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]")].find((t) => t.closest("[data-keep]") && t.querySelector(".sr-only")?.textContent === ${JSON.stringify(label)})`;
+    await pressUntil(page, chip("Temporal"), `${selected("order-1")} && location.pathname === "/temporal/lab/orders/workflows/order-1/history"`, "the Temporal group open on its last focused tab");
+    if (process.env["MIGHTYCONSOLE_SHOTS"]) await page.screenshot(join(process.env["MIGHTYCONSOLE_SHOTS"], "tab-groups-temporal.png"));
+    await sleep(600);
+    await page.navigate(`${origin}/`);
+    await until(page, `${selected("order-1")} && ${groupValues}.join() === "group:echo,group:temporal,group:nats,group:langgraph"`, "the groups and the focused tab after a reload");
+    await page.send("Emulation.clearDeviceMetricsOverride", {});
+    // The Messages tab focused again, as the cold loads below expect.
+    await page.navigate(`${origin}/echo/smoke/messages`);
+    await until(page, selected("Messages · smoke"), "the Messages tab again");
+    await sleep(600);
+
 
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);

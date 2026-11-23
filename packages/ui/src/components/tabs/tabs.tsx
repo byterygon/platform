@@ -18,6 +18,8 @@ import { Dismiss, MoreHorizontal } from "@/lib/icons";
 // badge. The badge has its own fill and text pair, so it keeps its contrast on a selected, hovered
 // or pressed tab; it is hidden from assistive technology and the number is read as part of the
 // tab's one name ("History, 1,234 events") through visually hidden text.
+// A strip can be grouped (Mightyconsole's tab groups, TSK-111): TabsLabel is an item that is not a
+// tab (a group's heading), and `keepVisible` keeps a tab or a label out of the "More tabs" menu.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const tabsVariants = {
@@ -80,7 +82,7 @@ const classes = {
   list: "flex min-w-0 flex-1 items-stretch overflow-hidden data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-visible",
   more: "shrink-0 self-center",
   item: [
-    "relative flex shrink-0 data-overflow:hidden",
+    "relative flex shrink-0 items-stretch data-overflow:hidden",
     "before:absolute before:inset-y-0 before:left-0 before:z-[var(--by-z-sticky)] before:hidden before:w-px before:bg-accent-compound data-[drop=before]:before:block",
     "after:absolute after:inset-y-0 after:right-0 after:z-[var(--by-z-sticky)] after:hidden after:w-px after:bg-accent-compound data-[drop=after]:after:block",
     "data-dragging:opacity-[var(--by-opacity-disabled)]",
@@ -93,6 +95,8 @@ const classes = {
     "data-closable:pe-inline-sm [&_svg]:size-icon-md [&_svg]:shrink-0",
   ],
   label: "min-w-0 truncate",
+  // A strip item that is not a tab: never selected, never focused by the arrows.
+  heading: "flex cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-body-1 [&_svg]:size-icon-md [&_svg]:shrink-0",
   // After the title, never squeezed: a long title truncates first.
   count: "shrink-0 tabular-nums",
   close: [
@@ -222,15 +226,17 @@ function fitTabs(strip: HTMLElement, list: HTMLElement, more: HTMLElement | null
   }
   if (more) more.hidden = false;
   const left = room - (more ? more.getBoundingClientRect().width + px(stripStyle.columnGap) : 0);
+  // The selected tab and the items marked keepVisible (labels always) stay; the rest fill in order.
   const selected = items.findIndex((item) => triggerOf(item)?.getAttribute("aria-selected") === "true");
   const shown = new Set<number>();
   let used = 0;
-  if (selected >= 0) {
-    shown.add(selected);
-    used = widths[selected]!;
-  }
+  items.forEach((item, index) => {
+    if (index !== selected && !item.hasAttribute("data-keep")) return;
+    used += (shown.size > 0 ? gap : 0) + widths[index]!;
+    shown.add(index);
+  });
   for (let index = 0; index < items.length; index += 1) {
-    if (index === selected) continue;
+    if (shown.has(index)) continue;
     const next = used + (shown.size > 0 ? gap : 0) + widths[index]!;
     if (next > left + 0.5) break;
     shown.add(index);
@@ -357,6 +363,46 @@ export function TabsList({ onReorder, moreLabel = "More tabs", className, ref, .
   );
 }
 
+/** The drag handlers that make a strip item reorderable (a tab or a label), when TabsList has onReorder. */
+function useReorderDrag(value: TabValue) {
+  const { orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);
+  if (!reorder) return {};
+  return {
+    draggable: true,
+    onDragStart: (event: DragEvent<HTMLDivElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(value));
+      setDragging(value);
+    },
+    onDragOver: (event: DragEvent<HTMLDivElement>) => {
+      if (dragging === null || dragging === value) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const before = orientation === "horizontal" ? event.clientX < rect.left + rect.width / 2 : event.clientY < rect.top + rect.height / 2;
+      const side = before ? "before" : "after";
+      if (drop?.value !== value || drop.side !== side) setDrop({ value, side });
+    },
+    onDragLeave: () => {
+      if (drop?.value === value) setDrop(null);
+    },
+    onDrop: (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (dragging !== null && drop) {
+        const values = order().filter((v) => v !== dragging);
+        const target = values.indexOf(drop.value);
+        if (target >= 0) reorder(dragging, target + (drop.side === "after" ? 1 : 0));
+      }
+      setDragging(null);
+      setDrop(null);
+    },
+    onDragEnd: () => {
+      setDragging(null);
+      setDrop(null);
+    },
+  };
+}
+
 export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "className" | "value" | "children"> {
   /** The tab's value, matching its TabsContent. */
   value: TabValue;
@@ -381,6 +427,8 @@ export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "classNa
   countTone?: BadgeProps["variant"];
   /** Shows a count of 0 (for a tab where none is itself the news, such as "Consumers 0"). */
   showZero?: boolean;
+  /** Keeps the tab in the strip when the strip is too narrow, as the selected tab is (a group's chip): the others go into "More tabs" first. */
+  keepVisible?: boolean;
   /** Makes the tab closable: a close button at its end, and Delete on the focused tab. */
   onClose?: () => void;
   /** The close button's tooltip text. */
@@ -390,8 +438,8 @@ export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "classNa
 }
 
 /** A tab (role="tab"): its icon, its title, its count and, when closable, a close button. */
-export function TabsTrigger({ value, icon, children, count, countLabel, countMore = false, countTone = "neutral", showZero = false, onClose, closeLabel = "Close tab", className, onKeyDown, ...props }: TabsTriggerProps) {
-  const { appearance, size, orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);
+export function TabsTrigger({ value, icon, children, count, countLabel, countMore = false, countTone = "neutral", showZero = false, keepVisible = false, onClose, closeLabel = "Close tab", className, onKeyDown, ...props }: TabsTriggerProps) {
+  const { appearance, size, orientation, reorder, order, dragging, drop } = useContext(TabsContext);
   const registry = useContext(RegistryContext);
   registry?.values.set(String(value), value);
   const itemRef = useRef<HTMLDivElement | null>(null);
@@ -453,42 +501,7 @@ export function TabsTrigger({ value, icon, children, count, countLabel, countMor
     }
   };
 
-  const dragProps = reorder
-    ? {
-        draggable: true,
-        onDragStart: (event: DragEvent<HTMLDivElement>) => {
-          event.dataTransfer.effectAllowed = "move";
-          event.dataTransfer.setData("text/plain", String(value));
-          setDragging(value);
-        },
-        onDragOver: (event: DragEvent<HTMLDivElement>) => {
-          if (dragging === null || dragging === value) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          const rect = event.currentTarget.getBoundingClientRect();
-          const before = orientation === "horizontal" ? event.clientX < rect.left + rect.width / 2 : event.clientY < rect.top + rect.height / 2;
-          const side = before ? "before" : "after";
-          if (drop?.value !== value || drop.side !== side) setDrop({ value, side });
-        },
-        onDragLeave: () => {
-          if (drop?.value === value) setDrop(null);
-        },
-        onDrop: (event: DragEvent<HTMLDivElement>) => {
-          event.preventDefault();
-          if (dragging !== null && drop) {
-            const values = order().filter((v) => v !== dragging);
-            const target = values.indexOf(drop.value);
-            if (target >= 0) reorder(dragging, target + (drop.side === "after" ? 1 : 0));
-          }
-          setDragging(null);
-          setDrop(null);
-        },
-        onDragEnd: () => {
-          setDragging(null);
-          setDrop(null);
-        },
-      }
-    : {};
+  const dragProps = useReorderDrag(value);
 
   return (
     <div
@@ -497,6 +510,7 @@ export function TabsTrigger({ value, icon, children, count, countLabel, countMor
       data-value={String(value)}
       data-dragging={dragging === value ? "" : undefined}
       data-drop={drop?.value === value ? drop.side : undefined}
+      data-keep={keepVisible ? "" : undefined}
       className={cn(classes.item)}
       {...dragProps}
     >
@@ -533,6 +547,42 @@ export function TabsTrigger({ value, icon, children, count, countLabel, countMor
           <Icon icon={Dismiss} />
         </button>
       ) : null}
+    </div>
+  );
+}
+
+export interface TabsLabelProps {
+  /** Names the item in TabsList's onReorder (a group's id), so the label can be dragged when the tabs can. */
+  value: TabValue;
+  children?: ReactNode;
+  /** A leading icon (a tool's mark). */
+  icon?: ReactNode;
+  /** Extra classes, merged after the component's own so they win. */
+  className?: string;
+}
+
+/**
+ * An item of the strip that is not a tab: a group's heading before the group's tabs (Mightyconsole's
+ * tab groups). It is never selected, the arrow keys pass it, and it always stays out of "More tabs".
+ * Its text is read where it stands, so give it the words a heading needs ("NATS, 4 tabs").
+ */
+export function TabsLabel({ value, icon, children, className }: TabsLabelProps) {
+  const { size, dragging, drop } = useContext(TabsContext);
+  const dragProps = useReorderDrag(value);
+  return (
+    <div
+      data-slot="tabs-item"
+      data-value={String(value)}
+      data-keep=""
+      data-dragging={dragging === value ? "" : undefined}
+      data-drop={drop?.value === value ? drop.side : undefined}
+      className={cn(classes.item)}
+      {...dragProps}
+    >
+      <span data-slot="tabs-label-item" className={cn(classes.heading, tabsVariants.size[size], className)}>
+        {icon}
+        {children}
+      </span>
     </div>
   );
 }
