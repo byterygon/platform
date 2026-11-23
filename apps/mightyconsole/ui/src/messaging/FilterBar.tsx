@@ -4,6 +4,7 @@
 // The jq program is a one-line Monaco editor (TSK-93): jq highlighting, the message's fields and
 // jq's builtins as suggestions (Ctrl+Space), and the checker's error marked where it points.
 import { useEffect, useId, useMemo, useState } from "react";
+import { useKeepTab } from "@/app/leave-guard";
 import { Button } from "@/components/ui/button";
 import { CodeEditor, type CodeCompletion, type CodeCompletionItem, type CodeMarker } from "@/components/ui/code-editor";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -121,6 +122,8 @@ export function FilterBar({ system, applied, onApply, check, debounceMs = 300 }:
   const set = (k: keyof FilterDraft) => (v: string) => setDraft((d) => ({ ...d, [k]: v }));
   const ok = Object.keys(errors).length === 0;
   const changed = JSON.stringify(filter) !== JSON.stringify(applied);
+  // An applied filter is state to lose: a preview tab is kept (DOC-21 §3.2.1).
+  useKeepTab(Object.values(applied).some((v) => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0)));
   const apply = () => {
     if (ok) onApply(filter);
   };

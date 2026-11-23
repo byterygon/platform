@@ -32,8 +32,8 @@
     },
     {
       "name": "onSelectedChange",
-      "type": "(id: string, node) => void",
-      "description": "Called when a click or Space selects a node."
+      "type": "(id: string, node, details: { reason: \"click\" | \"space\" | \"enter\" | \"contextmenu\"; modifiers? }) => void",
+      "description": "Called when a click, Space, Enter or a right click selects a node; details.reason says which, and details.modifiers the keys held during a click (open a click as a preview, Ctrl or Cmd + click for good)."
     },
     {
       "name": "onAction",

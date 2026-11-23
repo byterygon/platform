@@ -189,6 +189,13 @@ function renderedIndices(first: number, last: number, active: number, count: num
   return indices;
 }
 
+/** How a node came to be selected. */
+export interface TreeSelectDetails {
+  reason: "click" | "space" | "enter" | "contextmenu";
+  /** Ctrl or Cmd held during a click. */
+  modifiers?: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean };
+}
+
 export interface TreeProps {
   /** The top-level nodes. */
   nodes: readonly TreeNode[];
@@ -200,7 +207,12 @@ export interface TreeProps {
   /** The selected node id (controlled); `defaultSelected` when uncontrolled. */
   selected?: string | null;
   defaultSelected?: string | null;
-  onSelectedChange?: (id: string, node: TreeNode) => void;
+  /**
+   * A node was selected: `details.reason` says how (a click, Space, Enter or the context menu) and,
+   * for a click, `details.modifiers` the keys held, so an app can open a click as a preview and
+   * Ctrl or Cmd + click for good (Mightyconsole's preview tabs).
+   */
+  onSelectedChange?: (id: string, node: TreeNode, details: TreeSelectDetails) => void;
   /** Enter or a double-click on a node (open a table). */
   onAction?: (node: TreeNode) => void;
   /** Retry loading a node's children after an error (Enter on the error row, or its Retry button). */
@@ -316,10 +328,10 @@ export function Tree({
     onExpandedChange?.(next, node, isExpanded);
   };
 
-  const select = (node: TreeNode) => {
+  const select = (node: TreeNode, details: TreeSelectDetails) => {
     if (node.disabled) return;
     if (selectedProp === undefined) setSelectedState(node.id);
-    onSelectedChange?.(node.id, node);
+    onSelectedChange?.(node.id, node, details);
   };
 
   const typeahead = useRef({ text: "", at: 0 });
@@ -364,13 +376,13 @@ export function Tree({
         handled();
         if (active.kind === "error") onRetry?.(node);
         else if (active.kind === "node" && !node.disabled) {
-          select(node);
+          select(node, { reason: "enter" });
           onAction?.(node);
         }
         return;
       case " ":
         handled();
-        if (active.kind === "node") select(node);
+        if (active.kind === "node") select(node, { reason: "space" });
         return;
       default:
         if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -396,7 +408,7 @@ export function Tree({
       setExpanded(row.node, !expandedSet.has(row.node.id));
       return;
     }
-    select(row.node);
+    select(row.node, { reason: "click", modifiers: { ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, altKey: event.altKey } });
   };
 
   if (rows.length === 0) {
@@ -474,7 +486,7 @@ export function Tree({
               // select it first, as a click would. The event is not stopped, so the menu opens.
               onContextMenu={() => {
                 setActiveKey(row.key);
-                select(node);
+                select(node, { reason: "contextmenu" });
               }}
               size={size}
             />

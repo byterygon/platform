@@ -5,6 +5,7 @@
 // gives "Insert example"). Validate encodes on the server (messaging.encode) and shows the size and
 // the first bytes; Send (Mod+Enter) is the tool's. Templates are saved with the profile.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDraftChanged, useKeepTab } from "@/app/leave-guard";
 import { Button } from "@/components/ui/button";
 import { CodeEditor, type CodeDiagnostic } from "@/components/ui/code-editor";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
@@ -73,6 +74,8 @@ export interface ComposerProps {
 }
 
 export function Composer({ target, withKey = false, withHeaders = true, keyLabel = "Key", schemas, draft, onDraftChange, encode, inspect, onSend, templates, onSaveTemplate, describe }: ComposerProps) {
+  // A draft changed since the tab showed it is state to lose: a preview tab is kept (DOC-21 §3.2.1).
+  useKeepTab(useDraftChanged(true, draft));
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [diagnostics, setDiagnostics] = useState<CodeDiagnostic[]>([]);
   const [validated, setValidated] = useState<EncodeOutput | null>(null);

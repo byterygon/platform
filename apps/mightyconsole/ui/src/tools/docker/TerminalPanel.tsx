@@ -5,6 +5,7 @@
 // through `term.resize`, debounced by 100 ms. Disconnect ends the exec; the exit code shows in the
 // scrollback and the footer, and New session starts another in the same place.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useKeepTab } from "@/app/leave-guard";
 import { useActiveGate } from "@/app/while-active";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -76,6 +77,8 @@ export function TerminalPanel({ client, connId, note, container, running, defaul
   const [user, setUser] = useState("");
   const [workdir, setWorkdir] = useState("");
   const [session, setSession] = useState<Session>({ state: "idle" });
+  // A running exec session is state to lose: a preview tab is kept (DOC-21 §3.2.1).
+  useKeepTab(session.state === "connecting" || session.state === "open");
   const [error, setError] = useState<DescribedError | null>(null);
   const [size, setSize] = useState<{ cols: number; rows: number }>({ cols: 80, rows: 24 });
   const live = useRef<{ terminalId: string; cancel(): void } | null>(null);

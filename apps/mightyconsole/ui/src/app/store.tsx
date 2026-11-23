@@ -130,7 +130,13 @@ export type Action =
   | { type: "profiles"; profiles: ProfileRecord[]; recordStates?: Record<string, RecordState> }
   | { type: "conn"; profileId: string; conn: ConnState }
   | { type: "connsReset"; status: ConnState["status"]; message?: string }
-  | { type: "openTab"; tab: TabRecord }
+  /**
+   * Opens a resource, or focuses its tab. With `preview`, a new tab goes into the tool's preview
+   * tab, replacing it in place; without, the tab is (or becomes) a normal one (DOC-21 §3.2.1).
+   */
+  | { type: "openTab"; tab: TabRecord; preview?: boolean }
+  /** A preview tab kept: a normal tab from now on. */
+  | { type: "keepTab"; id: string }
   /** A step of the tab: pushed onto its history, or replacing its current step. */
   | { type: "navigateTab"; id: string; place: TabPlace; replace?: boolean }
   /** Back (`-1`) or forward (`1`) in the tab's history. */
@@ -249,14 +255,26 @@ function reduce(state: State, action: Action): State {
       // every param asked for. A tab's id no longer follows its place, so a new id must be free.
       const { tab } = action;
       const existing = state.tabs.find((t) => t.tool === tab.tool && t.profileId === tab.profileId && placeHas(placeOf(t), tab));
-      if (existing) return { ...state, activeTab: existing.id, missingLink: null };
-      const taken = new Set(state.tabs.map((t) => t.id));
+      if (existing) {
+        const kept = existing.preview && !action.preview ? mapTab(state, existing.id, keep) : state;
+        return { ...kept, activeTab: existing.id, missingLink: null };
+      }
+      // The tool's preview tab is replaced in place (a new id, so its screen starts afresh).
+      const replaced = action.preview ? state.tabs.find((t) => t.tool === tab.tool && t.preview) : undefined;
+      const taken = new Set(state.tabs.filter((t) => t !== replaced).map((t) => t.id));
       let id = tab.id;
       for (let n = 2; taken.has(id); n++) id = `${tab.id}#${n}`;
-      return { ...state, tabs: [...state.tabs, { ...tab, id }], activeTab: id, closedTabs: state.closedTabs.filter((t) => t.id !== id), missingLink: null };
+      const fresh: TabRecord = { ...tab, id, preview: action.preview === true };
+      if (!action.preview) delete fresh.preview;
+      const tabs = replaced ? state.tabs.map((t) => (t === replaced ? fresh : t)) : [...state.tabs, fresh];
+      const live = replaced ? Object.fromEntries(Object.entries(state.live).filter(([key]) => key !== replaced.id)) : state.live;
+      return { ...state, tabs, live, activeTab: id, closedTabs: state.closedTabs.filter((t) => t.id !== id), missingLink: null };
     }
+    case "keepTab":
+      return mapTab(state, action.id, keep);
     case "navigateTab":
-      return mapTab(state, action.id, (t) => (action.replace ? replacePlace(t, action.place) : pushPlace(t, action.place)));
+      // A step taken inside a preview tab keeps it: its Back history is not lost to the next click (Open question 64 (e)).
+      return mapTab(state, action.id, (t) => (action.replace ? replacePlace(t, action.place) : keep(pushPlace(t, action.place))));
     case "tabGo":
       return mapTab(state, action.id, (t) => goTab(t, action.delta));
     case "tabStep": {
@@ -297,8 +315,11 @@ function reduce(state: State, action: Action): State {
       const id = state.lastActive[action.tool] ?? state.tabs.find((t) => t.tool === action.tool)?.id;
       return id && state.tabs.some((t) => t.id === id) ? { ...state, activeTab: id, missingLink: null } : state;
     }
-    case "live":
-      return { ...state, live: { ...state.live, [action.id]: action.live } };
+    case "live": {
+      const next = { ...state, live: { ...state.live, [action.id]: action.live } };
+      // A running (or paused) stream is state to lose: its preview tab is kept (DOC-21 §3.2.1).
+      return action.live?.status === "live" || action.live?.status === "paused" ? mapTab(next, action.id, keep) : next;
+    }
     case "layout":
       return { ...state, layout: { ...state.layout, ...action.layout } };
     case "settings":
@@ -318,6 +339,13 @@ function reduce(state: State, action: Action): State {
     case "missingLink":
       return { ...state, missingLink: action.link };
   }
+}
+
+/** The tab without its preview mark. */
+function keep(tab: TabRecord): TabRecord {
+  if (!tab.preview) return tab;
+  const { preview: _, ...rest } = tab;
+  return rest;
 }
 
 function mapTab(state: State, id: string, change: (tab: TabRecord) => TabRecord): State {
@@ -358,7 +386,12 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
         return typeof r?.id === "string" && typeof r.tool === "string" && tools.includes(r.tool) && typeof r.profileId === "string" && typeof r.kind === "string" && typeof r.title === "string" && typeof r.params === "object" && r.params !== null;
       })
         // Version 1 tabs (TSK-79) have no history: each gets its one step (DOC-21 §3.7).
-        .map((t) => migrateTab({ ...t, pinned: t.pinned === true }))
+        .map((t) => {
+          const tab = migrateTab({ ...t, pinned: t.pinned === true });
+          // A preview survives a reload (Open question 64 (h)); anything but true is a normal tab.
+          if (tab.preview !== true) delete tab.preview;
+          return tab;
+        })
     : [];
   // Version 2 has no groups: they come in the order of each tool's first tab, the tabs keeping
   // their order inside a group (DOC-21 §3.2.1). Nothing is dropped.
