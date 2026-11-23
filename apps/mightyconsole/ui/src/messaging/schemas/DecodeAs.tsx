@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Select, SelectGroup, SelectGroupLabel, SelectItem, SelectSeparator } from "@/components/ui/select";
 import type { CodecChoice, DecodeOutput, MappingTarget, Target } from "@/gen/api";
 import { Save } from "@/lib/icons";
@@ -128,7 +128,7 @@ export function DecodeAsPanel({ message, decodeAs }: { message: MessageRow; deco
       {result?.error ? <p className="text-caption-1 text-danger-fg">{result.error}</p> : null}
       {decoded && result.text !== undefined ? (
         JSON_CODECS.has(result.codec) ? (
-          <JsonViewer aria-label="Decoded as chosen" text={result.text} defaultExpandDepth={1} className="max-h-panel-xs" />
+          <JsonView modeKey="messaging.decode-as" aria-label="Decoded as chosen" text={result.text} defaultExpandDepth={1} className="max-h-panel-xs" />
         ) : (
           <pre className="max-h-panel-xs overflow-auto font-mono text-caption-1 text-fg">{result.text}</pre>
         )

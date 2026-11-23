@@ -537,9 +537,9 @@ describe("screens", () => {
     expect(fake.last("store.search")).toMatchObject({ namespacePrefix: ["lab", "answers"] });
     expect(document.querySelector("header")?.textContent).toContain("namespace lab › answers · 1 item");
     expect(document.querySelector("table[aria-label=Items] tbody tr")?.textContent).toContain("13 B");
-    // The item's pane: its value, Edit, Copy value, Delete.
+    // The item's pane: its value (the JSON view, whose toolbar copies it), Edit, Delete.
     await click(buttonNamed("answer-5"));
-    expect($("[aria-label='Value of answer-5']")?.textContent).toContain('"text": "42"');
+    expect($("[aria-label='Value of answer-5']")?.textContent).toContain('"text":"42"');
     await click(buttonNamed("Delete…"));
     await click(buttonNamed("Delete item"));
     expect(fake.last("store.delete")).toMatchObject({ namespace: ["lab", "answers"], key: "answer-5" });

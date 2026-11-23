@@ -6,7 +6,7 @@ import { useSheetGuard } from "@/app/leave-guard";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { CodeBlock } from "@/components/ui/code-block";
+import { JsonView } from "@/app/json-view";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -112,7 +112,7 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
         </SheetHeader>
         <SheetBody>
           {asJson ? (
-            <CodeBlock aria-label="Stream configuration as JSON" code={JSON.stringify(config, null, 2)} language="json" copyable />
+            <JsonView modeKey="nats.stream.config" defaultMode="text" aria-label="Stream configuration as JSON" value={config} className="max-h-panel-md" />
           ) : (
             <form
               id="stream-form"

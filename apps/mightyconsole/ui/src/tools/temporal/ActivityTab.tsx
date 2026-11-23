@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { CopyButton, LinkButton, Page, PageHeader, PageRegion } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useActiveInterval } from "@/app/while-active";
@@ -232,7 +232,7 @@ export function ActivityTab(props: TabProps) {
               </DescriptionList>
             </Section>
             <Section title="Input">
-              <JsonViewer value={detail.input} defaultExpandDepth={3} aria-label="Activity input" className="max-h-panel-sm" />
+              <JsonView modeKey="temporal.activity.input" value={detail.input} defaultExpandDepth={3} aria-label="Activity input" className="max-h-panel-sm" />
             </Section>
             {detail.failure ? (
               <Section title="Failure">
@@ -240,7 +240,7 @@ export function ActivityTab(props: TabProps) {
               </Section>
             ) : detail.result ? (
               <Section title="Result">
-                <JsonViewer value={detail.result} defaultExpandDepth={3} aria-label="Activity result" className="max-h-panel-sm" />
+                <JsonView modeKey="temporal.activity.result" value={detail.result} defaultExpandDepth={3} aria-label="Activity result" className="max-h-panel-sm" />
               </Section>
             ) : (
               <Section title="Result">
@@ -254,11 +254,11 @@ export function ActivityTab(props: TabProps) {
             ) : null}
             {heartbeat !== undefined ? (
               <Section title="Heartbeat details">
-                <JsonViewer value={heartbeat} defaultExpandDepth={2} aria-label="Heartbeat details" className="max-h-panel-sm" />
+                <JsonView modeKey="temporal.activity.heartbeat" value={heartbeat} defaultExpandDepth={2} aria-label="Heartbeat details" className="max-h-panel-sm" />
               </Section>
             ) : null}
             <Section title="All fields">
-              <JsonViewer value={info} defaultExpandDepth={1} aria-label="Activity fields" className="max-h-panel-md" />
+              <JsonView modeKey="temporal.activity.fields" value={info} defaultExpandDepth={1} aria-label="Activity fields" className="max-h-panel-md" />
             </Section>
           </div>
         ) : null}

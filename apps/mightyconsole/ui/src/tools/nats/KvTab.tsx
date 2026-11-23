@@ -13,6 +13,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { JsonView } from "@/app/json-view";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -53,6 +54,25 @@ export const KV_VIEWS = ["keys", "watch"] as const;
 
 export function kvTitle(params: Record<string, unknown>): string {
   return text(params["bucket"]) || "Key-Value";
+}
+
+/** The entry's value: JSON that parses in the JSON view (Text first, as a value is read), anything else as plain text. */
+function KvValue({ record, deleted }: { record: api.MessageRecord; deleted: boolean }) {
+  const text = record.payloadText;
+  const json = useMemo(() => {
+    if (deleted || record.payloadCodec !== "json" || text === undefined) return false;
+    try {
+      JSON.parse(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [deleted, record.payloadCodec, text]);
+  return json ? (
+    <JsonView modeKey="nats.kv.value" defaultMode="text" text={text!} aria-label="Value" className="max-h-panel-sm" />
+  ) : (
+    <CodeBlock aria-label="Value" code={valueText(record)} language="text" copyable wrap className="max-h-panel-sm" />
+  );
 }
 
 /** A record's value as text: pretty JSON, other text, or what it is when it is not text. */
@@ -127,7 +147,7 @@ function KeyPane({ bucket, keyName, profile, connId, client, note, onChanged, on
           </TabsList>
           <TabsContent value="entry" className="flex flex-col gap-stack-sm pt-stack-sm">
             {latest.decodeError ? <p className="text-caption-1 text-warning-fg">{latest.decodeError}</p> : null}
-            <CodeBlock aria-label="Value" code={valueText(latest)} language={latest.payloadCodec === "json" && !deleted ? "json" : "text"} copyable wrap className="max-h-panel-sm" />
+            <KvValue record={latest} deleted={deleted} />
           </TabsContent>
           <TabsContent value="history" className="flex flex-col gap-stack-sm pt-stack-sm">
             <Table aria-label="Revisions" size="small">

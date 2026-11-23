@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { CopyButton, gutterTable } from "@/app/page";
@@ -212,7 +212,7 @@ function RunDetail({ run, last, threadId, connId, client, note, onRunAgain }: { 
           request.input === null ? (
             <p className="text-body-1 text-fg-muted">No input: the run {request.command ? "resumed the graph with a command" : "continued from a checkpoint"}.</p>
           ) : (
-            <JsonViewer value={request.input} aria-label="Input" defaultExpandDepth={2} className="h-panel-xs" />
+            <JsonView modeKey="langgraph.run.input" value={request.input} aria-label="Input" defaultExpandDepth={2} className="h-panel-xs" />
           )
         ) : null}
       </div>

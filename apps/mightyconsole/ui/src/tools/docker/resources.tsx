@@ -7,11 +7,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { MightyClient } from "@/app/client";
-import { CopyButton, LinkButton } from "@/app/page";
+import { LinkButton } from "@/app/page";
 import { ErrorState, LoadingRows } from "@/app/states";
 import type { ContainerUse } from "@/gen/api";
 import { Code, Delete } from "@/lib/icons";
@@ -170,10 +170,7 @@ export function InspectSheet({ target, host, note, onClose }: { target: InspectT
           {!value && !error ? <LoadingRows label={`Loading ${command}`} /> : null}
           {value ? (
             <>
-              <span className="flex items-center justify-end">
-                <CopyButton value={JSON.stringify(value, null, 2)} what="inspect JSON" />
-              </span>
-              <JsonViewer value={value} aria-label={command} defaultExpandDepth={1} className="min-h-0 flex-1" />
+              <JsonView modeKey="docker.resource.inspect" value={value} aria-label={command} defaultExpandDepth={1} className="min-h-0 flex-1" />
             </>
           ) : null}
         </SheetBody>

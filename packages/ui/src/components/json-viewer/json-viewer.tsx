@@ -796,7 +796,7 @@ export function JsonViewer({
             copyable={false}
             wrap={wrap}
             virtualizeAfter={TEXT_VIRTUALIZE_AFTER}
-            aria-label={`${label}, as text`}
+            aria-label={label}
             marks={textFind.starts.length > 0 ? { starts: textFind.starts, length: deferredQuery.length } : undefined}
             currentMark={current >= 0 ? current : undefined}
             className={classes.text}

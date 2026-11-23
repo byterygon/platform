@@ -14,7 +14,7 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -324,10 +324,10 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
                 )}
               </TabsContent>
               <TabsContent value="spec" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
-                <JsonViewer value={definition} defaultExpandDepth={2} aria-label="Schedule definition" />
+                <JsonView modeKey="temporal.schedule.definition" value={definition} defaultExpandDepth={2} aria-label="Schedule definition" />
               </TabsContent>
               <TabsContent value="json" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
-                <JsonViewer value={{ scheduleId, ...definition, info: detail.info }} defaultExpandDepth={1} aria-label="Schedule as JSON" />
+                <JsonView modeKey="temporal.schedule.json" value={{ scheduleId, ...definition, info: detail.info }} defaultExpandDepth={1} aria-label="Schedule as JSON" />
               </TabsContent>
             </ResizablePanel>
             <ResizableHandle />
@@ -361,7 +361,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
                   {form.action.executionTimeout ? <Item term="Execution timeout">{form.action.executionTimeout}</Item> : null}
                   {form.action.runTimeout ? <Item term="Run timeout">{form.action.runTimeout}</Item> : null}
                 </DescriptionList>
-                {args.length > 0 ? <CodeBlock code={JSON.stringify(args.length === 1 ? args[0] : args, null, 2)} language="json" aria-label="Input" /> : <p className="text-body-1 text-fg-muted">No input</p>}
+                {args.length > 0 ? <JsonView modeKey="temporal.schedule.input" defaultMode="text" value={(args.length === 1 ? args[0] : args) as unknown} aria-label="Input" className="max-h-panel-md" /> : <p className="text-body-1 text-fg-muted">No input</p>}
               </section>
               <section className="flex flex-col gap-stack-xs">
                 <h3 className="text-body-1-strong text-fg">Note</h3>

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CopyButton, gutterTable } from "@/app/page";
@@ -65,7 +65,7 @@ export function SchemasPanel({ schemas, onStart, starting }: { schemas: ReturnTy
             </div>
             {as === "json" ? (
               <div className="px-inset-lg pb-stack-md">
-                <JsonViewer value={schema as api.JsonValue} aria-label={`${LABEL[kind]} schema as JSON`} defaultExpandDepth={2} className="h-panel-sm" />
+                <JsonView modeKey="langgraph.assistant.schema" value={schema as api.JsonValue} aria-label={`${LABEL[kind]} schema as JSON`} defaultExpandDepth={2} className="h-panel-sm" />
               </div>
             ) : props.length === 0 ? (
               <EmptyLine>No properties at the top level: see it as JSON.</EmptyLine>

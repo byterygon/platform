@@ -3,7 +3,7 @@
 // value comes from the procedure that carries it up to 12 MiB, and from a stream over that.
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import type { MightyClient } from "@/app/client";
 import type * as api from "@/gen/api";
 import type { DescribedError } from "../types";
@@ -77,7 +77,7 @@ export function CutValue({ label, cut, load, note, className }: CutValueProps) {
   const [value, setValue] = useState<{ v: api.JsonValue } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
-  if (value) return <JsonViewer value={value.v} aria-label={label} defaultExpandDepth={2} {...(className ? { className } : {})} />;
+  if (value) return <JsonView modeKey={`langgraph.cut.${label}`} value={value.v} aria-label={label} defaultExpandDepth={2} {...(className ? { className } : {})} />;
   const run = async () => {
     setLoading(true);
     setError(null);

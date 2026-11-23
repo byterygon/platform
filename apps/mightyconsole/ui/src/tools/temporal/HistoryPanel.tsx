@@ -11,6 +11,7 @@
 import { useContext, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { JsonView } from "@/app/json-view";
 import { CodeBlock } from "@/components/ui/code-block";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
@@ -423,7 +424,7 @@ export function HistoryPanel({ workflowId, runId, store, total, startMs, live, p
                 The first {formatCount(json.shown)} events shown; Download has the whole history.
               </p>
             ) : null}
-            <CodeBlock code={json?.text ?? ""} language="json" lineNumbers copyable aria-label="History as JSON" virtualizeAfter={2000} />
+            <JsonView modeKey="temporal.history.json" defaultMode="text" text={json?.text ?? "null"} aria-label="History as JSON" className="min-h-0 flex-1" />
           </div>
         ) : model.count === 0 ? (
           <div className="min-w-0 flex-1">
@@ -582,7 +583,7 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOp
             Could not read the event as stored: {raws.get(event.eventId) as string}
           </p>
         ) : raws.get(event.eventId) ? (
-          <CodeBlock code={JSON.stringify(raws.get(event.eventId), null, 2)} language="json" appearance="inset" aria-label={`Event ${event.eventId} as stored`} className="min-h-0" />
+          <JsonView modeKey="temporal.event.stored" defaultMode="text" value={raws.get(event.eventId)} aria-label={`Event ${event.eventId} as stored`} className="min-h-0 max-h-panel-md" />
         ) : (
           <p role="status" className="text-body-1 text-fg-muted">
             Reading the event as stored…
@@ -599,7 +600,12 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOp
           {largeStubs(a).map(({ path, stub }) => (
             <LargeStubCard key={stub.id + path} stub={stub} label={path} onOpen={() => onOpenPayload?.(stub, `Event ${event.eventId} · ${path}`)} />
           ))}
-          <CodeBlock code={cutOf(a) ? cutOf(a)!.preview : JSON.stringify(withoutPreviews(a), null, 2)} language="json" wrap={cutOf(a) !== null} appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+          {cutOf(a) ? (
+            // json-exception: the server cut this event's attributes; what is left is the start of the JSON text, not a JSON value
+            <CodeBlock code={cutOf(a)!.preview} language="json" wrap appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+          ) : (
+            <JsonView modeKey="temporal.event.attributes-text" defaultMode="text" value={withoutPreviews(a)} aria-label={`Attributes of event ${event.eventId}`} className="min-h-0 max-h-panel-md" />
+          )}
         </>
       )}
       <div className="flex flex-wrap items-center gap-inline-md">

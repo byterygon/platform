@@ -6,7 +6,7 @@
 import { IMPORT_FORMATS, IMPORT_FORMAT_LABELS, type ImportFormat, type ImportResult, importTheme } from "@byterygon/design-tokens";
 import { Alert, AlertDescription, AlertTitle } from "@/components/alert/alert";
 import { Button } from "@/components/button/button";
-import { CodeBlock } from "@/components/code-block/code-block";
+import { JsonViewer } from "@/components/json-viewer/json-viewer";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/dialog/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/field/field";
 import { FileInput } from "@/components/file-input/file-input";
@@ -118,7 +118,7 @@ export function ImportPanel({ onOpen }: { onOpen: (theme: ThemeDoc) => void }) {
                 </Alert>
               )}
               {/* eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport; no token is a viewport fraction */}
-              <CodeBlock aria-label="Theme file" className="max-h-[40dvh]" language="json" code={result.text!} />
+              <JsonViewer aria-label="Theme file" className="max-h-[40dvh]" defaultMode="text" text={result.text!} />
             </section>
           )}
         </DialogBody>

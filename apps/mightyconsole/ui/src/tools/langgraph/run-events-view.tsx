@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -188,7 +188,7 @@ function EventDetail({ row, runId }: { row: EventRow; runId: string | null }) {
           </DescriptionList>
         </>
       ) : (
-        <JsonViewer value={(row.events.length === 1 ? row.events[0]!.data : row.events.map((e) => e.data)) as api.JsonValue} aria-label="Event data" defaultExpandDepth={2} className="h-panel-sm" />
+        <JsonView modeKey="langgraph.run.event" value={(row.events.length === 1 ? row.events[0]!.data : row.events.map((e) => e.data)) as api.JsonValue} aria-label="Event data" defaultExpandDepth={2} className="h-panel-sm" />
       )}
     </section>
   );

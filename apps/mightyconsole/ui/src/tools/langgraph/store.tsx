@@ -1,8 +1,9 @@
 // The store browser (spec §11.2, §11.2.1; laid out as the TSK-91 mockup's langgraph-store by
 // TSK-96): the namespaces as a tree with item counts, the items of the selected namespace (key,
 // value preview, updated, size) with a semantic query and a filter, the item in a side pane (Edit,
-// Copy value, Delete), Put item in a sheet. "Store not available on this server" when it has none.
+// Delete; Copy is the JSON view's toolbar), Put item in a sheet. "Store not available on this server" when it has none.
 import { useEffect, useMemo, useState } from "react";
+import { JsonView } from "@/app/json-view";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
@@ -19,7 +20,7 @@ import { Tree, type TreeNode } from "@/components/ui/tree";
 import { CopyButton, PageHeader, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import type * as api from "@/gen/api";
-import { Add, ArrowClockwise, Code, Copy, Delete, Folder } from "@/lib/icons";
+import { Add, ArrowClockwise, Code, Delete, Folder } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { sizeText } from "./cut-value";
 import { JsonField, parseJson, preview, seenKeysSchema, useLoad } from "./shared";
@@ -272,22 +273,10 @@ export function StoreTab({ profile, connId, client, useTabActions, note }: TabPr
                     </>
                   ) : null}
                 </p>
-                <pre aria-label={`Value of ${selected.key}`} className="max-h-panel-md overflow-auto rounded-md bg-layer-alt p-inset-sm font-mono text-code whitespace-pre-wrap text-fg">
-                  {JSON.stringify(selected.value, null, 2)}
-                </pre>
+                <JsonView modeKey="langgraph.store.item" value={selected.value} defaultExpandDepth={2} aria-label={`Value of ${selected.key}`} className="max-h-panel-md" />
                 <div className="flex flex-wrap gap-inline-sm">
                   <Button size="small" onClick={() => setPutting({ namespace: joinNamespace(selected.namespace), key: selected.key, value: JSON.stringify(selected.value, null, 2) })}>
                     <Icon icon={Code} /> Edit
-                  </Button>
-                  <Button
-                    size="small"
-                    appearance="subtle"
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(JSON.stringify(selected.value, null, 2));
-                      toast.add({ title: `Copied the value of ${selected.key}`, type: "success" });
-                    }}
-                  >
-                    <Icon icon={Copy} /> Copy value
                   </Button>
                   <Button size="small" appearance="subtle" className="text-danger-fg" onClick={() => setDeleting(selected)}>
                     <Icon icon={Delete} /> Delete…

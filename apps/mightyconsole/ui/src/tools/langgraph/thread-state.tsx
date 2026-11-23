@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { JsonViewer } from "@/components/ui/json-viewer";
+import { JsonView } from "@/app/json-view";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -90,9 +90,9 @@ export function StateDetails({ state, connId, threadId, client, note }: { state:
         </section>
       ) : null}
       <h3 className="text-subtitle-2 text-fg">Values</h3>
-      {valuesCut ? cutValue("Values", valuesCut, "h-panel-sm") : <JsonViewer value={state.values} aria-label="Values" defaultExpandDepth={2} className="h-panel-sm" />}
+      {valuesCut ? cutValue("Values", valuesCut, "h-panel-sm") : <JsonView modeKey="langgraph.thread.values" value={state.values} aria-label="Values" defaultExpandDepth={2} className="h-panel-sm" />}
       <h3 className="text-subtitle-2 text-fg">Metadata</h3>
-      {metadataCut ? cutValue("Metadata", metadataCut, "h-panel-xs") : <JsonViewer value={state.metadata} aria-label="Metadata" className="h-panel-xs" />}
+      {metadataCut ? cutValue("Metadata", metadataCut, "h-panel-xs") : <JsonView modeKey="langgraph.thread.metadata" value={state.metadata} aria-label="Metadata" className="h-panel-xs" />}
       {otherCuts.length > 0 ? (
         <section className="flex flex-col gap-stack-xs">
           <h3 className="text-subtitle-2 text-fg">Also left out</h3>
@@ -146,7 +146,7 @@ export function StatePanel({ threadId, connId, client, note, version, onEdit, on
         <Resizable orientation="horizontal" className="min-h-0 flex-1 border-t border-border-subtle">
           <ResizablePanel defaultSize={68} minSize={40}>
             <div className="flex h-full min-h-0 flex-col overflow-auto px-inset-lg py-inset-md">
-              {as === "tree" ? <ValuesTree state={s} threadId={threadId} connId={connId} client={client} note={note} /> : cutOf(s.cuts, "values") ? <CutValue label="Values" cut={cutOf(s.cuts, "values")!} note={note} load={() => loadCut(client, { connId: connId ?? "", threadId, checkpointId: s.checkpointId ?? null }, cutOf(s.cuts, "values")!)} className="h-panel-md" /> : <JsonViewer value={s.values} aria-label="Values" defaultExpandDepth={2} className="min-h-0 flex-1" />}
+              {as === "tree" ? <ValuesTree state={s} threadId={threadId} connId={connId} client={client} note={note} /> : cutOf(s.cuts, "values") ? <CutValue label="Values" cut={cutOf(s.cuts, "values")!} note={note} load={() => loadCut(client, { connId: connId ?? "", threadId, checkpointId: s.checkpointId ?? null }, cutOf(s.cuts, "values")!)} className="h-panel-md" /> : <JsonView modeKey="langgraph.thread.state.values" value={s.values} aria-label="Values" defaultExpandDepth={2} className="min-h-0 flex-1" />}
             </div>
           </ResizablePanel>
           <ResizableHandle />
