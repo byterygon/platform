@@ -121,6 +121,7 @@ export function MessagesTab({ connId, client, useTabActions, onLive, note, activ
   );
   return (
     <MessageViewer
+      paneKey="echo.messages"
       system="kafka"
       tail={tail}
       maxMessages={state.settings.liveBuffer}

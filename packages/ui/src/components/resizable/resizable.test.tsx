@@ -127,4 +127,19 @@ describe("Resizable", () => {
     await key("ArrowRight", h);
     expect(h.getAttribute("aria-valuenow")).toBe("50");
   });
+
+  test("a double click on the handle calls onDoubleClick", async () => {
+    const onDoubleClick = vi.fn();
+    const { container } = render(
+      <Resizable aria-label="Layout">
+        <ResizablePanel defaultSize={50}>A</ResizablePanel>
+        <ResizableHandle aria-label="Resize A" onDoubleClick={onDoubleClick} />
+        <ResizablePanel>B</ResizablePanel>
+      </Resizable>,
+    );
+    await act(async () => {
+      handle(container).dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    });
+    expect(onDoubleClick).toHaveBeenCalledTimes(1);
+  });
 });

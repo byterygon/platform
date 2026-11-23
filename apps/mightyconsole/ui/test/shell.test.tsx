@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { App } from "@/app/App";
 import { ServicesContext } from "@/app/client";
-import { ACTIONS, displayBinding } from "@/app/shortcuts";
+import { ACTIONS, LOCAL_KEYS, displayBinding } from "@/app/shortcuts";
 import { StoreProvider, loadPersisted } from "@/app/store";
 import { TOOLS } from "@/tools/registry";
 import type { ProfileRecord } from "@/profiles/record";
@@ -330,7 +330,7 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     await key("/", { ctrlKey: true });
     await waitFor(() => dialogWith("Keyboard shortcuts") !== null, "the shortcuts dialog");
     const rows = Array.from(dialogWith("Keyboard shortcuts")!.querySelectorAll("tbody tr"));
-    expect(rows.length).toBe(ACTIONS.filter((a) => a.keys.length > 0).length + 2);
+    expect(rows.length).toBe(ACTIONS.filter((a) => a.keys.length > 0).length + LOCAL_KEYS.length);
     for (const label of ["Command palette", "Switch to tool 6", "Add connection", "Stop the tab's stream", "Pause or resume a live view", "Next pane", "Toggle sidebar", "Settings"]) {
       expect(rows.some((r) => r.textContent?.includes(label)), label).toBe(true);
     }

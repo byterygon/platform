@@ -251,6 +251,43 @@ async function main(): Promise<number> {
     );
     await until(page, `document.querySelector("[data-slot=message-detail]")`, "the detail pane");
 
+    // 2c. The detail pane and the JSON view (TSK-112) at a 1080p window: the value has room (at least
+    // 25 rows or lines of it, measured), the detail sits to the right of a wide list, maximizes and
+    // restores, goes below and back, and the view switches to Text and finds in it.
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+    const pane = `document.querySelector("[data-slot=message-viewer] [data-slot=resizable]")`;
+    const valueView = `document.querySelector("[data-slot=message-detail] [role=tree], [data-slot=message-detail] [data-slot=code-block-scroller]")`;
+    const visibleLines = `(() => { const v = ${valueView}; if (!v) return 0; const row = v.querySelector("[role=treeitem]") ?? v.querySelector("[data-slot=code-block-line]"); return row ? Math.floor(v.clientHeight / row.getBoundingClientRect().height) : 0; })()`;
+    await until(page, `${valueView}`, "the value in the detail pane");
+    // The side follows the view's width, so give the new window size a moment to reach the layout.
+    const beside = await waitUntil(page, `${pane}.getAttribute("data-orientation") === "horizontal"`, 5_000);
+    check(beside, `at 1920 px the detail sits to the right of the list, it is ${await run(page, `${pane}.getAttribute("data-orientation")`)}`);
+    await sleep(300);
+    const lines = await page.evaluate<number>(visibleLines);
+    check(lines >= 25, `at 1920x1080 the detail shows ${lines} rows of the value, the DoD wants at least 25`);
+    const labelled = (name: string) => `document.querySelector('[data-slot=message-viewer] [aria-label="${name}"]')`;
+    await run(page, `${labelled("Maximize the detail")}.click()`);
+    await until(page, `${labelled("Restore the detail")}`, "the Restore button");
+    const maxWidths = await page.evaluate<number[]>(`[...${pane}.querySelectorAll("[data-slot=resizable-panel]")].map((p) => Math.round(p.getBoundingClientRect().width))`);
+    check(maxWidths[0] === 0 && maxWidths[1]! > 1000, `a maximized detail fills the view: panel widths ${maxWidths.join(", ")}`);
+    await run(page, `${labelled("Restore the detail")}.click()`);
+    await until(page, `${labelled("Maximize the detail")}`, "the Maximize button again");
+    await run(page, `${labelled("Show the detail below the list")}.click()`);
+    await until(page, `${pane}.getAttribute("data-orientation") === "vertical"`, "the detail below the list");
+    const below = await page.evaluate<number>(visibleLines);
+    await run(page, `${labelled("Show the detail to the right of the list")}.click()`);
+    await until(page, `${pane}.getAttribute("data-orientation") === "horizontal"`, "the detail beside the list again");
+    await run(page, `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.textContent.trim() === "Text").click()`);
+    await until(page, `document.querySelector("[data-slot=message-detail] [data-slot=code-block]")`, "the value as text");
+    await run(page, `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.getAttribute("aria-label") === "Find").click()`);
+    await until(page, `document.querySelector("[data-slot=json-viewer-find] input")`, "the find bar");
+    await run(page, `__mc.type(document.querySelector("[data-slot=json-viewer-find] input"), "{")`);
+    await until(page, `/^1 of \\d+/.test(document.querySelector("[data-slot=json-viewer-count]")?.textContent ?? "")`, "the find count in the text");
+    await run(page, `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.textContent.trim() === "Tree").click()`);
+    await until(page, `document.querySelector("[data-slot=message-detail] [role=tree]")`, "the value as a tree again");
+    console.log(`detail pane at 1920x1080: ${lines} rows of the value to the right of the list, ${below} below it`);
+    await page.send("Emulation.clearDeviceMetricsOverride", {});
+
     // 3. A reload: the tab is restored and connects again. The tabs are saved 200 ms after they
     // settle (the live tail keeps changing them for a while), so reload only once the Messages tab
     // is in IndexedDB; reloading earlier restores the tabs without it.

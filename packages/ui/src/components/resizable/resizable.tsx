@@ -261,6 +261,8 @@ export interface ResizableHandleProps {
   withGrip?: boolean;
   /** The handle cannot be moved. */
   disabled?: boolean;
+  /** Called on a double click on the handle (a pane that maximizes and restores). */
+  onDoubleClick?: () => void;
   /** Names the handle ("Resize sidebar"). */
   "aria-label"?: string;
   /** Extra classes, merged after the component's own. */
@@ -272,7 +274,7 @@ export interface ResizableHandleProps {
 }
 
 /** The boundary between two panels: a focusable role="separator" the user drags or moves with the keys. */
-export function ResizableHandle({ withGrip = false, disabled = false, "aria-label": ariaLabel = "Resize", className, ref, __index = 1 }: ResizableHandleProps) {
+export function ResizableHandle({ withGrip = false, disabled = false, onDoubleClick, "aria-label": ariaLabel = "Resize", className, ref, __index = 1 }: ResizableHandleProps) {
   const { orientation, sizes, ids, limits, dragging, startDrag, keyDown } = useGroup("ResizableHandle");
   const before = __index - 1;
   return (
@@ -294,6 +296,7 @@ export function ResizableHandle({ withGrip = false, disabled = false, "aria-labe
       data-disabled={disabled ? "" : undefined}
       onPointerDown={disabled ? undefined : (event) => startDrag(__index, event)}
       onKeyDown={disabled ? undefined : (event) => keyDown(__index, event)}
+      onDoubleClick={onDoubleClick}
       className={cn(classes.handle, className)}
     >
       {withGrip ? <span data-slot="resizable-grip" data-orientation={orientation} aria-hidden="true" className={cn(classes.grip)} /> : null}

@@ -114,7 +114,7 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
       </PageBar>
       <PageRegion>
         <FilterBar system="nats" applied={filter} onApply={setFilter} check={check} />
-        <MessageViewer system="nats" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} loadSchema={loadSchema} {...(view.decodeAs ? { decodeAs: view.decodeAs } : {})} />
+        <MessageViewer paneKey="nats.subscribe" system="nats" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} loadSchema={loadSchema} {...(view.decodeAs ? { decodeAs: view.decodeAs } : {})} />
         <p className="border-t border-border-subtle px-inset-lg py-stack-sm text-caption-1 text-fg-muted">
           {subjects.length === 0 ? "Add a subject or a pattern (orders.*, orders.>), then Start." : "Core NATS cannot replay: messages before Start are not shown. For stored messages, browse a stream."}
         </p>
