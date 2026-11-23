@@ -489,7 +489,13 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   const focusedTab = state.missingLink ? undefined : state.tabs.find((t) => t.id === state.activeTab);
   const focusedPlace = focusedTab ? `${focusedTab.id}\n${focusedTab.kind}\n${JSON.stringify(focusedTab.params)}` : "";
   const profilesLoaded = state.profiles !== null;
+  // The focus a reveal answers, and the tool shown when it came: when only the profiles arrive
+  // (after a reload) and a tool was picked by hand meanwhile, that pick holds until the next focus.
+  const revealFor = useRef<{ key: string; tool: string } | null>(null);
   useEffect(() => {
+    const key = `${focusedPlace}\n${revealAgain}`;
+    if (revealFor.current?.key !== key) revealFor.current = { key, tool: stateRef.current.layout.tool };
+    else if (stateRef.current.layout.tool !== revealFor.current.tool) return;
     const tab = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeTab);
     if (!tab || stateRef.current.missingLink || !profilesLoaded) return;
     const tabTool = toolById(tools, tab.tool);

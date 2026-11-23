@@ -9,6 +9,7 @@ import { App } from "@/app/App";
 import { ServicesContext } from "@/app/client";
 import { placeRoute } from "@/app/router";
 import { DEFAULT_SETTINGS, type Layout, type State, StoreProvider, initialState, loadPersisted, reducer } from "@/app/store";
+import { initialHistory } from "@/app/tab-history";
 import type { ProfileRecord } from "@/profiles/record";
 import { MemoryStorage } from "@/profiles/storage";
 import { echoTool } from "@/tools/echo";
@@ -230,6 +231,35 @@ describe("the tree follows the focused tab (DOC-21 §3.2.1)", () => {
     await waitFor(() => treeItem("The list") !== null, "the namespace open");
     await settle(4);
     expect(treeItem("The list")).not.toBeNull();
+  });
+
+  test("a tool picked by hand before the profiles load holds: the restored tab's reveal waits for its next focus", async () => {
+    // A reload: the restored tab is Echo's, the person picks Walk before the profiles are read.
+    let open = () => {};
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    class SlowStorage extends MemoryStorage {
+      override async listProfiles() {
+        await gate;
+        return super.listProfiles();
+      }
+    }
+    const storage = new SlowStorage();
+    const echo = profile("echo");
+    await storage.putProfile(profile("walk"));
+    await storage.putProfile(echo);
+    const place = { kind: "echo.ticks", params: {}, title: "Ticks · lab" };
+    await storage.putWorkspace("tabs", { version: 3, tabs: [{ id: "t1", tool: "echo", profileId: echo.id, ...place, pinned: false, history: initialHistory(place) }], activeTab: "t1", groups: ["echo"], lastActive: { echo: "t1" } });
+    await storage.putWorkspace("layout", { ...LAYOUT, tool: "echo" });
+    const fake = createFakeServices(storage);
+    await mount(fake, createMemoryHistory({ initialEntries: ["/"] }));
+    await waitFor(() => navItem("walk") !== null, "the navigation");
+    await click(navItem("walk"));
+    await waitFor(() => navTool() === "Walk", "Walk picked by hand");
+    await act(async () => open());
+    await waitFor(() => treeItem("lab") !== null, "the profiles");
+    await settle(4);
+    expect(navTool()).toBe("Walk");
+    expect(document.querySelector("[data-testid=tree-by-hand]")?.textContent).toBe("The tree returns to Echo when you focus a tab.");
   });
 
   test("the expanded nodes are saved per profile and come back after a reload", async () => {

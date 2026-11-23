@@ -139,6 +139,30 @@ export default {
           await until(`${selected("Composer")} && document.querySelectorAll("[role=tab][data-preview]").length === 1 && ![...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ping"))`, "the preview replaced");
           await run(`__mc.dblclick(__mc.item("Composer"))`);
           await until(`${selected("Composer")} && !document.querySelector("[role=tab][data-preview]")`, "the preview kept by a double click");
+          // The next step loads another page: wait for the tabs to reach the workspace first. They are
+          // saved 200 ms after they settle, and the reveal and the tree's expansions keep them changing
+          // for a moment (as browser-check's savedTab does for its reload).
+          const kept = await run<boolean>(`new Promise((resolve) => {
+            const start = Date.now();
+            const read = () => {
+              const open = indexedDB.open("mightyconsole");
+              open.onerror = () => resolve(false);
+              open.onsuccess = () => {
+                const db = open.result;
+                const get = db.transaction("workspace").objectStore("workspace").get("tabs");
+                get.onsuccess = () => {
+                  db.close();
+                  const tabs = get.result?.tabs ?? [];
+                  if (tabs.some((t) => t.kind === "echo.compose" && t.preview !== true) && !tabs.some((t) => t.preview === true)) resolve(true);
+                  else if (Date.now() - start > 15000) resolve(false);
+                  else setTimeout(read, 200);
+                };
+                get.onerror = () => { db.close(); resolve(false); };
+              };
+            };
+            read();
+          })`);
+          if (!kept) throw new Error("the kept Composer tab did not reach the workspace within 15 s");
           // A second tool's tab through its URL: two groups, the tree on that tool. The profile is
           // "lab" with the defaults, the one the LangGraph checklist adds and connects later in this
           // browser: another name would leave it a list with neither "lab" nor the empty state.
