@@ -278,10 +278,12 @@ export default {
         lab("lab_a_projects_containers_log_apart"),
         vitest("test/docker-project.test.tsx"),
         browser("the shop project's logs merged with a service column, a service hidden, its restart leaving lines", async ({ page, origin, lab: credentials, until, run, shot }) => {
-          const logHas = (text: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].some((el) => el.childElementCount === 0 && el.textContent.includes(${JSON.stringify(text)}))`;
+          // Visible lines only: the worker's own Logs tab (logs-exec) stays mounted, hidden, with its lines.
+          const logHas = (text: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].some((el) => el.childElementCount === 0 && el.offsetParent !== null && el.textContent.includes(${JSON.stringify(text)}))`;
           const chip = (label: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=group][aria-label=Services] button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
           await page.navigate(`${origin}/`);
           await labTree({ lab: credentials, until, run, shot });
+          await until(`__mc.item("shop")`, "the shop project in the tree");
           await run(`__mc.dblclick(__mc.item("shop"))`);
           await until(`location.pathname === "/docker/lab/projects/shop/logs" && ${logHas("web listening on :8080")} && ${logHas("worker tick")}`, "web's and worker's lines merged", 10_000);
           await until(`${logHas("web")} && ${logHas("worker")} && __mc.has("Following 2 of 2 containers")`, "the service column, both followed");
@@ -304,7 +306,7 @@ export default {
           await until(`!document.querySelector("[role=alertdialog]")`, "restarted");
           await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Logs" && t.offsetParent !== null))`);
           await until(`location.pathname === "/docker/lab/projects/shop/logs" && ${logHas("[shop-worker-1 stopped")} && ${logHas("[shop-web-1 stopped")}`, "a line per stopped container", 30_000);
-          await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].filter((el) => el.childElementCount === 0 && el.textContent === "web listening on :8080").length >= 2 && __mc.has("Following 2 of 2 containers")`, "both joined again after the restart", 30_000);
+          await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].filter((el) => el.childElementCount === 0 && el.offsetParent !== null && el.textContent === "web listening on :8080").length >= 2 && __mc.has("Following 2 of 2 containers")`, "both joined again after the restart", 30_000);
           await shot("project logs after a restart");
         }),
         cargo("a_containers_files_are_listed_read_and_downloaded_from_its_archive"),
