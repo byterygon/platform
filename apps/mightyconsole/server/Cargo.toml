@@ -31,6 +31,7 @@ ambidex-axum = { path = "../../../crates/ambidex-axum" }
 async-nats = { version = "=0.52.0", default-features = false, features = ["ring", "jetstream", "kv", "object-store", "nkeys", "crypto", "service", "nuid", "server_2_10", "server_2_11", "server_2_12", "server_2_14"] }
 arrow-array = { version = "60.1.0", default-features = false }
 arrow-schema = { version = "60.1.0", default-features = false }
+audit-jsonl = { path = "../../../crates/audit-jsonl" }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bytes = "1.12.1"

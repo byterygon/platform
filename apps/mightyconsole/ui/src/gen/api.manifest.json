@@ -13690,6 +13690,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -13736,6 +13737,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -13778,6 +13780,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -14312,6 +14315,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -14611,6 +14615,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -15068,6 +15073,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -15305,6 +15311,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -15419,6 +15426,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -16136,6 +16144,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -16523,6 +16532,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -16659,6 +16669,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -17089,6 +17100,7 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"

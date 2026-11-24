@@ -328,7 +328,8 @@ impl TemporalApi {
     #[rpc::mutation(
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"],
+        audit = "always",
     )]
     async fn connect(
         &self,
@@ -580,7 +581,8 @@ impl TemporalWorkflowsApi {
         perm = "temporal.read",
         risk = Risk::Read,
         timeout_default = "1h",
-        timeout_max = "1h"
+        timeout_max = "1h",
+        audit = "always",
     )]
     async fn download_history(
         &self,
@@ -821,7 +823,8 @@ impl TemporalPayloadApi {
         perm = "temporal.read",
         risk = Risk::Read,
         timeout_default = "1h",
-        timeout_max = "1h"
+        timeout_max = "1h",
+        audit = "always",
     )]
     async fn download(
         &self,

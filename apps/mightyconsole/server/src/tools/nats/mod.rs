@@ -422,7 +422,8 @@ impl NatsApi {
     #[rpc::mutation(
         perm = "nats.read",
         risk = Risk::Read,
-        redact = ["profile.password", "profile.token", "profile.nkeySeed", "profile.creds", "profile.tls.clientKeyPem", "profile.schemaRegistry.password", "profile.schemaRegistry.token", "profile.schemaRegistry.tls.clientKeyPem"]
+        redact = ["profile.password", "profile.token", "profile.nkeySeed", "profile.creds", "profile.tls.clientKeyPem", "profile.schemaRegistry.password", "profile.schemaRegistry.token", "profile.schemaRegistry.tls.clientKeyPem"],
+        audit = "always",
     )]
     async fn connect(&self, ctx: Ctx, input: NatsConnectInput) -> ToolResult<NatsConnectOutput> {
         let profile = input.profile;

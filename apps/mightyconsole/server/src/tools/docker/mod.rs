@@ -259,7 +259,8 @@ impl DockerApi {
         perm = "docker.read",
         risk = Risk::Read,
         timeout_default = "60s",
-        redact = ["profile.privateKey", "profile.passphrase", "profile.password"]
+        redact = ["profile.privateKey", "profile.passphrase", "profile.password"],
+        audit = "always",
     )]
     async fn connect(
         &self,

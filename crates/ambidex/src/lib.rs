@@ -167,7 +167,8 @@ pub mod transport;
 /// | `timeout_default = "30s"` | no | Deadline when the client sets none (`ms`, `s`, `m`, `h`); default 30 s. Not on subscriptions: they have no default deadline |
 /// | `timeout_max = "5m"` | no | Upper bound for any deadline; default 5 min, none for subscriptions |
 /// | `log_input` | no | Input values may be written to the audit log |
-/// | `redact = ["password"]` | no | Input field paths never logged |
+/// | `redact = ["password"]` | no | Input field paths never logged; the audit and approval digests cover the input with them replaced |
+/// | `audit = "always"` | no | A sensitive Read: its admission is written before it runs and the call fails closed when it cannot be |
 /// | `name = "other"` | no | Method part of the procedure name; default the Rust name |
 /// | `deprecated` | no | Marks the procedure deprecated (spec §10) |
 ///
@@ -195,7 +196,7 @@ pub use engine::{Authenticate, Closed, Connection, Dispatch, Server, ServerConfi
 pub use error::{DomainError, IntoErrorPayload, NoDetails, RpcError};
 pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};
 pub use message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
-pub use procedure::{Agent, ProcedureKind, ProcedureMeta};
+pub use procedure::{Agent, AuditMode, ProcedureKind, ProcedureMeta};
 pub use router::{
     Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
     StreamHandler, SubscriptionHandler, input_digest,

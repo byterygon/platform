@@ -33,10 +33,12 @@ use ambidex::{CancellationToken, Session};
 use ambidex_axum::oidc::{
     AuthEvent, OidcIdentity, OidcLogin, SignInHooks, SignInRefusal, SignedIn,
 };
-use ambidex_axum::{EndedSession, LoginSessions, SessionEvents, WebSession, WebSessions};
+use ambidex_axum::{
+    EndReason, EndedSession, LoginSessions, SessionEvents, WebSession, WebSessions,
+};
 use security_types::{Principal, PrincipalKind, SessionId, TenantId};
 
-use crate::audit::LineWriter;
+use crate::audit::{Event, EventLog, LineWriter};
 
 use crate::authz::LOCAL_TENANT;
 use crate::core::random_id;
@@ -216,53 +218,68 @@ impl WebSessions for ServerSessions {
 /// Mightyconsole's side of the OIDC sign-in (DOC-25 §3.2.3): the principal is
 /// `human:oidc:<sub>` in the server's tenant. Roles come with TSK-138 (until then every
 /// signed-in person may do everything, as v0.1's one user could); the user records with the
-/// store (TSK-142). Events go to the server log, one line each, until the audit log (TSK-137)
-/// records them: names, addresses, counts and reasons, never a token, code or secret.
+/// store (TSK-142). Sign-in, sign-out and failed sign-ins go to the audit log (DOC-25 §3.5.1,
+/// TSK-137) as [`Event`]s: names, addresses, counts and reasons, never a token, code or secret.
+/// The operational warnings (groups not kept, the IdP unreachable, a rate limit) are not audit
+/// events and stay on the server log.
 pub struct McSignIn {
     tenant: TenantId,
     out: Arc<dyn LineWriter>,
+    events: EventLog,
 }
 
 impl McSignIn {
-    pub fn new(tenant: &str, out: Arc<dyn LineWriter>) -> McSignIn {
+    pub fn new(tenant: &str, out: Arc<dyn LineWriter>, events: EventLog) -> McSignIn {
         McSignIn {
             tenant: TenantId::new(tenant),
             out,
+            events,
         }
     }
 
-    /// The line for an event.
-    pub fn format(event: &AuthEvent) -> String {
-        let ip = |client: &Option<std::net::IpAddr>| {
-            client.map_or_else(|| "-".to_owned(), |ip| ip.to_string())
-        };
-        let line = match event {
+    /// The audit event for a sign-in event, or `None` for an operational warning.
+    pub fn event(event: &AuthEvent) -> Option<Event> {
+        Some(match event {
             AuthEvent::SignedIn {
                 user,
                 session,
                 method,
                 client,
                 groups,
-                ..
-            } => format!(
-                "auth.login ok {user} session {session} method {} from {} ({groups} groups)",
-                method.as_str(),
-                ip(client)
-            ),
+                roles,
+            } => Event::Login {
+                user: user.clone(),
+                session: session.clone(),
+                method: method.as_str().to_owned(),
+                ip: *client,
+                groups: *groups,
+                roles: roles.clone(),
+            },
             AuthEvent::SignInFailed {
                 error,
                 reason,
                 client,
-            } => format!(
-                "auth.login refused ({}) from {}: {reason}",
-                error.as_str(),
-                ip(client)
-            ),
+            } => Event::LoginFailed {
+                error: error.as_str().to_owned(),
+                reason: reason.clone(),
+                ip: *client,
+            },
             AuthEvent::SignedOut {
                 user,
                 session,
                 client,
-            } => format!("auth.logout {user} session {session} from {}", ip(client)),
+            } => Event::Logout {
+                user: user.clone(),
+                session: session.clone(),
+                ip: *client,
+            },
+            _ => return None,
+        })
+    }
+
+    /// The server-log line for an operational warning.
+    pub fn warning(event: &AuthEvent) -> Option<String> {
+        let line = match event {
             AuthEvent::GroupsDropped { user, dropped } => {
                 format!(
                     "WARNING: {dropped} groups of {user} were not kept (at most 256 of 256 bytes)"
@@ -274,8 +291,9 @@ impl McSignIn {
             AuthEvent::RateLimited { route, client } => {
                 format!("{route}: too many requests from {client}")
             }
+            _ => return None,
         };
-        format!("mightyconsole-server: {line}")
+        Some(format!("mightyconsole-server: {line}"))
     }
 }
 
@@ -297,22 +315,30 @@ impl SignInHooks for McSignIn {
     }
 
     fn record(&self, event: AuthEvent) {
-        self.out.line(&McSignIn::format(&event));
+        if let Some(audit) = McSignIn::event(&event) {
+            self.events.record(&audit);
+        }
+        if let Some(line) = McSignIn::warning(&event) {
+            self.out.line(&line);
+        }
     }
 }
 
-/// Writes `auth.session.end` lines (DOC-25 §3.5.1) to the server log.
-pub struct SessionLog(pub Arc<dyn LineWriter>);
+/// Records `auth.session.end` (DOC-25 §3.5.1) for a session that ends without sign-out; a
+/// sign-out is `auth.logout`.
+pub struct SessionLog(pub EventLog);
 
 impl SessionEvents for SessionLog {
     fn session_ended(&self, ended: &EndedSession, by: Option<&str>) {
-        let by = by.map(|by| format!(" by {by}")).unwrap_or_default();
-        self.0.line(&format!(
-            "mightyconsole-server: auth.session.end {} session {} ({}){by}",
-            ended.user,
-            ended.id,
-            ended.reason.as_str()
-        ));
+        if ended.reason == EndReason::Logout {
+            return;
+        }
+        self.0.record(&Event::SessionEnd {
+            user: ended.user.clone(),
+            session: ended.id.clone(),
+            reason: ended.reason.as_str().to_owned(),
+            by: by.map(str::to_owned),
+        });
     }
 }
 

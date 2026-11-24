@@ -30,7 +30,7 @@ describe("acceptance checklists", () => {
     expect(lists.map((l) => [l.id, l.task, l.items.length])).toEqual([
       ["foundation", "TSK-79", 12],
       ["messaging", "TSK-80", 10],
-      ["nats", "TSK-85", 7],
+      ["nats", "TSK-85", 8],
       ["kafka", "TSK-86", 7],
       ["k8s", "TSK-82", 7],
       // TSK-109 added long-histories.
@@ -43,8 +43,8 @@ describe("acceptance checklists", () => {
       ["langgraph", "TSK-84", 9],
       ["packaging", "TSK-87", 2],
       // DOC-25 section 6, run with the idp profile; TSK-136 wired the login items, the other
-      // security tasks add theirs (TSK-141 attaches the evidence).
-      ["security", "TSK-141", 7],
+      // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items.
+      ["security", "TSK-141", 10],
     ]);
   });
 

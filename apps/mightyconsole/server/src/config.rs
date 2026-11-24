@@ -19,6 +19,10 @@
 //! session_idle = "60m"
 //! session_absolute = "12h"
 //!
+//! [audit]
+//! reads = "sensitive"   # or "all"
+//! stderr = false        # also write one line per recorded call to stderr
+//!
 //! [auth.oidc]
 //! issuer = "https://idp.example.com/dex"
 //! client_id = "mightyconsole"
@@ -37,6 +41,8 @@ use rustls::pki_types::pem::PemObject as _;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
+use crate::audit::{AuditSettings, Reads};
+
 /// The environment variable naming the configuration file.
 pub const CONFIG_ENV: &str = "MIGHTYCONSOLE_CONFIG";
 /// The environment variable holding the OIDC client secret (wins over `client_secret_file`).
@@ -52,6 +58,18 @@ pub struct FileConfig {
     pub server: ServerSection,
     #[serde(default)]
     pub auth: AuthSection,
+    #[serde(default)]
+    pub audit: AuditSection,
+}
+
+/// `[audit]` (DOC-25 §3.5, §3.6.1). Segments, retention and size come with the rotation.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuditSection {
+    /// `"sensitive"` (default) or `"all"`.
+    pub reads: Option<String>,
+    /// Also write one line per recorded call to stderr.
+    pub stderr: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -216,6 +234,21 @@ pub fn relative_to(file: &Path, path: &Path) -> PathBuf {
     } else {
         file.parent().unwrap_or(Path::new(".")).join(path)
     }
+}
+
+/// Resolves the `[audit]` section.
+pub fn audit_settings(section: AuditSection) -> Result<AuditSettings, String> {
+    let reads = match section.reads.as_deref() {
+        None | Some("sensitive") => Reads::Sensitive,
+        Some("all") => Reads::All,
+        Some(other) => {
+            return Err(format!("audit.reads {other:?}: sensitive or all"));
+        }
+    };
+    Ok(AuditSettings {
+        reads,
+        stderr: section.stderr.unwrap_or(false),
+    })
 }
 
 /// Resolves the `[auth]` section.
@@ -404,6 +437,30 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn the_audit_section_resolves_and_refuses_bad_values() {
+        let none: FileConfig = toml::from_str("").unwrap();
+        assert_eq!(
+            audit_settings(none.audit).unwrap(),
+            AuditSettings::default()
+        );
+        let file: FileConfig = toml::from_str("[audit]\nreads = \"all\"\nstderr = true").unwrap();
+        assert_eq!(
+            audit_settings(file.audit).unwrap(),
+            AuditSettings {
+                reads: Reads::All,
+                stderr: true
+            }
+        );
+        let bad: FileConfig = toml::from_str("[audit]\nreads = \"some\"").unwrap();
+        assert!(
+            audit_settings(bad.audit)
+                .unwrap_err()
+                .contains("audit.reads")
+        );
+        assert!(toml::from_str::<FileConfig>("[audit]\ntypo = 1").is_err());
     }
 
     #[test]

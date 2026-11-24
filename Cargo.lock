@@ -3842,6 +3842,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "async-nats",
+ "audit-jsonl",
  "axum",
  "base64 0.22.1",
  "bytes",

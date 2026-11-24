@@ -812,7 +812,8 @@ impl LanggraphApi {
     #[rpc::mutation(
         perm = "langgraph.read",
         risk = Risk::Read,
-        redact = ["profile.apiKey", "profile.headers", "profile.tls.clientKeyPem"]
+        redact = ["profile.apiKey", "profile.headers", "profile.tls.clientKeyPem"],
+        audit = "always",
     )]
     async fn connect(
         &self,
@@ -1721,7 +1722,8 @@ impl ValuesApi {
         perm = "langgraph.read",
         risk = Risk::Read,
         timeout_default = "1h",
-        timeout_max = "1h"
+        timeout_max = "1h",
+        audit = "always",
     )]
     async fn download(
         &self,

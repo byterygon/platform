@@ -60,7 +60,7 @@ use crate::codegen::ProcedureTypes;
 use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
-use crate::procedure::{Agent, ProcedureKind, ProcedureMeta, is_valid_perm};
+use crate::procedure::{Agent, AuditMode, ProcedureKind, ProcedureMeta, is_valid_perm};
 use crate::stream::Chunks;
 use crate::subscription::Events;
 
@@ -260,6 +260,7 @@ impl<'a> From<&Check<'a>> for Admission<'a> {
             input_digest: check.input_digest,
             correlation_id: check.correlation_id,
             parent_correlation_id: check.parent_correlation_id,
+            always: check.meta.audit == AuditMode::Always,
         }
     }
 }
@@ -845,7 +846,14 @@ async fn admit(
     if scope.check().is_some() {
         return Err(scope.error());
     }
-    let digest = input_digest(&call.input);
+    // The digest covers the input with its `redact` paths replaced (DOC-25 §3.5.3): the audit
+    // log and the approval of a call never hold something a guess at a secret could be checked
+    // against.
+    let digest = if meta.redact.is_empty() {
+        input_digest(&call.input)
+    } else {
+        input_digest(&meta.redacted_input(&call.input))
+    };
     let check = Check {
         principal: &session.principal,
         meta: &meta,

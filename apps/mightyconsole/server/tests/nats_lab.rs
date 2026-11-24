@@ -2432,3 +2432,89 @@ async fn a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_an
     )
     .await;
 }
+
+/// DOC-25 §6, Audit (TSK-137): a connect, a write, a destroy and a download (a sensitive read)
+/// on the lab's NATS each leave their entries in the durable log, which verifies and holds no
+/// credential and no object bytes.
+#[tokio::test]
+async fn a_connect_a_write_a_destroy_and_a_download_are_recorded_in_the_audit_log() {
+    use audit_jsonl::{read_records, verify};
+    use mightyconsole_server::StartOptions;
+    use mightyconsole_server::audit::log_path;
+    use security_types::{AuditDecision, Outcome, Risk};
+
+    let t = start_with_durable_audit(StartOptions::default()).await;
+    let path = log_path(t._dir.path());
+    let browser = t.browser().await;
+    let mut tab = t.tab(&browser).await;
+    tab.subscribe_events(1).await;
+    let profile = lab_profile();
+    let password = s(&profile["password"]).to_owned();
+    let out = connect(&mut tab, 2, profile).await;
+    let conn = s(&out["connId"]).to_owned();
+    let bucket = format!("mc_audit_{}", std::process::id());
+    call(
+        &mut tab,
+        3,
+        "nats.kv.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "history": 1, "storage": "memory", "replicas": 1, "compression": false } }),
+    )
+    .await;
+    call(
+        &mut tab,
+        4,
+        "nats.kv.buckets.delete",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.call(
+        5,
+        "nats.obj.get",
+        json!({ "connId": conn, "bucket": "files", "name": "readme.txt" }),
+    )
+    .await;
+    let (bytes, _) = download(&mut tab, 5).await;
+    assert_eq!(bytes.len(), 32);
+    // An ordinary read is not recorded.
+    call(
+        &mut tab,
+        6,
+        "nats.obj.info",
+        json!({ "connId": conn, "bucket": "files", "name": "readme.txt" }),
+    )
+    .await;
+    tab.disconnect().await;
+    t.server.shutdown().await.unwrap();
+
+    let report = verify(&path).expect("the log verifies");
+    assert!(report.unfinished.is_empty(), "{:?}", report.unfinished);
+    let records = read_records(&path).unwrap();
+    let done = |name: &str| {
+        records
+            .iter()
+            .map(|r| &r.entry)
+            .find(|e| e.action.name == name && e.outcome == Outcome::Success)
+            .unwrap_or_else(|| panic!("no completed {name} in the log"))
+    };
+    assert_eq!(done("nats.connect").risk, Risk::Read);
+    assert_eq!(done("nats.kv.buckets.create").risk, Risk::Write);
+    assert_eq!(done("nats.kv.buckets.delete").risk, Risk::Destructive);
+    assert_eq!(done("nats.obj.get").risk, Risk::Read);
+    for name in ["nats.connect", "nats.kv.buckets.delete", "nats.obj.get"] {
+        let admission = records
+            .iter()
+            .map(|r| &r.entry)
+            .find(|e| e.action.name == name && e.outcome == Outcome::Started)
+            .unwrap_or_else(|| panic!("no admission for {name}"));
+        assert_eq!(admission.decision, AuditDecision::Allow);
+        assert!(!admission.principal_chain.is_empty());
+    }
+    assert!(
+        !records
+            .iter()
+            .any(|r| r.entry.action.name == "nats.obj.info"),
+        "an ordinary read is not recorded"
+    );
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains(&password), "a credential reached the log");
+}

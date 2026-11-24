@@ -155,7 +155,7 @@ impl EchoApi {
 #[rpc::router(namespace = "echo")]
 impl EchoApi {
     /// Opens a connection from the profile.
-    #[rpc::mutation(perm = "echo.read", risk = Risk::Read, redact = ["profile.token"])]
+    #[rpc::mutation(perm = "echo.read", risk = Risk::Read, redact = ["profile.token"], audit = "always")]
     async fn connect(&self, ctx: Ctx, input: EchoConnectInput) -> ToolResult<EchoConnectOutput> {
         let profile = input.profile;
         if profile.token.as_deref() == Some("wrong") {

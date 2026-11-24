@@ -55,6 +55,20 @@ impl ProcedureKind {
     }
 }
 
+/// How a procedure is audited beyond its risk (DOC-25 §3.5.2).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditMode {
+    /// By risk: Write and Destructive calls must be recorded before they run.
+    #[default]
+    Default,
+    /// A sensitive Read (it uses stored credentials, or reads files, secrets or downloads data):
+    /// its admission is written before it runs and a failure to write it fails the call closed
+    /// (`Unavailable`), as for a Write call, whoever calls it. A sink reads the classification
+    /// from the router's table of procedures, not from a list of names.
+    Always,
+}
+
 /// Placeholder that replaces redacted input fields in loggable input.
 pub const REDACTED: &str = "<redacted>";
 
@@ -80,6 +94,9 @@ pub struct ProcedureMeta {
     /// Input field paths (dot-separated, e.g. `"auth.password"`) that are never logged, even
     /// with `log_input`.
     pub redact: Vec<String>,
+    /// `audit = "always"` marks a sensitive Read (see [`AuditMode::Always`]).
+    #[serde(default)]
+    pub audit: AuditMode,
     pub deprecated: bool,
 }
 
@@ -112,6 +129,7 @@ impl ProcedureMeta {
             timeout_max,
             log_input: false,
             redact: Vec::new(),
+            audit: AuditMode::Default,
             deprecated: false,
         }
     }
@@ -132,6 +150,19 @@ impl ProcedureMeta {
             redact_path(&mut value, path);
         }
         Some(value)
+    }
+}
+
+impl ProcedureMeta {
+    /// The input with every `redact` path replaced by [`REDACTED`], whatever `log_input` says:
+    /// what the audit and approval digests cover (DOC-25 §3.5.3), so a short secret cannot be
+    /// found by hashing guesses against the log.
+    pub fn redacted_input(&self, input: &Value) -> Value {
+        let mut value = input.clone();
+        for path in &self.redact {
+            redact_path(&mut value, path);
+        }
+        value
     }
 }
 
@@ -219,6 +250,17 @@ mod tests {
                 "hosts": [{"secret": REDACTED, "host": "a"}, {"host": "b"}],
             })
         );
+    }
+
+    #[test]
+    fn redacted_input_hides_secrets_even_without_log_input() {
+        let mut meta = meta();
+        meta.redact = vec!["password".into()];
+        assert_eq!(
+            meta.redacted_input(&json!({"name": "a", "password": "pw"})),
+            json!({"name": "a", "password": REDACTED})
+        );
+        assert_eq!(meta.audit, AuditMode::Default);
     }
 
     #[test]

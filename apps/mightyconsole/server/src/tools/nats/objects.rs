@@ -802,7 +802,8 @@ impl NatsObjApi {
         perm = "nats.read",
         risk = Risk::Read,
         timeout_default = "1h",
-        timeout_max = "1h"
+        timeout_max = "1h",
+        audit = "always",
     )]
     async fn get(
         &self,
