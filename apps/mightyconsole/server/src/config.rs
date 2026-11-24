@@ -22,6 +22,10 @@
 //! [audit]
 //! reads = "sensitive"   # or "all"
 //! stderr = false        # also write one line per recorded call to stderr
+//! segment_bytes = "64MiB"
+//! retention_days = 400
+//! min_retention_days = 30
+//! max_bytes = "10GiB"
 //!
 //! [auth.oidc]
 //! issuer = "https://idp.example.com/dex"
@@ -40,6 +44,8 @@ use rustls::pki_types::CertificateDer;
 use rustls::pki_types::pem::PemObject as _;
 use serde::Deserialize;
 use zeroize::Zeroizing;
+
+use audit_jsonl::SegmentPolicy;
 
 use crate::audit::{AuditSettings, Reads};
 
@@ -70,7 +76,56 @@ pub struct AuditSection {
     pub reads: Option<String>,
     /// Also write one line per recorded call to stderr.
     pub stderr: Option<bool>,
+    /// A new segment at this size: bytes, or a size such as `"64MiB"`.
+    pub segment_bytes: Option<SizeValue>,
+    pub retention_days: Option<u32>,
+    pub min_retention_days: Option<u32>,
+    /// The size of all segments together: bytes, or a size such as `"10GiB"`.
+    pub max_bytes: Option<SizeValue>,
 }
+
+/// A size in the file: a number of bytes, or text with a unit (`KiB`, `MiB`, `GiB`, `TiB`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum SizeValue {
+    Bytes(u64),
+    Text(String),
+}
+
+impl SizeValue {
+    fn bytes(&self, what: &str) -> Result<u64, String> {
+        match self {
+            SizeValue::Bytes(n) => Ok(*n),
+            SizeValue::Text(text) => parse_size(text).map_err(|e| format!("{what}: {e}")),
+        }
+    }
+}
+
+/// `64MiB`, `10 GiB`, `4096`: bytes, with an optional binary unit.
+pub fn parse_size(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let split = text
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let number: u64 = number
+        .parse()
+        .map_err(|_| format!("{text:?} is not a size (for example 64MiB)"))?;
+    let factor: u64 = match unit.trim() {
+        "" | "B" => 1,
+        "KiB" => 1 << 10,
+        "MiB" => 1 << 20,
+        "GiB" => 1 << 30,
+        "TiB" => 1 << 40,
+        other => return Err(format!("unit {other:?}: B, KiB, MiB, GiB or TiB")),
+    };
+    number
+        .checked_mul(factor)
+        .ok_or_else(|| format!("{text:?} is too large"))
+}
+
+/// The smallest segment the file may ask for.
+const MIN_SEGMENT_BYTES: u64 = 1 << 20;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -245,9 +300,33 @@ pub fn audit_settings(section: AuditSection) -> Result<AuditSettings, String> {
             return Err(format!("audit.reads {other:?}: sensitive or all"));
         }
     };
+    let mut policy = SegmentPolicy::default();
+    if let Some(size) = &section.segment_bytes {
+        policy.segment_bytes = size.bytes("audit.segment_bytes")?;
+        if policy.segment_bytes < MIN_SEGMENT_BYTES {
+            return Err("audit.segment_bytes must be at least 1MiB".into());
+        }
+    }
+    if let Some(size) = &section.max_bytes {
+        policy.max_bytes = size.bytes("audit.max_bytes")?;
+    }
+    if let Some(days) = section.retention_days {
+        policy.retention_days = days;
+    }
+    if let Some(days) = section.min_retention_days {
+        policy.min_retention_days = days;
+    }
+    if policy.min_retention_days > policy.retention_days {
+        return Err("audit.min_retention_days must not exceed audit.retention_days".into());
+    }
+    if policy.max_bytes < policy.segment_bytes.saturating_mul(2) {
+        return Err("audit.max_bytes must hold at least two segments (audit.segment_bytes)".into());
+    }
     Ok(AuditSettings {
         reads,
         stderr: section.stderr.unwrap_or(false),
+        policy,
+        new_chain: false,
     })
 }
 
@@ -451,9 +530,30 @@ mod tests {
             audit_settings(file.audit).unwrap(),
             AuditSettings {
                 reads: Reads::All,
-                stderr: true
+                stderr: true,
+                ..AuditSettings::default()
             }
         );
+        let sized: FileConfig = toml::from_str(
+            "[audit]\nsegment_bytes = \"8MiB\"\nmax_bytes = \"1GiB\"\nretention_days = 90\nmin_retention_days = 7",
+        )
+        .unwrap();
+        let policy = audit_settings(sized.audit).unwrap().policy;
+        assert_eq!(policy.segment_bytes, 8 << 20);
+        assert_eq!(policy.max_bytes, 1 << 30);
+        assert_eq!((policy.retention_days, policy.min_retention_days), (90, 7));
+        for bad in [
+            "segment_bytes = 1024",
+            "segment_bytes = \"lots\"",
+            "segment_bytes = \"5 furlongs\"",
+            "retention_days = 10\nmin_retention_days = 20",
+            "segment_bytes = \"64MiB\"\nmax_bytes = \"100MiB\"",
+        ] {
+            let file: FileConfig = toml::from_str(&format!("[audit]\n{bad}")).unwrap();
+            assert!(audit_settings(file.audit).is_err(), "{bad}");
+        }
+        assert_eq!(parse_size("4096"), Ok(4096));
+        assert_eq!(parse_size("2 GiB"), Ok(2 << 30));
         let bad: FileConfig = toml::from_str("[audit]\nreads = \"some\"").unwrap();
         assert!(
             audit_settings(bad.audit)

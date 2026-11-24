@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use mightyconsole_server::cli::{Command, Env, USAGE, parse};
+use mightyconsole_server::cli::{AuditTarget, Command, Env, USAGE, parse};
 use mightyconsole_server::tls::TlsSource;
 use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, ServedUi, Server, VERSION};
 
@@ -32,6 +32,7 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+        Command::AuditVerify(target) => audit_verify(&target),
         Command::Serve(config) => match runtime() {
             Some(runtime) => runtime.block_on(serve(config)),
             None => ExitCode::FAILURE,
@@ -40,6 +41,82 @@ fn main() -> ExitCode {
             Some(runtime) => runtime.block_on(config_check(config, online)),
             None => ExitCode::FAILURE,
         },
+    }
+}
+
+/// `audit verify` (DOC-25 §3.5.5): the chain across the files, the first break with its file,
+/// line, `seq` and kind. Exit 0 when intact, 1 when broken, 2 on a read error.
+fn audit_verify(target: &AuditTarget) -> ExitCode {
+    let files = match target {
+        AuditTarget::Files(files) => files.clone(),
+        AuditTarget::Dir(data) => {
+            // The data directory, or the audit directory itself.
+            let dir = if data.join(mightyconsole_server::audit::AUDIT_DIR).is_dir() {
+                mightyconsole_server::audit::audit_dir(data)
+            } else {
+                data.clone()
+            };
+            match audit_jsonl::segment_files(&dir) {
+                Ok(files) => files,
+                Err(e) => {
+                    eprintln!("mightyconsole-server: audit verify: {}: {e}", dir.display());
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    };
+    if files.is_empty() {
+        eprintln!("mightyconsole-server: audit verify: no audit-<n>.jsonl files to check");
+        return ExitCode::from(2);
+    }
+    match audit_jsonl::check_files(&files) {
+        Ok(checked) => {
+            println!(
+                "audit log intact: {} records in {} file(s){}{}",
+                checked.records,
+                checked.segments.len(),
+                match (checked.first_seq, checked.head) {
+                    (Some(first), Some((last, _))) => format!(", seq {first} to {last}"),
+                    _ => String::new(),
+                },
+                if checked.retentions > 0 {
+                    format!(
+                        ", {} retention anchor(s): older segments were deleted by policy",
+                        checked.retentions
+                    )
+                } else {
+                    String::new()
+                }
+            );
+            if checked.new_chains > 0 {
+                println!(
+                    "{} new chain(s) started after a broken log (audit.new_chain)",
+                    checked.new_chains
+                );
+            }
+            if !checked.unfinished.is_empty() {
+                println!(
+                    "{} admission(s) without a completion (outcome unknown: the process stopped or the write failed): {}",
+                    checked.unfinished.len(),
+                    checked.unfinished.join(", ")
+                );
+            }
+            println!(
+                "checkpoint: not checked (the newest records are not anchored outside the log yet, so a log cut at its end cannot be told from a shorter one)"
+            );
+            ExitCode::SUCCESS
+        }
+        Err(audit_jsonl::CheckError::Broken(broken)) => {
+            eprintln!("audit log BROKEN: {broken}");
+            ExitCode::from(1)
+        }
+        Err(audit_jsonl::CheckError::Io { path, error }) => {
+            eprintln!(
+                "mightyconsole-server: audit verify: {}: {error}",
+                path.display()
+            );
+            ExitCode::from(2)
+        }
     }
 }
 

@@ -107,6 +107,14 @@ pub async fn start_with_durable_audit(options: StartOptions) -> TestServer {
     start_inner(None, options, |_| {}, false).await
 }
 
+/// [`start_with_durable_audit`] with the configuration adjusted (the audit policy, say).
+pub async fn start_durable_configured(
+    options: StartOptions,
+    change: impl FnOnce(&mut ServeConfig),
+) -> TestServer {
+    start_inner(None, options, change, false).await
+}
+
 async fn start_inner(
     ui: Option<std::path::PathBuf>,
     mut options: StartOptions,

@@ -18,6 +18,7 @@ mightyconsole-server: Mightyconsole web server
 USAGE
   mightyconsole-server [serve] [OPTIONS]
   mightyconsole-server config check [--online] [OPTIONS]
+  mightyconsole-server audit verify [--data DIR | FILE...]
   mightyconsole-server --version | --help
 
 OPTIONS
@@ -55,6 +56,16 @@ SIGN-IN
   $MIGHTYCONSOLE_OIDC_CLIENT_SECRET). `config check` validates the configuration without
   starting; with --online it also fetches the IdP's discovery document and keys.
 
+AUDIT
+  The audit log is DATA/audit/audit-<n>.jsonl: hash-chained JSON Lines, one fsync per entry,
+  verified when the server starts (a broken log refuses the start, naming the file and line).
+  `audit verify` checks a data directory's log, or the files given (a copy of segments), and
+  says where the chain breaks; exit 0 when intact, 1 when broken, 2 on a usage or read error.
+  --audit-new-chain        after a broken log: move it to DATA/audit/broken-<utc>/ and start a
+                           new chain whose first entry (audit.new_chain) names it.
+  The file's [audit] section: reads, stderr, segment_bytes, retention_days,
+  min_retention_days, max_bytes.
+
 The server keeps no connection settings: profiles live in the browser.
 ";
 
@@ -71,8 +82,19 @@ pub enum Command {
         config: ServeConfig,
         online: bool,
     },
+    /// `audit verify [--data DIR | FILE...]`: check the log and exit.
+    AuditVerify(AuditTarget),
     Help,
     Version,
+}
+
+/// What `audit verify` checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditTarget {
+    /// The log of a data directory.
+    Dir(PathBuf),
+    /// These files, in the order of their names.
+    Files(Vec<PathBuf>),
 }
 
 /// What the environment contributes.
@@ -125,6 +147,46 @@ pub fn parse(args: impl IntoIterator<Item = String>, env: &Env) -> Result<Comman
         Some("serve") => {
             args.next();
         }
+        Some("audit") => {
+            args.next();
+            if args.next().as_deref() != Some("verify") {
+                return Err(
+                    "audit: the only subcommand is `audit verify [--data DIR | FILE...]`".into(),
+                );
+            }
+            let mut data = None;
+            let mut files = Vec::new();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--data" => {
+                        data = Some(PathBuf::from(
+                            args.next()
+                                .ok_or("audit verify: --data needs a directory")?,
+                        ));
+                    }
+                    flag if flag.starts_with("--") => {
+                        return Err(format!("audit verify: unknown option {flag:?}"));
+                    }
+                    file => files.push(PathBuf::from(file)),
+                }
+            }
+            return match (data, files.is_empty()) {
+                (Some(_), false) => Err("audit verify: give --data or files, not both".into()),
+                (Some(dir), true) => Ok(Command::AuditVerify(AuditTarget::Dir(dir))),
+                (None, false) => {
+                    files.sort();
+                    Ok(Command::AuditVerify(AuditTarget::Files(files)))
+                }
+                (None, true) => env
+                    .data_env
+                    .clone()
+                    .or_else(|| env.data_default.clone())
+                    .map(|dir| Command::AuditVerify(AuditTarget::Dir(dir)))
+                    .ok_or_else(|| {
+                        "audit verify: no data directory: give --data, files, or set MIGHTYCONSOLE_DATA".into()
+                    }),
+            };
+        }
         Some("config") => {
             args.next();
             if args.next().as_deref() != Some("check") {
@@ -160,6 +222,7 @@ struct Flags {
     codec_listen: Option<SocketAddr>,
     router: Option<RouterMode>,
     base_path: Option<String>,
+    audit_new_chain: bool,
 }
 
 fn parse_router(text: &str, what: &str) -> Result<RouterMode, String> {
@@ -221,6 +284,7 @@ fn parse_flags(mut args: impl Iterator<Item = String>) -> Result<Flags, String> 
                 }
                 flags.codec_listen = Some(addr);
             }
+            "--audit-new-chain" => flags.audit_new_chain = true,
             "--router" => flags.router = Some(parse_router(&value()?, "--router")?),
             "--base-path" => flags.base_path = Some(parse_base_path(&value()?, "--base-path")?),
             other => return Err(format!("unknown option {other:?}")),
@@ -309,7 +373,8 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         _ => return Err("--tls-cert and --tls-key go together".into()),
     };
     let auth: AuthSettings = config::auth_settings(file.auth, &file_path)?;
-    let audit = config::audit_settings(file.audit)?;
+    let mut audit = config::audit_settings(file.audit)?;
+    audit.new_chain = flags.audit_new_chain;
     Ok(ServeConfig {
         listen,
         allowed_hosts,
@@ -569,5 +634,50 @@ mod tests {
                 .unwrap_err()
                 .contains("config check")
         );
+    }
+    #[test]
+    fn audit_verify_takes_a_data_directory_or_files() {
+        let dir = |p: &str| Command::AuditVerify(AuditTarget::Dir(p.into()));
+        assert_eq!(
+            parse(args("audit verify --data /d"), &Env::default()).unwrap(),
+            dir("/d")
+        );
+        // The environment's data directory when nothing is given.
+        assert_eq!(
+            parse(args("audit verify"), &Env::data("/env")).unwrap(),
+            dir("/env")
+        );
+        // Files are checked in the order of their names.
+        assert_eq!(
+            parse(args("audit verify /x/b.jsonl /x/a.jsonl"), &Env::default()).unwrap(),
+            Command::AuditVerify(AuditTarget::Files(vec![
+                "/x/a.jsonl".into(),
+                "/x/b.jsonl".into()
+            ]))
+        );
+        for bad in [
+            "audit",
+            "audit check",
+            "audit verify --data /d /x/a.jsonl",
+            "audit verify --data",
+            "audit verify --online",
+            "audit verify",
+        ] {
+            assert!(parse(args(bad), &Env::default()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn audit_new_chain_is_a_flag_of_serve() {
+        let Command::Serve(config) =
+            parse(args("--audit-new-chain --data /d"), &Env::default()).unwrap()
+        else {
+            panic!("serve");
+        };
+        assert!(config.audit.new_chain);
+        let Command::Serve(config) = parse(args("--data /d"), &Env::default()).unwrap() else {
+            panic!("serve");
+        };
+        assert!(!config.audit.new_chain);
     }
 }

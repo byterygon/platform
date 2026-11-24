@@ -16,5 +16,8 @@ permissive users write the same log. DBee re-exports it unchanged.
 | `read_records`, `verify`, `VerifyReport` | Read a log, check its chain and list unfinished admissions. |
 | `AuditLogError` | I/O, a line that is not a record, or the place the chain breaks. |
 
+| `SegmentedSink`, `SegmentPolicy`, `SegmentOptions` | The log in `audit-<n>.jsonl` segments (DOC-25 §3.5.4, §3.5.6): a new file at a size or at midnight UTC, the chain continuing across files (the first record of a file carries the last hash of the previous one), retention by age and size that first writes an `audit.retention` entry naming the deleted range and its last hash, `audit log full` rather than a dropped record, and `open_new_chain`, which moves a broken log to `broken-<utc>/` and starts a chain whose first entry (`audit.new_chain`) names it. Files are 0600 and the directory 0700. |
+| `check_files`, `Checked`, `Break`, `BreakKind` | Verifies the chain across segment files and names the first break by file, line, seq and kind (`edited`, `deleted`, `reordered`, `gap`, `head cut`, `unparsable`); a log whose oldest segments retention deleted must start at an `audit.retention` anchor. It cannot see the loss of the newest records: that needs an anchor outside the log (the checkpoint, which needs the server's key). |
+
 The record format and hash domain belong to `security-types` and do not change here: a log
 written by DBee before this crate existed verifies unchanged.

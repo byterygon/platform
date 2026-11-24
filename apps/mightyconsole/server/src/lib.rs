@@ -295,12 +295,14 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
         None => problems
             .push("audit log: no data directory: give --data or set MIGHTYCONSOLE_DATA".into()),
         Some(data) => {
-            let path = audit::log_path(data);
-            match audit_jsonl::verify(&path) {
-                Ok(verified) => report.push(format!(
-                    "audit log {}: {} records, chain intact; reads: {}{}",
-                    path.display(),
-                    verified.records,
+            let dir = audit::audit_dir(data);
+            let files = audit_jsonl::segment_files(&dir).unwrap_or_default();
+            match audit_jsonl::check_files(&files) {
+                Ok(checked) => report.push(format!(
+                    "audit log {}: {} records in {} segment(s), chain intact; reads: {}{}",
+                    dir.display(),
+                    checked.records,
+                    checked.segments.len(),
                     config.audit.reads.as_str(),
                     if config.audit.stderr {
                         ", also on stderr"
@@ -308,7 +310,7 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
                         ""
                     }
                 )),
-                Err(e) => problems.push(e.to_string()),
+                Err(e) => problems.push(format!("audit log {e}")),
             }
         }
     }
@@ -355,6 +357,9 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
     }
 }
 
+/// How often the audit log's retention and size policy is applied (DOC-25 §3.5.6).
+pub const RETENTION_EVERY: Duration = Duration::from_secs(24 * 3600);
+
 /// How often expired sessions are ended, so their connections get Goaway.
 pub const SESSION_SWEEP: Duration = Duration::from_secs(15);
 
@@ -392,6 +397,7 @@ pub struct Server {
     /// The audit log's event writer, flushed at shutdown.
     events: EventLog,
     event_task: JoinHandle<()>,
+    retention_task: Option<JoinHandle<()>>,
     /// The JWKS refresh and the session sweep, with sign-in.
     auth_tasks: Vec<JoinHandle<()>>,
     tls: ServerTls,
@@ -440,6 +446,11 @@ impl Server {
         let principal = local_principal();
         let log: Arc<dyn LineWriter> = Arc::new(Stderr);
         // The audit log first: a server that cannot record does not start (DOC-25 §3.6.2).
+        let tenant = match &config.auth.oidc {
+            Some(_) => config.auth.tenant.clone(),
+            None => authz::LOCAL_TENANT.to_owned(),
+        };
+        let mut retention_sink: Option<Arc<audit_jsonl::SegmentedSink>> = None;
         let sink: Arc<dyn AuditSink> = match options.audit_sink {
             Some(sink) => sink,
             None => {
@@ -450,20 +461,51 @@ impl Server {
                             .into(),
                     )
                 })?;
-                let durable = tokio::task::spawn_blocking(move || audit::open_log(&data))
-                    .await
-                    .map_err(|e| StartError::Audit(format!("opening the log panicked: {e}")))?
-                    .map_err(|e| StartError::Audit(e.to_string()))?;
-                Arc::new(durable)
+                let (settings, tenant) = (config.audit, tenant.clone());
+                let warn_to = Arc::clone(&log);
+                let warn: audit_jsonl::segments::Warn = Arc::new(move |message: &str| {
+                    warn_to.line(&format!("mightyconsole-server: WARNING: {message}"));
+                });
+                let (durable, moved_to) = tokio::task::spawn_blocking(move || {
+                    audit::open_log(&data, &settings, &tenant, Some(warn))
+                })
+                .await
+                .map_err(|e| StartError::Audit(format!("opening the log panicked: {e}")))?
+                .map_err(|e| StartError::Audit(e.to_string()))?;
+                if let Some(moved_to) = moved_to {
+                    log.line(&format!(
+                        "mightyconsole-server: the audit log was moved to {}/{moved_to} and a new chain started",
+                        audit::audit_dir(config.data.as_deref().unwrap_or(Path::new("."))).display()
+                    ));
+                }
+                let durable = Arc::new(durable);
+                retention_sink = Some(Arc::clone(&durable));
+                durable
             }
         };
-        let tenant = match &config.auth.oidc {
-            Some(_) => config.auth.tenant.as_str(),
-            None => authz::LOCAL_TENANT,
-        };
+        // Retention once a day, the first time at start (DOC-25 §3.5.6); the sink also applies it
+        // after every rotation and when the log is over its size.
+        let retention_task = retention_sink.map(|sink| {
+            let log = Arc::clone(&log);
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(RETENTION_EVERY);
+                loop {
+                    tick.tick().await;
+                    let sink = Arc::clone(&sink);
+                    match tokio::task::spawn_blocking(move || sink.enforce_retention()).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => log.line(&format!(
+                            "mightyconsole-server: WARNING: audit retention: {}",
+                            e.0
+                        )),
+                        Err(_) => {}
+                    }
+                }
+            })
+        });
         let (events, event_task) = EventLog::spawn(
             Arc::clone(&sink),
-            tenant,
+            &tenant,
             config.audit.stderr,
             Arc::clone(&log),
         );
@@ -605,6 +647,7 @@ impl Server {
             sessions,
             events,
             event_task,
+            retention_task,
             auth_tasks,
             tls,
             local_addr,
@@ -666,6 +709,9 @@ impl Server {
     pub async fn shutdown(mut self) -> io::Result<()> {
         if let Some(sweep) = self.sweep.take() {
             sweep.abort();
+        }
+        if let Some(retention) = self.retention_task.take() {
+            retention.abort();
         }
         self.events.record(&Event::ServerStop);
         self.events.flush().await;
