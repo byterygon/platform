@@ -7,7 +7,7 @@ import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
 import type { ScheduleDetail, ScheduleRunsOutput, ScheduleSummary, TaskQueueDescription } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
-import { ScheduleTab } from "@/tools/temporal/ScheduleTab";
+import { FOLLOW_EVERY_MS, ScheduleTab } from "@/tools/temporal/ScheduleTab";
 import { SchedulesTab } from "@/tools/temporal/SchedulesTab";
 import { TaskQueueTab } from "@/tools/temporal/TaskQueueTab";
 import { profile as schema } from "@/tools/temporal/profile";
@@ -92,7 +92,7 @@ describe("Schedule (DOC-21 §9.3, TSK-104)", () => {
     ],
     nextPageToken: "1794000000:dG9r",
   };
-  function setup(initial: Partial<ScheduleSummary> = {}, fail?: unknown) {
+  function setup(initial: Partial<ScheduleSummary> = {}, fail?: unknown, runsImpl?: (input: { nextPageToken?: string | null }) => Promise<ScheduleRunsOutput>) {
     let current = detail(initial);
     const write = (apply: (d: ScheduleDetail) => ScheduleDetail) =>
       vi.fn(async (_input: unknown) => {
@@ -107,7 +107,7 @@ describe("Schedule (DOC-21 §9.3, TSK-104)", () => {
       trigger: write((d) => d),
       delete: write((d) => d),
       backfill: write((d) => d),
-      runs: vi.fn(async (input: { nextPageToken?: string | null }) => (input.nextPageToken ? { ...RUNS, runs: RUNS.runs.slice(2), nextPageToken: undefined } : RUNS)),
+      runs: vi.fn(runsImpl ?? (async (input: { nextPageToken?: string | null }) => (input.nextPageToken ? { ...RUNS, runs: RUNS.runs.slice(2), nextPageToken: undefined } : RUNS))),
       matchingTimes: vi.fn(async (input: { endTime?: string | null }) => (input.endTime ? { times: ["2026-11-18T00:10:00Z", "2026-11-18T00:20:00Z", "2026-11-18T00:30:00Z"], truncated: false } : { times: ["2026-11-18T01:03:00Z", "2026-11-18T01:04:00Z", "2026-11-18T01:05:00Z", "2026-11-18T01:06:00Z", "2026-11-18T01:07:00Z", "2026-11-18T01:08:00Z"], truncated: true })),
     };
     const p = props({ temporal: { schedules } }, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "every-minute" } });
@@ -183,6 +183,59 @@ describe("Schedule (DOC-21 §9.3, TSK-104)", () => {
     await click(inDialog("Trigger every-minute now?", "Trigger now"));
     await waitFor(() => schedules.trigger.mock.calls.length === 1, "the call");
     expect(schedules.trigger.mock.calls[0]![0]).toEqual({ connId: "conn-1", namespace: "lab", scheduleId: "every-minute", note: null, overlap: null });
+  });
+
+  test("after Trigger now, Runs follows the schedule until its action count moves, then stops (TSK-132)", async () => {
+    const { schedules } = setup();
+    await ready();
+    // Temporal takes the trigger a moment before it counts the action: the reload that follows the
+    // trigger still sees 12, the next describe sees 13.
+    let described = 0;
+    schedules.describe.mockImplementation(async () => {
+      described += 1;
+      const d = detail();
+      return described < 2 ? d : { ...d, info: { ...d.info, actionCount: "13" } };
+    });
+    const runsBefore = schedules.runs.mock.calls.length;
+    await click(byRole("button", "Trigger now"));
+    await waitFor(() => dialogWith("Trigger every-minute now?") !== null, "the dialog");
+    await click(inDialog("Trigger every-minute now?", "Trigger now"));
+    await waitFor(() => described >= 2, "the second describe, after the first showed nothing new", 5000);
+    await waitFor(() => schedules.runs.mock.calls.length >= runsBefore + 2, "Runs reloaded once the count moved", 5000);
+    const settled = schedules.describe.mock.calls.length;
+    await new Promise((r) => setTimeout(r, FOLLOW_EVERY_MS * 2));
+    expect(schedules.describe.mock.calls.length).toBe(settled);
+  });
+
+  test("Runs asks again when Temporal says the query buffer is full, instead of showing the error (TSK-132)", async () => {
+    const busy = new RpcError("ResourceExhausted", "consistent query buffer is full", { details: { kind: "Remote", system: "temporal", message: "consistent query buffer is full", retryable: true, remote: { code: "ResourceExhausted" } } });
+    let calls = 0;
+    const { container } = setup({}, undefined, async () => {
+      calls += 1;
+      if (calls <= 2) throw busy;
+      return RUNS;
+    });
+    await waitFor(() => byText("scheduled-2026-11-18T01:02:00Z") !== null, "the runs after two refusals", 8000);
+    expect(calls).toBe(3);
+    expect(container.textContent).not.toContain("consistent query buffer is full");
+  });
+
+  test("the schedule's own describe asks again too, so a new schedule opens instead of showing the error (TSK-132)", async () => {
+    const busy = new RpcError("ResourceExhausted", "consistent query buffer is full", { details: { kind: "Remote", system: "temporal", message: "consistent query buffer is full", retryable: true, remote: { code: "ResourceExhausted" } } });
+    const { schedules } = setup();
+    await ready();
+    cleanup();
+    let calls = 0;
+    schedules.describe.mockImplementation(async () => {
+      calls += 1;
+      if (calls <= 1) throw busy;
+      return detail();
+    });
+    const p = props({ temporal: { schedules } }, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "every-minute" } });
+    const view = render(<ScheduleTab {...p} />);
+    await waitFor(() => view.container.textContent?.includes("Computed by the server") ?? false, "the schedule after one refusal", 8000);
+    expect(calls).toBe(2);
+    expect(view.container.textContent).not.toContain("consistent query buffer is full");
   });
 
   test("Backfill… names the count the server matched, then sends the range", async () => {
