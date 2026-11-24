@@ -1,13 +1,17 @@
 //! WebSocket harness: the real [`WsTransport`] (axum, rustls TLS) on an ephemeral loopback port.
 //!
 //! A self-signed certificate is generated per server, so nothing is read from disk or fetched.
-//! Every connection gets its own placeholder web session (cookie plus anti-CSRF token) and passes
-//! the Host, Origin and cookie checks like a browser tab would.
+//! Every connection gets its own web session in a [`LoginSessions`] store (cookie plus anti-CSRF
+//! token), as a sign-in would make it, and passes the Host, Origin and cookie checks like a
+//! browser tab would. Session timeouts run on the fixture's clock.
 
 use std::io;
 use std::sync::Arc;
 
-use ambidex_axum::{PlaceholderSessions, RPC_WS_PATH, WsConfig, WsTransport, tls_server_config};
+use ambidex_axum::{
+    LoginMethod, LoginSessions, NewSession, NoSessionEvents, RPC_WS_PATH, SessionLimits, WsConfig,
+    WsTransport, tls_server_config,
+};
 use futures_util::{SinkExt, StreamExt};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName};
 use security_types::{Principal, PrincipalKind, SessionId, TenantId};
@@ -31,7 +35,7 @@ pub const HOST: &str = "conformance.test";
 /// The server's public origin.
 pub const ORIGIN: &str = "https://conformance.test";
 /// Principal of every web session the harness issues.
-pub const PRINCIPAL_ID: &str = "human:placeholder:alice";
+pub const PRINCIPAL_ID: &str = "human:oidc:alice";
 
 /// Name in the self-signed certificate; the client connects to 127.0.0.1 under this name.
 const TLS_NAME: &str = "localhost";
@@ -42,7 +46,7 @@ pub struct Ws {
     fixture: Fixture,
     port: u16,
     roots: Arc<rustls::RootCertStore>,
-    sessions: Arc<PlaceholderSessions>,
+    sessions: Arc<LoginSessions>,
     stop: oneshot::Sender<()>,
     server: JoinHandle<io::Result<()>>,
 }
@@ -51,40 +55,12 @@ impl Harness for Ws {
     const NAME: &'static str = "websocket";
 
     async fn start(fixture: Fixture) -> Ws {
-        let cert = rcgen::generate_simple_self_signed(vec![TLS_NAME.into()]).expect("certificate");
-        let cert_der = CertificateDer::from(cert.cert.der().to_vec());
-        let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der()));
-        let tls = tls_server_config(vec![cert_der.clone()], key).expect("TLS config");
-        let mut roots = rustls::RootCertStore::empty();
-        roots.add(cert_der).expect("root certificate");
-
-        let sessions = Arc::new(PlaceholderSessions::new());
-        let transport = WsTransport::new(
-            WsConfig::new([HOST], ORIGIN),
-            fixture.server_config(),
-            Arc::clone(&sessions),
-            fixture.router(),
-        )
-        .expect("valid WsConfig");
-        // Loopback only, ephemeral port: nothing outside this machine is involved.
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = listener.local_addr().expect("local addr").port();
-        let (stop, stopped) = oneshot::channel();
-        let server = tokio::spawn(async move {
-            transport
-                .serve(listener, tls, axum_routes(), async {
-                    let _ = stopped.await;
-                })
-                .await
-        });
-        Ws {
-            fixture,
-            port,
-            roots: Arc::new(roots),
-            sessions,
-            stop,
-            server,
-        }
+        let sessions = Arc::new(LoginSessions::new(
+            fixture.clock.clone(),
+            SessionLimits::default(),
+            Arc::new(NoSessionEvents),
+        ));
+        Ws::start_with(fixture, sessions, |_| axum::Router::new()).await
     }
 
     fn fixture(&self) -> &Fixture {
@@ -92,15 +68,12 @@ impl Harness for Ws {
     }
 
     async fn connect(&self) -> Client {
-        let issued = self.sessions.issue(principal()).expect("OS randomness");
+        let (cookie, csrf) = self.issue();
         let socket = self
-            .upgrade(HOST, Some(ORIGIN), Some(&issued.cookie))
+            .upgrade(HOST, Some(ORIGIN), Some(&cookie))
             .await
             .expect("upgrade accepted");
-        Client::new(
-            Box::new(WsWire(socket)),
-            Some(json!({ "csrf": issued.csrf_token })),
-        )
+        Client::new(Box::new(WsWire(socket)), Some(json!({ "csrf": csrf })))
     }
 
     fn principal_id(&self) -> String {
@@ -108,10 +81,8 @@ impl Harness for Ws {
     }
 
     fn revoke_sessions(&self) -> Result<(), Unsupported> {
-        Err(Unsupported(
-            "web session expiry and revocation are M3: PlaceholderSessions cannot revoke a \
-             session, and removing one only refuses new upgrades",
-        ))
+        self.sessions.revoke_all(None, None);
+        Ok(())
     }
 
     fn engine_on_case_runtime(&self) -> Result<(), Unsupported> {
@@ -129,6 +100,49 @@ impl Harness for Ws {
 }
 
 impl Ws {
+    /// A server whose web sessions are `sessions`, also serving the HTTP routes `routes` makes
+    /// (given the public origin's port-free form, the transport's own origin).
+    pub async fn start_with(
+        fixture: Fixture,
+        sessions: Arc<LoginSessions>,
+        routes: impl FnOnce(&str) -> axum::Router,
+    ) -> Ws {
+        let cert = rcgen::generate_simple_self_signed(vec![TLS_NAME.into()]).expect("certificate");
+        let cert_der = CertificateDer::from(cert.cert.der().to_vec());
+        let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der()));
+        let tls = tls_server_config(vec![cert_der.clone()], key).expect("TLS config");
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(cert_der).expect("root certificate");
+
+        let transport = WsTransport::new(
+            WsConfig::new([HOST], ORIGIN),
+            fixture.server_config(),
+            Arc::clone(&sessions),
+            fixture.router(),
+        )
+        .expect("valid WsConfig");
+        let routes = routes(ORIGIN);
+        // Loopback only, ephemeral port: nothing outside this machine is involved.
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            transport
+                .serve(listener, tls, routes, async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+        Ws {
+            fixture,
+            port,
+            roots: Arc::new(roots),
+            sessions,
+            stop,
+            server,
+        }
+    }
+
     /// TLS to the server, verified against the generated certificate.
     pub async fn tls(&self) -> TlsStream<TcpStream> {
         let provider = Arc::new(rustls::crypto::ring::default_provider());
@@ -180,24 +194,32 @@ impl Ws {
         }
     }
 
-    pub fn sessions(&self) -> &PlaceholderSessions {
+    pub fn sessions(&self) -> &Arc<LoginSessions> {
         &self.sessions
     }
 
-    /// A fresh session's cookie and anti-CSRF token.
+    /// A fresh session's cookie and anti-CSRF token, as a sign-in would make them.
     pub fn issue(&self) -> (String, String) {
-        let issued = self.sessions.issue(principal()).expect("OS randomness");
-        (issued.cookie, issued.csrf_token)
+        let issued = self
+            .sessions
+            .create(NewSession {
+                user: PRINCIPAL_ID.into(),
+                principal: principal(),
+                groups: vec![],
+                method: LoginMethod::Oidc,
+                auth_time_ms: 0,
+                id_token: None,
+                client: None,
+            })
+            .expect("below the session cap");
+        let csrf = self.sessions.page(&issued.cookie).expect("live").csrf_token;
+        (issued.cookie.to_string(), csrf.to_string())
     }
 
     /// A client on an already upgraded socket.
     pub fn client(socket: Socket, csrf: &str) -> Client {
         Client::new(Box::new(WsWire(socket)), Some(json!({ "csrf": csrf })))
     }
-}
-
-fn axum_routes() -> axum::Router {
-    axum::Router::new()
 }
 
 fn principal() -> Principal {
@@ -207,7 +229,7 @@ fn principal() -> Principal {
         tenant: TenantId::new("t-1"),
         on_behalf_of: None,
         roles: vec![],
-        session: SessionId::new("overwritten by issue"),
+        session: SessionId::new("set per connection"),
     }
 }
 

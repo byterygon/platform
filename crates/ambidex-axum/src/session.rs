@@ -4,15 +4,15 @@
 //! server-side [`WebSession`]. The [`Principal`] comes from that record, never from the client.
 //! The Hello frame must then carry the session's anti-CSRF token as `auth: {"csrf": "<token>"}`.
 //!
-//! OIDC login, session expiry and revocation are M3. Until then the only store is
-//! [`PlaceholderSessions`], which has no login at all.
+//! [`crate::LoginSessions`] is the real store (sign-in through [`crate::oidc`], expiry and
+//! revocation). [`PlaceholderSessions`] remains for servers and tests that issue sessions in code.
 
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use ambidex::engine::BoxFuture;
-use ambidex::{Authenticate, Hello, Session};
+use ambidex::{Authenticate, CancellationToken, Hello, Session};
 use security_types::{Principal, SessionId};
 
 /// A server-side web session.
@@ -37,11 +37,34 @@ impl fmt::Debug for WebSession {
 pub trait WebSessions: Send + Sync + 'static {
     /// `None` rejects the upgrade with 401.
     fn lookup<'a>(&'a self, cookie: &'a str) -> BoxFuture<'a, Option<WebSession>>;
+
+    /// A token that fires when the web session behind `session` (one connection's Ambidex
+    /// session, from [`WebSessions::lookup`]) ends: the engine then sends Goaway
+    /// `Unauthenticated` and cancels every call and stream. `None` (the default) means it is
+    /// never revoked while connected.
+    fn revocation(&self, session: &Session) -> Option<CancellationToken> {
+        let _ = session;
+        None
+    }
+
+    /// Called when a client starts a call, stream or subscription on a connection of `session`:
+    /// activity for the idle timeout. The default does nothing.
+    fn touch(&self, session: &Session) {
+        let _ = session;
+    }
 }
 
 impl<S: WebSessions> WebSessions for Arc<S> {
     fn lookup<'a>(&'a self, cookie: &'a str) -> BoxFuture<'a, Option<WebSession>> {
         (**self).lookup(cookie)
+    }
+
+    fn revocation(&self, session: &Session) -> Option<CancellationToken> {
+        (**self).revocation(session)
+    }
+
+    fn touch(&self, session: &Session) {
+        (**self).touch(session);
     }
 }
 
@@ -126,10 +149,14 @@ fn random_token() -> Result<String, getrandom::Error> {
 }
 
 /// Per-connection [`Authenticate`]: accepts a Hello only if it carries the CSRF token of the
-/// session resolved at upgrade time, and returns that session.
-pub(crate) struct CsrfAuth(pub(crate) WebSession);
+/// session resolved at upgrade time, and returns that session. Revocation comes from the store.
+pub(crate) struct CsrfAuth<S>(pub(crate) WebSession, pub(crate) S);
 
-impl Authenticate for CsrfAuth {
+impl<S: WebSessions> Authenticate for CsrfAuth<S> {
+    fn revocation(&self, session: &Session) -> Option<CancellationToken> {
+        self.1.revocation(session)
+    }
+
     fn authenticate<'a>(&'a self, hello: &'a Hello) -> BoxFuture<'a, Option<Session>> {
         let expected = self.0.csrf_token.as_bytes();
         let ok = hello
@@ -144,7 +171,7 @@ impl Authenticate for CsrfAuth {
 }
 
 /// Compares without an early exit on the first differing byte. Length is not secret.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -198,7 +225,10 @@ mod tests {
     async fn csrf_must_match_exactly() {
         let store = PlaceholderSessions::new();
         let issued = store.issue(principal()).unwrap();
-        let auth = CsrfAuth(store.lookup(&issued.cookie).await.unwrap());
+        let auth = CsrfAuth(
+            store.lookup(&issued.cookie).await.unwrap(),
+            PlaceholderSessions::new(),
+        );
         let good = hello(Some(json!({ "csrf": issued.csrf_token })));
         assert!(auth.authenticate(&good).await.is_some());
         for bad in [
@@ -221,7 +251,7 @@ mod tests {
             },
             csrf_token: String::new(),
         };
-        let auth = CsrfAuth(web.clone());
+        let auth = CsrfAuth(web.clone(), PlaceholderSessions::new());
         assert!(
             auth.authenticate(&hello(Some(json!({ "csrf": "" }))))
                 .await
