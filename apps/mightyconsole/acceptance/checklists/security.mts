@@ -6,9 +6,10 @@
 import { cargo, command, manual } from "../checklist.mts";
 import type { Checklist } from "../checklist.mts";
 
-/** One test file of the sign-in conformance cases (`crates/ambidex-conformance/tests/oidc.rs`). */
+/** One test of the sign-in conformance cases (`crates/ambidex-conformance/tests/oidc.rs`), built with
+ * the WebSocket harness only: the default `tauri` harness needs GTK, which the lab runner lacks. */
 const conformance = (label: string, filter: string) =>
-  command(`conformance: ${label}`, ["cargo", "test", "-p", "ambidex-conformance", "--test", "oidc", "--", filter], { requires: ["cargo"] });
+  command(`conformance: ${label}`, ["cargo", "test", "-p", "ambidex-conformance", "--no-default-features", "--features", "ws", "--test", "oidc", "--", filter], { requires: ["cargo"] });
 
 export default {
   id: "security",
