@@ -7,7 +7,10 @@
 //!
 //! - `/auth/signup { username, displayName?, password, next? }` (with [`Signup::Open`]): creates
 //!   the account and signs it in. 5 sign-ups per client address per hour.
-//! - `/auth/password { username, password, next? }`: signs in.
+//! - `/auth/password { username, password, next? }`: signs in; for an account with TOTP it
+//!   answers `200 {"totp": true}` and keeps a pending sign-in for 5 minutes (bound to the browser
+//!   by a `SameSite=Strict` cookie), which:
+//! - `/auth/totp { code }` completes with a six-digit code or a recovery code.
 //! - `/auth/setup { token, password, next? }`: redeems a setup link
 //!   ([`Accounts::create_setup_link`]): sets the password and signs in. Single use, 24 hours.
 //!
@@ -15,7 +18,13 @@
 //! token ([`Accounts::pre_session`]: a `__Host-` cookie, `SameSite=Strict`, whose value the
 //! signed-out page also gets in a `<meta>`) in the anti-CSRF header, so another site cannot sign
 //! a browser in or up. A success answers `200 {"ok": true, "next", "mustChangePassword"}` with
-//! a new session cookie; the browser's previous session, if any, ends (no fixation).
+//! a new session cookie; the browser's previous session, if any, ends (no fixation). The session
+//! is created only after every factor.
+//!
+//! The second factor ([`totp`], DOC-25 Open question 8): optional per account, enrolled from a
+//! signed-in session ([`Accounts::totp_begin`], [`Accounts::totp_confirm`], which also makes 10
+//! recovery codes kept as Argon2id hashes). With [`RequireTotp`] an account without TOTP gets a
+//! session that must enrol first ([`crate::SessionInfo::must_enrol_totp`]).
 //!
 //! Guessing (DOC-25 §3.2.6): a wrong password and an unknown user name get the same answer
 //! (`401 {"error": "invalid"}`) at the same cost (one Argon2id hash either way, against a dummy
@@ -31,7 +40,9 @@ mod memory;
 pub mod password;
 #[cfg(test)]
 mod tests;
+pub mod totp;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::net::{IpAddr, Ipv6Addr};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -66,6 +77,7 @@ pub use password::{
     HashError, MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS, PasswordHasher, PasswordRejection,
     check_policy,
 };
+pub use totp::{RECOVERY_CODES, TotpRecord, code_at};
 
 /// How long a setup link works.
 pub const SETUP_LINK_TTL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -76,6 +88,14 @@ pub const MIN_USERNAME: usize = 3;
 pub const MAX_USERNAME: usize = 64;
 /// Longest display name, in characters.
 pub const MAX_DISPLAY_NAME: usize = 128;
+/// How long a sign-in waits for its second factor.
+pub const PENDING_TOTP_TTL: Duration = Duration::from_secs(5 * 60);
+/// Codes tried on one pending sign-in before it is dropped.
+pub const PENDING_TOTP_ATTEMPTS: u32 = 5;
+/// How long a TOTP enrolment waits for its confirmation.
+pub const TOTP_ENROLMENT_TTL: Duration = Duration::from_secs(10 * 60);
+/// Pending sign-ins and enrolments kept at once; the oldest goes first.
+pub const MAX_PENDING_TOTP: usize = 1024;
 
 /// Who made an account.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +126,10 @@ pub struct Account {
     pub disabled: bool,
     /// Locked after too many failures, until then (an administrator can unlock it).
     pub locked_until_ms: Option<u64>,
+    /// The second factor, when enrolled.
+    pub totp: Option<TotpRecord>,
+    /// Argon2id hashes of the recovery codes not used yet.
+    pub recovery_codes: Vec<String>,
 }
 
 impl Account {
@@ -129,6 +153,8 @@ impl fmt::Debug for Account {
             .field("created_by", &self.created_by)
             .field("disabled", &self.disabled)
             .field("locked_until_ms", &self.locked_until_ms)
+            .field("totp", &self.totp.is_some())
+            .field("recovery_codes", &self.recovery_codes.len())
             .finish_non_exhaustive()
     }
 }
@@ -223,6 +249,30 @@ pub trait AccountStore: Send + Sync + 'static {
         token_hash: [u8; 32],
         now_ms: u64,
     ) -> BoxFuture<'a, Result<Option<String>, StoreError>>;
+
+    /// Sets (or with `None` removes) the account's TOTP and replaces its recovery code hashes.
+    fn set_totp<'a>(
+        &'a self,
+        id: &'a str,
+        totp: Option<TotpRecord>,
+        recovery_codes: Vec<String>,
+    ) -> BoxFuture<'a, Result<(), StoreError>>;
+
+    /// Records `step` as the last TOTP step used, if it is later than the one kept. `false` when
+    /// it is not (a reused code) or the account has no TOTP: a step works once even when two
+    /// requests race.
+    fn advance_totp_step<'a>(
+        &'a self,
+        id: &'a str,
+        step: u64,
+    ) -> BoxFuture<'a, Result<bool, StoreError>>;
+
+    /// Removes one recovery code hash. `false` when it was already gone (used once only).
+    fn remove_recovery_code<'a>(
+        &'a self,
+        id: &'a str,
+        hash: &'a str,
+    ) -> BoxFuture<'a, Result<bool, StoreError>>;
 }
 
 impl<S: AccountStore> AccountStore for Arc<S> {
@@ -282,6 +332,28 @@ impl<S: AccountStore> AccountStore for Arc<S> {
     ) -> BoxFuture<'a, Result<Option<String>, StoreError>> {
         (**self).take_setup_token(token_hash, now_ms)
     }
+    fn set_totp<'a>(
+        &'a self,
+        id: &'a str,
+        totp: Option<TotpRecord>,
+        recovery_codes: Vec<String>,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        (**self).set_totp(id, totp, recovery_codes)
+    }
+    fn advance_totp_step<'a>(
+        &'a self,
+        id: &'a str,
+        step: u64,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        (**self).advance_totp_step(id, step)
+    }
+    fn remove_recovery_code<'a>(
+        &'a self,
+        id: &'a str,
+        hash: &'a str,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        (**self).remove_recovery_code(id, hash)
+    }
 }
 
 /// The product side of the built-in accounts.
@@ -301,6 +373,13 @@ pub trait AccountHooks: Send + Sync + 'static {
     fn password_changed(&self, account: &Account) {
         let _ = account;
     }
+
+    /// Whether the account holds the administrator role, for `auth.require_totp = "admins"`.
+    /// The default says no.
+    fn is_administrator(&self, account: &Account) -> bool {
+        let _ = account;
+        false
+    }
 }
 
 impl<H: AccountHooks> AccountHooks for Arc<H> {
@@ -316,6 +395,9 @@ impl<H: AccountHooks> AccountHooks for Arc<H> {
     fn password_changed(&self, account: &Account) {
         (**self).password_changed(account);
     }
+    fn is_administrator(&self, account: &Account) -> bool {
+        (**self).is_administrator(account)
+    }
 }
 
 /// `auth.signup`.
@@ -325,6 +407,87 @@ pub enum Signup {
     Open,
     /// Only an administrator makes accounts (with a setup link).
     Off,
+}
+
+/// `auth.require_totp`: who must have the second factor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequireTotp {
+    /// Optional for everyone (the default).
+    None,
+    /// Required for accounts holding the administrator role ([`AccountHooks::is_administrator`]).
+    Admins,
+    All,
+}
+
+/// The built-in accounts' settings.
+#[derive(Debug, Clone)]
+pub struct AccountsConfig {
+    pub signup: Signup,
+    pub require_totp: RequireTotp,
+    /// The issuer an authenticator app shows (`Mightyconsole`).
+    pub totp_issuer: String,
+}
+
+impl AccountsConfig {
+    pub fn new(totp_issuer: impl Into<String>) -> AccountsConfig {
+        AccountsConfig {
+            signup: Signup::Open,
+            require_totp: RequireTotp::None,
+            totp_issuer: totp_issuer.into(),
+        }
+    }
+}
+
+/// A TOTP enrolment to show once: the `otpauth://` URI and its QR image.
+pub struct TotpEnrolment {
+    pub uri: Zeroizing<String>,
+    /// An SVG image (no script), made on the server.
+    pub qr_svg: Zeroizing<String>,
+}
+
+impl fmt::Debug for TotpEnrolment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TotpEnrolment").finish_non_exhaustive()
+    }
+}
+
+/// Why a TOTP operation was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TotpError {
+    /// The caller is not a built-in account.
+    NotAnAccount,
+    /// No enrolment was begun, or it is older than [`TOTP_ENROLMENT_TTL`].
+    NoEnrolment,
+    /// The code does not match.
+    WrongCode,
+    /// The current password is wrong (it counts towards the lockout), or the account is locked.
+    WrongPassword,
+    /// `auth.require_totp` applies to this account: it cannot remove its own second factor.
+    Required,
+    Hash,
+    Store(StoreError),
+}
+
+impl fmt::Display for TotpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TotpError::NotAnAccount => f.write_str("only a built-in account has a second factor"),
+            TotpError::NoEnrolment => f.write_str("begin the enrolment again"),
+            TotpError::WrongCode => f.write_str("the code does not match"),
+            TotpError::WrongPassword => f.write_str("the current password is wrong"),
+            TotpError::Required => f.write_str("the second factor is required for this account"),
+            TotpError::Hash => f.write_str("the recovery codes could not be hashed"),
+            TotpError::Store(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for TotpError {}
+
+impl From<StoreError> for TotpError {
+    fn from(e: StoreError) -> Self {
+        TotpError::Store(e)
+    }
 }
 
 /// The signed-out page's pre-session token.
@@ -403,15 +566,69 @@ struct Guards {
     signups: Windows<IpAddr>,
 }
 
+/// A sign-in waiting for its second factor.
+struct PendingSignIn {
+    account_id: String,
+    next: String,
+    created_ms: u64,
+    attempts: u32,
+}
+
+/// A TOTP enrolment waiting for its confirmation.
+struct PendingEnrolment {
+    key: Zeroizing<Vec<u8>>,
+    created_ms: u64,
+}
+
+#[derive(Default)]
+struct Pending {
+    /// By the SHA-256 of the pending sign-in cookie.
+    sign_ins: HashMap<[u8; 32], PendingSignIn>,
+    /// By account id.
+    enrolments: HashMap<String, PendingEnrolment>,
+}
+
+impl Pending {
+    fn sweep(&mut self, now: u64) {
+        self.sign_ins
+            .retain(|_, p| now.saturating_sub(p.created_ms) < millis(PENDING_TOTP_TTL));
+        self.enrolments
+            .retain(|_, p| now.saturating_sub(p.created_ms) < millis(TOTP_ENROLMENT_TTL));
+        while self.sign_ins.len() >= MAX_PENDING_TOTP {
+            let oldest = self
+                .sign_ins
+                .iter()
+                .min_by_key(|(_, p)| p.created_ms)
+                .map(|(k, _)| *k);
+            match oldest {
+                Some(k) => self.sign_ins.remove(&k),
+                None => break,
+            };
+        }
+        while self.enrolments.len() >= MAX_PENDING_TOTP {
+            let oldest = self
+                .enrolments
+                .iter()
+                .min_by_key(|(_, p)| p.created_ms)
+                .map(|(k, _)| k.clone());
+            match oldest {
+                Some(k) => self.enrolments.remove(&k),
+                None => break,
+            };
+        }
+    }
+}
+
 struct Inner<S, H> {
     store: S,
     hooks: H,
     sessions: Arc<LoginSessions>,
     clock: Arc<dyn Clock>,
     routes: LoginRoutes,
-    signup: Signup,
+    config: AccountsConfig,
     hasher: PasswordHasher,
     guards: Mutex<Guards>,
+    pending: Mutex<Pending>,
 }
 
 /// The built-in accounts. See the [module docs](self).
@@ -453,7 +670,7 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
         hooks: H,
         sessions: Arc<LoginSessions>,
         routes: LoginRoutes,
-        signup: Signup,
+        config: AccountsConfig,
         hasher: PasswordHasher,
         clock: Arc<dyn Clock>,
     ) -> Accounts<S, H> {
@@ -464,9 +681,10 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
                 sessions,
                 clock,
                 routes,
-                signup,
+                config,
                 hasher,
                 guards: Mutex::default(),
+                pending: Mutex::default(),
             }),
         }
     }
@@ -480,19 +698,24 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
     }
 
     pub fn signup(&self) -> Signup {
-        self.inner.signup
+        self.inner.config.signup
+    }
+
+    pub fn config(&self) -> &AccountsConfig {
+        &self.inner.config
     }
 
     pub fn hasher(&self) -> &PasswordHasher {
         &self.inner.hasher
     }
 
-    /// `/auth/signup`, `/auth/password` and `/auth/setup` under the base path.
+    /// `/auth/signup`, `/auth/password`, `/auth/totp` and `/auth/setup` under the base path.
     pub fn routes(&self) -> Router {
         let base = &self.inner.routes.base_path;
         Router::new()
             .route(&format!("{base}/auth/signup"), post(signup::<S, H>))
             .route(&format!("{base}/auth/password"), post(password::<S, H>))
+            .route(&format!("{base}/auth/totp"), post(totp_code::<S, H>))
             .route(&format!("{base}/auth/setup"), post(setup::<S, H>))
             .layer(DefaultBodyLimit::max(MAX_BODY))
             .with_state(Arc::clone(&self.inner))
@@ -560,6 +783,8 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
             last_seen_ms: None,
             disabled: false,
             locked_until_ms: None,
+            totp: None,
+            recovery_codes: vec![],
         };
         match self.inner.store.create(account.clone()).await {
             Ok(()) => Ok(account),
@@ -640,6 +865,194 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
         inner.guards().accounts.clear(&account.id);
         inner.hooks.password_changed(&account);
         Ok(())
+    }
+
+    /// Whether `auth.require_totp` applies to the account.
+    pub fn totp_required(&self, account: &Account) -> bool {
+        match self.inner.config.require_totp {
+            RequireTotp::None => false,
+            RequireTotp::All => true,
+            RequireTotp::Admins => self.inner.hooks.is_administrator(account),
+        }
+    }
+
+    /// `app.account.totp.begin`: a new key for the caller's account, kept for
+    /// [`TOTP_ENROLMENT_TTL`] until [`Accounts::totp_confirm`]; the URI and its QR image are
+    /// shown once. An enrolled account may begin again to replace its key.
+    pub async fn totp_begin(&self, user: &str) -> Result<TotpEnrolment, TotpError> {
+        let inner = &self.inner;
+        let id = account_id_of(user).ok_or(TotpError::NotAnAccount)?;
+        let account = inner
+            .store
+            .by_id(id)
+            .await?
+            .ok_or(TotpError::NotAnAccount)?;
+        let key = totp::new_key();
+        let uri =
+            totp::uri(&key, &inner.config.totp_issuer, &account.username).ok_or(TotpError::Hash)?;
+        let qr_svg = Zeroizing::new(totp::qr_svg(&uri).ok_or(TotpError::Hash)?);
+        let now = inner.clock.now_unix_ms();
+        let mut pending = inner.pending();
+        pending.sweep(now);
+        pending.enrolments.insert(
+            account.id,
+            PendingEnrolment {
+                key,
+                created_ms: now,
+            },
+        );
+        Ok(TotpEnrolment { uri, qr_svg })
+    }
+
+    /// `app.account.totp.confirm { code }`: turns TOTP on when the code matches the key begun,
+    /// and answers [`RECOVERY_CODES`] recovery codes, shown once and kept as Argon2id hashes.
+    /// Lifts the session's `mustEnrolTotp` restriction.
+    pub async fn totp_confirm(
+        &self,
+        user: &str,
+        session_id: &str,
+        code: &str,
+    ) -> Result<Vec<Zeroizing<String>>, TotpError> {
+        let inner = &self.inner;
+        let id = account_id_of(user).ok_or(TotpError::NotAnAccount)?;
+        let now = inner.clock.now_unix_ms();
+        let key = {
+            let mut pending = inner.pending();
+            pending.sweep(now);
+            let enrolment = pending.enrolments.get(id).ok_or(TotpError::NoEnrolment)?;
+            enrolment.key.clone()
+        };
+        let step = totp::check(&key, code.trim(), now).ok_or(TotpError::WrongCode)?;
+        let mut codes = Vec::with_capacity(RECOVERY_CODES);
+        let mut hashes = Vec::with_capacity(RECOVERY_CODES);
+        for _ in 0..RECOVERY_CODES {
+            let code = totp::new_recovery_code();
+            let plain = totp::normalize_recovery_code(&code).ok_or(TotpError::Hash)?;
+            hashes.push(
+                inner
+                    .hasher
+                    .hash(plain)
+                    .await
+                    .map_err(|_| TotpError::Hash)?,
+            );
+            codes.push(code);
+        }
+        inner
+            .store
+            .set_totp(
+                id,
+                Some(TotpRecord {
+                    key,
+                    last_step: step,
+                    enrolled_ms: now,
+                }),
+                hashes,
+            )
+            .await?;
+        inner.pending().enrolments.remove(id);
+        inner.sessions.set_must_enrol(session_id, false);
+        Ok(codes)
+    }
+
+    /// `app.account.totp.remove { current }`: the owner removes their second factor, giving the
+    /// current password (a wrong one counts towards the lockout). Refused when
+    /// `auth.require_totp` applies to the account.
+    pub async fn totp_remove(
+        &self,
+        user: &str,
+        current: Zeroizing<String>,
+        client: Option<IpAddr>,
+    ) -> Result<(), TotpError> {
+        let inner = &self.inner;
+        let id = account_id_of(user).ok_or(TotpError::NotAnAccount)?;
+        let account = inner.store.by_id(id).await?;
+        let hash = account.as_ref().and_then(|a| a.password_hash.clone());
+        let matches = inner.hasher.verify(current, hash).await;
+        let Some(account) = account else {
+            return Err(TotpError::NotAnAccount);
+        };
+        let now = inner.clock.now_unix_ms();
+        if !matches || account.locked_until_ms.is_some_and(|until| now < until) {
+            self.failed(Some(&account), matches, client, "wrong current password")
+                .await;
+            return Err(TotpError::WrongPassword);
+        }
+        if self.totp_required(&account) {
+            return Err(TotpError::Required);
+        }
+        inner.store.set_totp(id, None, vec![]).await?;
+        Ok(())
+    }
+
+    /// Removes an account's TOTP and recovery codes (an administrator's reset with
+    /// `removeTotp`, `reset-admin`).
+    pub async fn clear_totp(&self, account_id: &str) -> Result<(), StoreError> {
+        self.inner.store.set_totp(account_id, None, vec![]).await
+    }
+
+    /// Answers a proven password of an account with TOTP: a pending sign-in, bound to the
+    /// browser by a cookie, that `/auth/totp` completes.
+    fn await_code(&self, proven: Proven, next: &str) -> Response {
+        let inner = &self.inner;
+        let now = inner.clock.now_unix_ms();
+        let token = Zeroizing::new(random_hex());
+        {
+            let mut pending = inner.pending();
+            pending.sweep(now);
+            pending.sign_ins.insert(
+                sha256(token.as_bytes()),
+                PendingSignIn {
+                    account_id: proven.account.id,
+                    next: next.to_owned(),
+                    created_ms: now,
+                    attempts: 0,
+                },
+            );
+        }
+        let mut response = answer(StatusCode::OK, json!({ "totp": true }));
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            web::set_cookie(
+                &inner.routes.totp_cookie,
+                &token,
+                SameSite::Strict,
+                Some(PENDING_TOTP_TTL.as_secs()),
+            ),
+        );
+        response
+    }
+
+    /// Checks a second factor: a six-digit code whose step was not used yet, or an unused
+    /// recovery code (then removed). `Err` holds the reason for the events.
+    async fn check_code(&self, account: &Account, code: &str) -> Result<(), &'static str> {
+        let inner = &self.inner;
+        let Some(record) = account.totp.as_ref() else {
+            return Err("no second factor enrolled");
+        };
+        if totp::is_totp_code(code) {
+            let now = inner.clock.now_unix_ms();
+            let Some(step) = totp::check(&record.key, code, now) else {
+                return Err("wrong code");
+            };
+            return match inner.store.advance_totp_step(&account.id, step).await {
+                Ok(true) => Ok(()),
+                Ok(false) => Err("code already used"),
+                Err(_) => Err("store failure"),
+            };
+        }
+        let Some(plain) = totp::normalize_recovery_code(code) else {
+            return Err("wrong code");
+        };
+        for hash in &account.recovery_codes {
+            if inner.hasher.verify(plain.clone(), Some(hash.clone())).await {
+                return match inner.store.remove_recovery_code(&account.id, hash).await {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err("recovery code already used"),
+                    Err(_) => Err("store failure"),
+                };
+            }
+        }
+        Err("wrong recovery code")
     }
 
     /// Counts a failure for the client address and, when the password was checked and wrong,
@@ -745,7 +1158,8 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
             });
             return Err(Refused::Disabled);
         }
-        inner.guards().accounts.clear(&account.id);
+        // The failures are forgotten once every factor passed (`start_session`), so a known
+        // password does not reset the count of wrong codes.
         if account.locked_until_ms.is_some() {
             let _ = inner.store.set_locked_until(&account.id, None).await;
         }
@@ -759,9 +1173,12 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
         headers: &HeaderMap,
         client: Option<IpAddr>,
         next: &str,
+        method: LoginMethod,
     ) -> Response {
         let inner = &self.inner;
         let account = proven.account;
+        inner.guards().accounts.clear(&account.id);
+        let must_enrol_totp = account.totp.is_none() && self.totp_required(&account);
         let signed_in = match inner.hooks.sign_in(&account).await {
             Ok(signed_in) => signed_in,
             Err(SignInRefusal::Disabled) => {
@@ -789,11 +1206,12 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
             user: signed_in.user.clone(),
             principal: signed_in.principal,
             groups: vec![],
-            method: LoginMethod::Password,
+            method,
             auth_time_ms: now,
             id_token: None,
             client,
             must_change_password: account.must_change_password,
+            must_enrol_totp,
         }) {
             Ok(issued) => issued,
             Err(_) => {
@@ -809,7 +1227,7 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
         inner.hooks.record(AuthEvent::SignedIn {
             user: signed_in.user,
             session: issued.session_id.clone(),
-            method: LoginMethod::Password,
+            method,
             client,
             groups: 0,
             roles,
@@ -820,6 +1238,7 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
                 "ok": true,
                 "next": next,
                 "mustChangePassword": account.must_change_password,
+                "mustEnrolTotp": must_enrol_totp,
             }),
         );
         response.headers_mut().append(
@@ -867,6 +1286,11 @@ impl<S, H> Inner<S, H> {
     fn guards(&self) -> MutexGuard<'_, Guards> {
         // The counters hold no invariant a panicking writer could break.
         self.guards.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn pending(&self) -> MutexGuard<'_, Pending> {
+        // Each map entry is inserted or removed whole.
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -1003,6 +1427,11 @@ struct PasswordBody {
 }
 
 #[derive(Deserialize)]
+struct TotpBody {
+    code: Zeroizing<String>,
+}
+
+#[derive(Deserialize)]
 struct SetupBody {
     token: Zeroizing<String>,
     password: Zeroizing<String>,
@@ -1039,7 +1468,7 @@ async fn signup<S: AccountStore, H: AccountHooks>(
     if let Some(response) = cross_site_check(&inner.routes, &headers) {
         return response;
     }
-    if inner.signup == Signup::Off {
+    if inner.config.signup == Signup::Off {
         return answer(StatusCode::FORBIDDEN, json!({ "error": "signup_off" }));
     }
     let now = inner.clock.now_unix_ms();
@@ -1106,7 +1535,13 @@ async fn signup<S: AccountStore, H: AccountHooks>(
     });
     let next = web::safe_next(body.next.as_deref(), &inner.routes.base_path);
     accounts
-        .start_session(Proven { account }, &headers, client, &next)
+        .start_session(
+            Proven { account },
+            &headers,
+            client,
+            &next,
+            LoginMethod::Password,
+        )
         .await
 }
 
@@ -1131,9 +1566,10 @@ async fn password<S: AccountStore, H: AccountHooks>(
     };
     let next = web::safe_next(body.next.as_deref(), &inner.routes.base_path);
     match accounts.prove(&body.username, body.password, client).await {
+        Ok(proven) if proven.account.totp.is_some() => accounts.await_code(proven, &next),
         Ok(proven) => {
             accounts
-                .start_session(proven, &headers, client, &next)
+                .start_session(proven, &headers, client, &next, LoginMethod::Password)
                 .await
         }
         Err(refusal) => refused(refusal),
@@ -1216,6 +1652,96 @@ async fn setup<S: AccountStore, H: AccountHooks>(
     }
     let next = web::safe_next(body.next.as_deref(), &inner.routes.base_path);
     accounts
-        .start_session(Proven { account }, &headers, client, &next)
+        .start_session(
+            Proven { account },
+            &headers,
+            client,
+            &next,
+            LoginMethod::Password,
+        )
         .await
+}
+
+async fn totp_code<S: AccountStore, H: AccountHooks>(
+    State(inner): State<Arc<Inner<S, H>>>,
+    client: Option<axum::Extension<ClientAddr>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let accounts = Accounts { inner };
+    let inner = &accounts.inner;
+    let client = client_of(client.as_deref());
+    if let Some(response) = cross_site_check(&inner.routes, &headers) {
+        return response;
+    }
+    if address_blocked(inner, client, "/auth/totp") {
+        return refused(Refused::TooMany);
+    }
+    let body: TotpBody = match parse(&body) {
+        Some(body) => body,
+        None => return bad_request(),
+    };
+    let now = inner.clock.now_unix_ms();
+    let expired = || {
+        let mut response = answer(StatusCode::UNAUTHORIZED, json!({ "error": "expired" }));
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            web::clear_cookie(&inner.routes.totp_cookie, SameSite::Strict),
+        );
+        response
+    };
+    let Some(cookie) = web::cookie(&headers, &inner.routes.totp_cookie) else {
+        return expired();
+    };
+    let key = sha256(cookie.as_bytes());
+    let (account_id, next) = {
+        let mut pending = inner.pending();
+        pending.sweep(now);
+        match pending.sign_ins.get(&key) {
+            Some(p) => (p.account_id.clone(), p.next.clone()),
+            None => return expired(),
+        }
+    };
+    let account = match inner.store.by_id(&account_id).await {
+        Ok(Some(account)) => account,
+        Ok(None) => return expired(),
+        Err(_) => return refused(Refused::Internal),
+    };
+    let locked = account.locked_until_ms.is_some_and(|until| now < until);
+    let checked = if locked {
+        Err("account locked")
+    } else {
+        accounts.check_code(&account, body.code.trim()).await
+    };
+    if let Err(reason) = checked {
+        accounts
+            .failed(Some(&account), locked, client, reason)
+            .await;
+        let mut pending = inner.pending();
+        if let Some(p) = pending.sign_ins.get_mut(&key) {
+            p.attempts += 1;
+            if p.attempts >= PENDING_TOTP_ATTEMPTS {
+                pending.sign_ins.remove(&key);
+            }
+        }
+        return refused(Refused::Invalid);
+    }
+    inner.pending().sign_ins.remove(&key);
+    if account.disabled {
+        return refused(Refused::Disabled);
+    }
+    let mut response = accounts
+        .start_session(
+            Proven { account },
+            &headers,
+            client,
+            &next,
+            LoginMethod::Totp,
+        )
+        .await;
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        web::clear_cookie(&inner.routes.totp_cookie, SameSite::Strict),
+    );
+    response
 }

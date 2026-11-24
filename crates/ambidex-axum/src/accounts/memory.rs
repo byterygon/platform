@@ -5,7 +5,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use ambidex::engine::BoxFuture;
 
-use super::{Account, AccountStore, CreateError, StoreError};
+use super::{Account, AccountStore, CreateError, StoreError, TotpRecord};
 
 #[derive(Default)]
 struct Inner {
@@ -162,5 +162,49 @@ impl AccountStore for MemoryAccountStore {
             .filter(|(_, expires)| now_ms < *expires)
             .map(|(id, _)| id);
         ready(Ok(found))
+    }
+
+    fn set_totp<'a>(
+        &'a self,
+        id: &'a str,
+        totp: Option<TotpRecord>,
+        recovery_codes: Vec<String>,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        self.update(id, |a| {
+            a.totp = totp;
+            a.recovery_codes = recovery_codes;
+        });
+        ready(Ok(()))
+    }
+
+    fn advance_totp_step<'a>(
+        &'a self,
+        id: &'a str,
+        step: u64,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        let mut advanced = false;
+        self.update(id, |a| {
+            if let Some(totp) = a.totp.as_mut()
+                && step > totp.last_step
+            {
+                totp.last_step = step;
+                advanced = true;
+            }
+        });
+        ready(Ok(advanced))
+    }
+
+    fn remove_recovery_code<'a>(
+        &'a self,
+        id: &'a str,
+        hash: &'a str,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        let mut removed = false;
+        self.update(id, |a| {
+            let before = a.recovery_codes.len();
+            a.recovery_codes.retain(|h| h != hash);
+            removed = a.recovery_codes.len() < before;
+        });
+        ready(Ok(removed))
     }
 }

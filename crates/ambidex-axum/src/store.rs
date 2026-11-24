@@ -44,6 +44,8 @@ impl Default for SessionLimits {
 pub enum LoginMethod {
     Oidc,
     Password,
+    /// A password and a second factor (TOTP or a recovery code).
+    Totp,
 }
 
 impl LoginMethod {
@@ -51,6 +53,7 @@ impl LoginMethod {
         match self {
             LoginMethod::Oidc => "oidc",
             LoginMethod::Password => "password",
+            LoginMethod::Totp => "totp",
         }
     }
 }
@@ -103,6 +106,10 @@ pub struct NewSession {
     /// product's Authorizer reads [`SessionInfo::must_change_password`] and refuses everything
     /// else until [`LoginSessions::set_must_change`] clears it.
     pub must_change_password: bool,
+    /// The session must enrol a second factor first (`auth.require_totp`): the product's
+    /// Authorizer allows only the enrolment and `app.me` until [`LoginSessions::set_must_enrol`]
+    /// clears it.
+    pub must_enrol_totp: bool,
 }
 
 impl fmt::Debug for NewSession {
@@ -148,6 +155,8 @@ pub struct SessionInfo {
     pub client: Option<IpAddr>,
     /// Only `app.account.changePassword` and `app.me` are allowed (DOC-25 §3.2.6).
     pub must_change_password: bool,
+    /// Only the TOTP enrolment and `app.me` are allowed (`auth.require_totp`).
+    pub must_enrol_totp: bool,
 }
 
 /// What a page load of a signed-in browser gets.
@@ -212,6 +221,7 @@ struct Entry {
     id_token: Option<Zeroizing<String>>,
     client: Option<IpAddr>,
     must_change_password: bool,
+    must_enrol_totp: bool,
     revoked: CancellationToken,
 }
 
@@ -314,6 +324,7 @@ impl LoginSessions {
                 .saturating_add(millis(self.limits.absolute)),
             client: entry.client,
             must_change_password: entry.must_change_password,
+            must_enrol_totp: entry.must_enrol_totp,
         }
     }
 
@@ -364,6 +375,7 @@ impl LoginSessions {
                         id_token: new.id_token,
                         client: new.client,
                         must_change_password: new.must_change_password,
+                        must_enrol_totp: new.must_enrol_totp,
                         revoked: CancellationToken::new(),
                     },
                 );
@@ -445,6 +457,13 @@ impl LoginSessions {
     pub fn set_must_change(&self, id: &str, must_change: bool) {
         if let Some(entry) = self.lock().by_id.get_mut(id) {
             entry.must_change_password = must_change;
+        }
+    }
+
+    /// Sets or clears the "must enrol a second factor first" restriction of a live session.
+    pub fn set_must_enrol(&self, id: &str, must_enrol: bool) {
+        if let Some(entry) = self.lock().by_id.get_mut(id) {
+            entry.must_enrol_totp = must_enrol;
         }
     }
 
@@ -744,6 +763,7 @@ mod tests {
             id_token: Some(Zeroizing::new("id-token".into())),
             client: None,
             must_change_password: false,
+            must_enrol_totp: false,
         }
     }
 

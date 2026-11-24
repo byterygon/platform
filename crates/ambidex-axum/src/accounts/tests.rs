@@ -136,6 +136,8 @@ async fn debug_never_shows_a_hash_or_a_token() {
         last_seen_ms: None,
         disabled: false,
         locked_until_ms: None,
+        totp: None,
+        recovery_codes: vec![],
     };
     assert!(!format!("{account:?}").contains("secret-hash"));
     let link = SetupLink {

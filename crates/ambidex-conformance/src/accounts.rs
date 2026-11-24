@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ambidex::engine::BoxFuture;
 use ambidex_axum::accounts::{
-    Account, AccountHooks, Accounts, CreatedBy, MemoryAccountStore, PasswordHasher, Signup,
+    Account, AccountHooks, Accounts, AccountsConfig, CreatedBy, MemoryAccountStore, PasswordHasher,
+    Signup,
 };
 use ambidex_axum::oidc::{AuthEvent, LoginRoutes, SignInRefusal, SignedIn};
 use ambidex_axum::{LoginSessions, NoSessionEvents};
@@ -77,6 +78,11 @@ impl AccountHooks for RecordingHooks {
         self.events().push(event);
     }
 
+    /// The account named `admin` is the administrator (`auth.require_totp = "admins"`).
+    fn is_administrator(&self, account: &Account) -> bool {
+        account.username == "admin"
+    }
+
     fn password_changed(&self, account: &Account) {
         self.changed
             .lock()
@@ -97,6 +103,12 @@ pub struct AccountServer {
 
 impl AccountServer {
     pub async fn start(signup: Signup) -> AccountServer {
+        let mut config = AccountsConfig::new("Conformance");
+        config.signup = signup;
+        AccountServer::start_with(config).await
+    }
+
+    pub async fn start_with(config: AccountsConfig) -> AccountServer {
         let fixture = Fixture::new();
         let clock: Arc<dyn Clock> = fixture.clock.clone();
         let sessions = Arc::new(LoginSessions::new(
@@ -115,7 +127,7 @@ impl AccountServer {
             Arc::clone(&hooks),
             Arc::clone(&sessions),
             routes,
-            signup,
+            config,
             hasher,
             clock,
         );
@@ -184,12 +196,22 @@ pub fn run<F>(signup: Signup, case: F)
 where
     F: AsyncFnOnce(&AccountServer),
 {
+    let mut config = AccountsConfig::new("Conformance");
+    config.signup = signup;
+    run_with(config, case);
+}
+
+/// [`run`] with every setting.
+pub fn run_with<F>(config: AccountsConfig, case: F)
+where
+    F: AsyncFnOnce(&AccountServer),
+{
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("runtime")
         .block_on(async {
-            let server = AccountServer::start(signup).await;
+            let server = AccountServer::start_with(config).await;
             case(&server).await;
             server.shutdown().await;
         });
@@ -271,6 +293,12 @@ impl Visitor<'_> {
             serde_json::json!({ "username": username, "password": password }),
         )
         .await
+    }
+
+    /// `POST /auth/totp { code }` for the pending sign-in.
+    pub async fn code(&mut self, code: &str) -> Answer {
+        self.post("/auth/totp", serde_json::json!({ "code": code }))
+            .await
     }
 
     pub async fn sign_up(&mut self, username: &str, password: &str) -> Answer {

@@ -18,6 +18,8 @@ argon2 = { version = "0.6.0", default-features = false, features = ["alloc", "ge
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws", "query", "form"] }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bytes = "1.12.1"
+# QR images of the TOTP enrolment URI, drawn on the server as SVG (DOC-25 §3.2.6).
+qrcodegen = "1.8.0"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 getrandom = "0.4.3"
 http-body-util = "0.1.5"
@@ -32,6 +34,8 @@ security-types = { path = "../security-types" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11"
+# TOTP (RFC 6238) for the built-in accounts' second factor (DOC-25 §3.2.6, Open question 8).
+totp-rs = { version = "6.0.0", default-features = false, features = ["std", "otpauth"] }
 tokio = { version = "1.54.1", default-features = false, features = ["macros", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 url = "2.5.8"
