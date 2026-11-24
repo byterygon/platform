@@ -17,8 +17,9 @@ use mightyconsole_server::core::messaging::jq_filter::live_workers;
 use serde_json::{Value, json};
 use support::*;
 
+/// Produces `{"n": i}` for i in 0..n, one at a time, so the offsets follow `n` (the runaways
+/// below must be in a row).
 async fn produce(tab: &mut Tab, next: &mut u32, conn: &str, n: usize) {
-    let mut sent = Vec::new();
     for i in 0..n {
         let id = *next;
         *next += 1;
@@ -28,9 +29,6 @@ async fn produce(tab: &mut Tab, next: &mut u32, conn: &str, n: usize) {
             json!({ "connId": conn, "partition": 0, "value": { "codec": "json", "text": format!(r#"{{"n":{i}}}"#) } }),
         )
         .await;
-        sent.push(id);
-    }
-    for id in sent {
         tab.result(id).await;
     }
 }
