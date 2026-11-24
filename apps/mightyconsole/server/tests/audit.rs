@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use ambidex::Code;
 use audit_jsonl::{UnavailableAuditSink, read_records, verify};
-use mightyconsole_server::audit::log_path;
+use mightyconsole_server::audit::{audit_dir, log_path};
 use mightyconsole_server::{Server, StartError, StartOptions, codegen_router};
 use security_types::{AuditDecision, AuditRecord, AuditSink, Outcome, Risk};
 use serde_json::json;
-use support::{config, start_with_durable_audit};
+use support::{config, start_durable_configured, start_with_durable_audit};
 
 const SECRET: &str = "hunter2-do-not-log";
 const PAYLOAD: &str = "a message body that must stay out of the log";
@@ -229,4 +229,206 @@ fn the_sensitive_reads_are_the_ones_the_spec_names() {
             assert_eq!(meta.audit, ambidex::AuditMode::Always, "{}", meta.name);
         }
     }
+}
+
+// ---- audit verify and rotation through the real binary and server -----------------------------
+
+/// A session that makes many audited writes with 1 KiB segments, so the log has many files.
+async fn a_log_of_many_segments() -> (tempfile::TempDir, std::path::PathBuf) {
+    let t = start_durable_configured(StartOptions::default(), |config| {
+        config.audit.policy.segment_bytes = 3_000;
+    })
+    .await;
+    let browser = t.browser().await;
+    let mut tab = t.tab(&browser).await;
+    let conn = tab.connect(1).await;
+    for i in 0..30u32 {
+        let id = 10 + i;
+        tab.call(
+            id,
+            "echo.messages.produce",
+            json!({ "connId": conn, "value": { "codec": "utf8", "text": format!("m{i}") } }),
+        )
+        .await;
+        tab.result(id).await;
+    }
+    tab.disconnect().await;
+    let dir = audit_dir(t._dir.path());
+    // The directory outlives the server: copy it, as an operator copies a log to check it.
+    t.server.shutdown().await.unwrap();
+    let copy = tempfile::tempdir().unwrap();
+    let target = copy.path().join("audit");
+    std::fs::create_dir_all(&target).unwrap();
+    for file in std::fs::read_dir(&dir).unwrap() {
+        let file = file.unwrap();
+        std::fs::copy(file.path(), target.join(file.file_name())).unwrap();
+    }
+    (copy, target)
+}
+
+fn run_verify(args: &[&std::ffi::OsStr]) -> (i32, String, String) {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_mightyconsole-server"))
+        .arg("audit")
+        .arg("verify")
+        .args(args)
+        .env_remove("MIGHTYCONSOLE_DATA")
+        .output()
+        .unwrap();
+    (
+        out.status.code().unwrap(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[tokio::test]
+async fn audit_verify_passes_on_a_log_of_many_segments_and_names_each_kind_of_break() {
+    let (copy, audit) = a_log_of_many_segments().await;
+    let files = audit_jsonl::segment_files(&audit).unwrap();
+    assert!(files.len() >= 4, "many segments: {files:?}");
+    let data = copy.path();
+    let ok = run_verify(&["--data".as_ref(), data.as_os_str()]);
+    assert_eq!(ok.0, 0, "{ok:?}");
+    assert!(ok.1.contains("audit log intact"), "{}", ok.1);
+    assert!(ok.1.contains("checkpoint: not checked"), "{}", ok.1);
+    // The files themselves, given by name.
+    let by_name: Vec<&std::ffi::OsStr> = files.iter().map(|f| f.as_os_str()).collect();
+    assert_eq!(run_verify(&by_name).0, 0);
+
+    // An edited line: exit 1, naming the file, line and seq.
+    let second = &files[1];
+    let original = std::fs::read_to_string(second).unwrap();
+    std::fs::write(
+        second,
+        original.replacen("\"risk\":\"Write\"", "\"risk\":\"Read\"", 1),
+    )
+    .unwrap();
+    let edited = run_verify(&["--data".as_ref(), data.as_os_str()]);
+    assert_eq!(edited.0, 1, "{edited:?}");
+    assert!(edited.2.contains("BROKEN"), "{}", edited.2);
+    assert!(
+        edited
+            .2
+            .contains(second.file_name().unwrap().to_str().unwrap()),
+        "{}",
+        edited.2
+    );
+    assert!(
+        edited.2.contains("line 1") && edited.2.contains("edited"),
+        "{}",
+        edited.2
+    );
+    std::fs::write(second, &original).unwrap();
+
+    // A deleted line.
+    let kept: Vec<&str> = original
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| *i != 1)
+        .map(|(_, l)| l)
+        .collect();
+    std::fs::write(second, kept.join("\n") + "\n").unwrap();
+    let deleted = run_verify(&["--data".as_ref(), data.as_os_str()]);
+    assert_eq!(deleted.0, 1);
+    assert!(deleted.2.contains("deleted"), "{}", deleted.2);
+    std::fs::write(second, &original).unwrap();
+
+    // A missing segment: a gap across a file boundary.
+    std::fs::remove_file(&files[2]).unwrap();
+    let gap = run_verify(&["--data".as_ref(), data.as_os_str()]);
+    assert_eq!(gap.0, 1);
+    assert!(
+        gap.2.contains("gap") && gap.2.contains("segment is missing"),
+        "{}",
+        gap.2
+    );
+
+    // Nothing to verify at all is a usage error. (A log cut at its end is a valid shorter chain:
+    // verify says the end is not checked; the crate's tests pin that.)
+    let empty = tempfile::tempdir().unwrap();
+    assert_eq!(
+        run_verify(&["--data".as_ref(), empty.path().as_os_str()]).0,
+        2
+    );
+}
+
+#[tokio::test]
+async fn the_server_rotates_its_log_and_a_new_chain_follows_a_broken_one() {
+    let t = start_durable_configured(StartOptions::default(), |config| {
+        config.audit.policy.segment_bytes = 3_000;
+    })
+    .await;
+    let dir = t._dir.path().to_path_buf();
+    let browser = t.browser().await;
+    let mut tab = t.tab(&browser).await;
+    let conn = tab.connect(1).await;
+    for i in 0..20u32 {
+        tab.call(
+            10 + i,
+            "echo.messages.produce",
+            json!({ "connId": conn, "value": { "codec": "utf8", "text": "x" } }),
+        )
+        .await;
+        tab.result(10 + i).await;
+    }
+    tab.disconnect().await;
+    t.server.shutdown().await.unwrap();
+    let segments = audit_jsonl::segment_files(&audit_dir(&dir)).unwrap();
+    assert!(segments.len() >= 3, "rotated: {segments:?}");
+    assert!(
+        audit_jsonl::check_files(&segments).is_ok(),
+        "across segments"
+    );
+
+    // Break it; the server refuses to start, naming the file; with the flag it starts a new chain.
+    let last = segments.last().unwrap();
+    let text = std::fs::read_to_string(last).unwrap();
+    std::fs::write(
+        last,
+        text.replacen("server.stop", "server.stopx", 1).replacen(
+            "\"risk\":\"Write\"",
+            "\"risk\":\"Read\"",
+            1,
+        ),
+    )
+    .unwrap();
+    let broken_text = std::fs::read_to_string(last).unwrap();
+    assert_ne!(text, broken_text);
+    let Err(err) = Server::start_with(config(&dir, None), StartOptions::default()).await else {
+        panic!("a broken log must not start");
+    };
+    assert!(matches!(err, StartError::Audit(_)), "{err}");
+
+    let mut again = config(&dir, None);
+    again.audit.new_chain = true;
+    let server = Server::start_with(again, StartOptions::default())
+        .await
+        .expect("starts on a new chain");
+    server.shutdown().await.unwrap();
+    let moved: Vec<_> = std::fs::read_dir(audit_dir(&dir))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().starts_with("broken-"))
+        .collect();
+    assert_eq!(moved.len(), 1, "the old log moved to broken-<utc>/");
+    let now = audit_jsonl::segment_files(&audit_dir(&dir)).unwrap();
+    let records: Vec<AuditRecord> = now
+        .iter()
+        .flat_map(|f| {
+            std::fs::read_to_string(f)
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str::<AuditRecord>(l).unwrap())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(records[0].seq, 0);
+    assert_eq!(records[0].entry.action.name, "audit.new_chain");
+    let detail = serde_json::to_value(&records[0].entry.detail).unwrap();
+    assert_eq!(
+        detail["moved_to"],
+        moved[0].file_name().to_string_lossy().as_ref()
+    );
+    assert_eq!(records[1].entry.action.name, "server.start");
+    assert!(audit_jsonl::check_files(&now).is_ok());
 }

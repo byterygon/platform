@@ -1,7 +1,7 @@
 // Security acceptance (DOC-25 §6), run on the lab with the identity provider (the `idp` profile:
 // Dex). Each build task wires its own items; TSK-141 attaches the evidence. Wired so far: "Login and
-// sessions" (TSK-136) and "Audit" (TSK-137: the log, its events and the sensitive reads; verify
-// and rotation come in its last batch). The parts other tasks own are `manual` checks naming them;
+// sessions" (TSK-136) and "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
+// rotation; the checkpoint waits for the key of TSK-139). The parts other tasks own are `manual` checks naming them;
 // the built-in accounts item (TSK-142) and the Start, Authorization, Destroy and Secrets sections
 // come with their tasks.
 import { cargo, command, manual } from "../checklist.mts";
@@ -99,7 +99,10 @@ export default {
       text: "(TSK-137) audit verify passes on the lab's log and fails, naming the line, on a copy with an edited line, a deleted line, a cut tail (checkpoint) and a gap across a segment boundary.",
       checks: [
         cargo("a_tampered_log_refuses_the_start_and_names_the_file", { label: "an edited line refuses the start, naming the file" }),
-        manual("the audit verify command, the deleted line, the cut tail and the gap across segments: the next batch of TSK-137 (the checkpoint needs the key of TSK-139)"),
+        cargo("audit_verify_passes_on_a_log_of_many_segments_and_names_each_kind_of_break", { label: "the audit verify command on a copy: intact (0), an edited line, a deleted line and a missing segment (1, naming file and line), nothing to check (2)" }),
+        cargo("the_server_rotates_its_log_and_a_new_chain_follows_a_broken_one", { label: "the server rotates its log; --audit-new-chain moves a broken log aside and the new chain names it" }),
+        command("audit-jsonl: segments, a gap across a boundary, retention with its anchor, the size limit and a full log", ["cargo", "test", "-p", "audit-jsonl"], { requires: ["cargo"] }),
+        manual("a log cut at its end (the checkpoint): needs the key of TSK-139; until then audit verify says the end is not checked"),
       ],
     },
     {

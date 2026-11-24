@@ -352,7 +352,7 @@ async fn config_check_reports_and_reaches_the_idp_when_asked() {
     );
     assert!(!text.contains("discovery"));
     assert!(
-        text.contains("audit log ") && text.contains("0 records, chain intact"),
+        text.contains("audit log ") && text.contains("0 records in 0 segment(s), chain intact"),
         "{text}"
     );
     assert!(

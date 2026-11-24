@@ -14,6 +14,15 @@
 //! The record format and hash domain are `security-types`' and do not change here: logs written
 //! before this crate existed (DBee's) verify unchanged.
 
+pub mod check;
+pub mod segments;
+
+pub use check::{
+    Break, BreakKind, CheckError, Checked, NEW_CHAIN_ACTION, RETENTION_ACTION, SegmentInfo,
+    check_files, segment_files,
+};
+pub use segments::{SegmentOptions, SegmentPolicy, SegmentStatus, SegmentedSink};
+
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -40,6 +49,8 @@ pub enum AuditLogError {
         path: PathBuf,
         error: ChainError,
     },
+    /// A log of several segment files breaks here ([`check_files`]).
+    Broken(Box<Break>),
 }
 
 impl std::fmt::Display for AuditLogError {
@@ -58,6 +69,7 @@ impl std::fmt::Display for AuditLogError {
             AuditLogError::Chain { path, error } => {
                 write!(f, "audit log {}: {error}", path.display())
             }
+            AuditLogError::Broken(broken) => write!(f, "audit log {broken}"),
         }
     }
 }
@@ -123,6 +135,9 @@ pub fn verify(path: &Path) -> Result<VerifyReport, AuditLogError> {
 struct LogState {
     file: File,
     chain: AuditChain,
+    /// Set by a failed write: the chain head already moved, so a later append would leave a gap
+    /// on disk. Every later write fails until the log is repaired and reopened.
+    failed: bool,
 }
 
 /// Append-only, hash-chained JSON Lines on disk, one fsync per entry.
@@ -156,7 +171,11 @@ impl JsonlAuditSink {
             .map_err(io_err)?;
         Ok(JsonlAuditSink {
             path: path.to_path_buf(),
-            state: Arc::new(Mutex::new(LogState { file, chain })),
+            state: Arc::new(Mutex::new(LogState {
+                file,
+                chain,
+                failed: false,
+            })),
         })
     }
 
@@ -186,6 +205,9 @@ impl AuditSink for JsonlAuditSink {
             // the chain order is the file order.
             let written = tokio::task::spawn_blocking(move || {
                 let mut state = lock(&state);
+                if state.failed {
+                    return Err(AuditError("an earlier write failed".into()));
+                }
                 let record = state.chain.append(entry);
                 let mut line = serde_json::to_vec(&record)
                     .map_err(|_| AuditError("record did not serialize".into()))?;
@@ -197,7 +219,7 @@ impl AuditSink for JsonlAuditSink {
                 if let Err(e) = result {
                     // The chain head already moved; a later append would leave a gap on disk.
                     // Fail every later write too: the log is unusable until it is repaired.
-                    state.chain = AuditChain::new();
+                    state.failed = true;
                     return Err(AuditError(format!("write failed: {}", e.kind())));
                 }
                 Ok(())

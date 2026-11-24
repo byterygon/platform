@@ -35,7 +35,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use ambidex::{AuditMode, Router};
-use audit_jsonl::{AuditLogError, JsonlAuditSink};
+use audit_jsonl::{AuditLogError, SegmentOptions, SegmentPolicy, SegmentedSink, segments::Warn};
 use security_types::{
     Action, AuditDecision, AuditDetail, AuditEntry, AuditError, AuditPrincipal, AuditSink,
     BoxFuture, Digest, Outcome, Principal, PrincipalKind, Reason, Risk, SessionId, TenantId,
@@ -60,10 +60,6 @@ impl LineWriter for Stderr {
 
 /// The audit directory under the data directory (DOC-25 §3.6.3).
 pub const AUDIT_DIR: &str = "audit";
-
-/// The file the log is written to until segments arrive: the first segment, named by its first
-/// `seq` as DOC-25 §3.5.4 names them.
-pub const FIRST_SEGMENT: &str = "audit-000000000001.jsonl";
 
 /// `audit.reads` (DOC-25 §3.5.1, Open question 7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -90,6 +86,10 @@ pub struct AuditSettings {
     pub reads: Reads,
     /// Also write v0.1's one line per recorded call to stderr.
     pub stderr: bool,
+    /// Segment size, retention and the size limit (DOC-25 §3.5.4, §3.5.6).
+    pub policy: SegmentPolicy,
+    /// `--audit-new-chain`: move a broken log aside and start a new chain (DOC-25 §3.6.2).
+    pub new_chain: bool,
 }
 
 /// The calls the router's table marks `audit = "always"`.
@@ -544,15 +544,38 @@ impl EventLog {
     }
 }
 
-/// Opens the log of the data directory: `DATA/audit/audit-000000000001.jsonl`, the chain
-/// verified, a broken or unreadable log refused (DOC-25 §3.6.2 point 6).
-pub fn open_log(data: &Path) -> Result<JsonlAuditSink, AuditLogError> {
-    JsonlAuditSink::open(&log_path(data))
+/// The log directory of a data directory.
+pub fn audit_dir(data: &Path) -> PathBuf {
+    data.join(AUDIT_DIR)
 }
 
-/// The log file of a data directory.
+/// The first segment of a data directory's log, which holds a whole small log (tests).
 pub fn log_path(data: &Path) -> PathBuf {
-    data.join(AUDIT_DIR).join(FIRST_SEGMENT)
+    audit_dir(data).join(audit_jsonl::check::segment_name(0))
+}
+
+/// Opens the log of the data directory: `DATA/audit/audit-<n>.jsonl`, every segment read and the
+/// chain verified across them, a broken or unreadable log refused naming file, line and `seq`
+/// (DOC-25 §3.6.2 point 6). With `settings.new_chain` a broken log is moved to `broken-<utc>/`
+/// instead and a new chain starts, the name of the directory returned.
+pub fn open_log(
+    data: &Path,
+    settings: &AuditSettings,
+    tenant: &str,
+    warn: Option<Warn>,
+) -> Result<(SegmentedSink, Option<String>), AuditLogError> {
+    let options = SegmentOptions {
+        policy: settings.policy,
+        tenant: TenantId::new(tenant),
+        clock: Arc::new(security_types::SystemClock),
+        warn,
+    };
+    let dir = audit_dir(data);
+    if settings.new_chain {
+        let (sink, moved_to) = SegmentedSink::open_new_chain(&dir, options)?;
+        return Ok((sink, Some(moved_to)));
+    }
+    Ok((SegmentedSink::open(&dir, options)?, None))
 }
 
 #[cfg(test)]
@@ -596,7 +619,11 @@ mod tests {
         let sink = McAuditSink::new(
             Arc::clone(&log) as Arc<dyn AuditSink>,
             table,
-            AuditSettings { reads, stderr },
+            AuditSettings {
+                reads,
+                stderr,
+                ..AuditSettings::default()
+            },
             Arc::clone(&lines) as Arc<dyn LineWriter>,
         );
         (sink, log, lines)
@@ -886,24 +913,40 @@ mod tests {
     #[tokio::test]
     async fn the_durable_log_resumes_and_a_tampered_one_is_refused() {
         let dir = tempfile::tempdir().unwrap();
-        let sink = open_log(dir.path()).unwrap();
-        assert!(log_path(dir.path()).ends_with("audit/audit-000000000001.jsonl"));
+        let settings = AuditSettings::default();
+        let open = |settings: &AuditSettings| open_log(dir.path(), settings, "t", None);
+        let (sink, moved) = open(&settings).unwrap();
+        assert!(moved.is_none());
+        let first = audit_dir(dir.path()).join("audit-000000000001.jsonl");
+        assert!(first.exists());
         sink.append(Event::ServerStop.entry(&tenant(), "c-1".into(), 1))
             .await
             .unwrap();
         drop(sink);
-        let sink = open_log(dir.path()).unwrap();
+        let (sink, _) = open(&settings).unwrap();
         sink.append(Event::ServerStop.entry(&tenant(), "c-2".into(), 2))
             .await
             .unwrap();
         assert_eq!(sink.len(), 2);
         drop(sink);
-        let text = std::fs::read_to_string(log_path(dir.path())).unwrap();
-        std::fs::write(
-            log_path(dir.path()),
-            text.replacen("server.stop", "server.start", 1),
-        )
-        .unwrap();
-        assert!(open_log(dir.path()).is_err());
+        let text = std::fs::read_to_string(&first).unwrap();
+        std::fs::write(&first, text.replacen("server.stop", "server.start", 1)).unwrap();
+        let Err(err) = open(&settings) else {
+            panic!("a tampered log must not open");
+        };
+        assert!(
+            err.to_string().contains("audit-000000000001.jsonl"),
+            "{err}"
+        );
+        // --audit-new-chain moves it aside and starts again, naming it.
+        let fresh = AuditSettings {
+            new_chain: true,
+            ..settings
+        };
+        let (sink, moved) = open(&fresh).unwrap();
+        let moved = moved.expect("the directory it moved to");
+        assert!(moved.starts_with("broken-"));
+        assert!(audit_dir(dir.path()).join(&moved).is_dir());
+        assert_eq!(sink.len(), 1, "the new chain's first entry");
     }
 }
