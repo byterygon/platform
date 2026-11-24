@@ -1,0 +1,781 @@
+//! The server's store, `DATA/store.redb` (DOC-25 §3.1, §3.6.3): one redb file, mode 0600,
+//! opened by one process at a time (redb's exclusive-writer lock, so `reset-admin` can tell a
+//! running server from a stopped one, §3.2.7).
+//!
+//! Tables (schema version [`SCHEMA_VERSION`] in `meta`):
+//!
+//! - `meta`: `schema` → the version.
+//! - `accounts`: account id → the account as JSON ([`ambidex_axum::accounts::Account`]).
+//! - `usernames`: user name (lower case) → account id, so names stay unique.
+//! - `setup_links`: SHA-256 of a setup link's token → `{account, expires}` as JSON.
+//!
+//! Roles, assignments and groups (TSK-138), profiles and encrypted secrets (TSK-139) add their
+//! tables with those tasks. Until TSK-139 encrypts secret entries, an account's TOTP key is kept
+//! in its row like the rest of it: the file is 0600 inside a 0700 data directory.
+//!
+//! Every write is one transaction, durable when it commits. [`McAccountStore`] runs them on the
+//! blocking pool.
+
+use std::fmt;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use ambidex::engine::BoxFuture;
+use ambidex_axum::accounts::{
+    Account, AccountStore, CreateError, CreatedBy, StoreError, TotpRecord,
+};
+use redb::{
+    Database, DatabaseError, ReadableDatabase, ReadableTable, ReadableTableMetadata,
+    TableDefinition,
+};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
+
+/// The store's file in the data directory.
+pub const STORE_FILE: &str = "store.redb";
+/// The schema this build reads and writes.
+pub const SCHEMA_VERSION: &str = "1";
+
+const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
+const ACCOUNTS: TableDefinition<&str, &[u8]> = TableDefinition::new("accounts");
+const USERNAMES: TableDefinition<&str, &str> = TableDefinition::new("usernames");
+const SETUP_LINKS: TableDefinition<&[u8], &[u8]> = TableDefinition::new("setup_links");
+
+/// Why the store did not open.
+#[derive(Debug)]
+pub enum OpenError {
+    /// Another process has it open (a running server).
+    Locked(PathBuf),
+    /// A schema this build does not know (a newer server wrote it).
+    Schema {
+        path: PathBuf,
+        found: String,
+    },
+    Other {
+        path: PathBuf,
+        message: String,
+    },
+}
+
+impl fmt::Display for OpenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpenError::Locked(path) => write!(
+                f,
+                "store {}: another process has it open (is a server running on this data directory?)",
+                path.display()
+            ),
+            OpenError::Schema { path, found } => write!(
+                f,
+                "store {}: schema version {found:?} is not one this server knows ({SCHEMA_VERSION})",
+                path.display()
+            ),
+            OpenError::Other { path, message } => write!(f, "store {}: {message}", path.display()),
+        }
+    }
+}
+
+impl std::error::Error for OpenError {}
+
+/// The store file of a data directory.
+pub fn store_path(data: &Path) -> PathBuf {
+    data.join(STORE_FILE)
+}
+
+/// An open `store.redb`.
+pub struct Store {
+    db: Database,
+    path: PathBuf,
+}
+
+impl fmt::Debug for Store {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Store").field("path", &self.path).finish()
+    }
+}
+
+fn err(e: impl fmt::Display) -> StoreError {
+    StoreError(e.to_string())
+}
+
+#[derive(Serialize, Deserialize)]
+struct TotpRow {
+    /// Hex.
+    key: Zeroizing<String>,
+    last_step: u64,
+    enrolled_ms: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountRow {
+    id: String,
+    username: String,
+    display_name: String,
+    password_hash: Option<String>,
+    must_change_password: bool,
+    /// `self`, `server`, or `admin:<principal id>`.
+    created_by: String,
+    created_ms: u64,
+    last_seen_ms: Option<u64>,
+    disabled: bool,
+    locked_until_ms: Option<u64>,
+    totp: Option<TotpRow>,
+    recovery_codes: Vec<String>,
+}
+
+fn hex(bytes: &[u8]) -> Zeroizing<String> {
+    let mut out = Zeroizing::new(String::with_capacity(bytes.len() * 2));
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+fn unhex(text: &str) -> Option<Zeroizing<Vec<u8>>> {
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut out = Zeroizing::new(Vec::with_capacity(text.len() / 2));
+    for pair in text.as_bytes().chunks(2) {
+        let pair = std::str::from_utf8(pair).ok()?;
+        out.push(u8::from_str_radix(pair, 16).ok()?);
+    }
+    Some(out)
+}
+
+impl AccountRow {
+    fn from_account(a: &Account) -> AccountRow {
+        AccountRow {
+            id: a.id.clone(),
+            username: a.username.clone(),
+            display_name: a.display_name.clone(),
+            password_hash: a.password_hash.clone(),
+            must_change_password: a.must_change_password,
+            created_by: match &a.created_by {
+                CreatedBy::SelfSignup => "self".into(),
+                CreatedBy::Server => "server".into(),
+                CreatedBy::Administrator(by) => format!("admin:{by}"),
+            },
+            created_ms: a.created_ms,
+            last_seen_ms: a.last_seen_ms,
+            disabled: a.disabled,
+            locked_until_ms: a.locked_until_ms,
+            totp: a.totp.as_ref().map(|t| TotpRow {
+                key: hex(&t.key),
+                last_step: t.last_step,
+                enrolled_ms: t.enrolled_ms,
+            }),
+            recovery_codes: a.recovery_codes.clone(),
+        }
+    }
+
+    fn into_account(self) -> Result<Account, StoreError> {
+        let totp = match self.totp {
+            Some(t) => Some(TotpRecord {
+                key: unhex(&t.key).ok_or_else(|| err("a TOTP key is not hex"))?,
+                last_step: t.last_step,
+                enrolled_ms: t.enrolled_ms,
+            }),
+            None => None,
+        };
+        Ok(Account {
+            id: self.id,
+            username: self.username,
+            display_name: self.display_name,
+            password_hash: self.password_hash,
+            must_change_password: self.must_change_password,
+            created_by: match self.created_by.as_str() {
+                "self" => CreatedBy::SelfSignup,
+                "server" => CreatedBy::Server,
+                other => CreatedBy::Administrator(
+                    other.strip_prefix("admin:").unwrap_or(other).to_owned(),
+                ),
+            },
+            created_ms: self.created_ms,
+            last_seen_ms: self.last_seen_ms,
+            disabled: self.disabled,
+            locked_until_ms: self.locked_until_ms,
+            totp,
+            recovery_codes: self.recovery_codes,
+        })
+    }
+}
+
+fn encode(account: &Account) -> Result<Zeroizing<Vec<u8>>, StoreError> {
+    serde_json::to_vec(&AccountRow::from_account(account))
+        .map(Zeroizing::new)
+        .map_err(err)
+}
+
+fn decode(bytes: &[u8]) -> Result<Account, StoreError> {
+    serde_json::from_slice::<AccountRow>(bytes)
+        .map_err(|e| err(format!("an account row does not read: {e}")))?
+        .into_account()
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetupRow {
+    account: String,
+    expires: u64,
+}
+
+impl Store {
+    /// Opens (creating it when missing) the store of a data directory. Fails when another
+    /// process has it open, or when its schema is not this build's.
+    pub fn open(data: &Path) -> Result<Store, OpenError> {
+        let path = store_path(data);
+        let other = |message: String| OpenError::Other {
+            path: path.clone(),
+            message,
+        };
+        fs::create_dir_all(data).map_err(|e| other(e.to_string()))?;
+        let created = !path.exists();
+        let db = redb::Builder::new()
+            .set_cache_size(16 << 20)
+            .create(&path)
+            .map_err(|e| match e {
+                DatabaseError::DatabaseAlreadyOpen => OpenError::Locked(path.clone()),
+                e => other(e.to_string()),
+            })?;
+        restrict(&path, created).map_err(|e| other(e.to_string()))?;
+        let store = Store {
+            db,
+            path: path.clone(),
+        };
+        let found = store.schema().map_err(|e| other(e.0))?;
+        match found.as_deref() {
+            Some(SCHEMA_VERSION) => {}
+            None => store.init().map_err(|e| other(e.0))?,
+            Some(found) => {
+                return Err(OpenError::Schema {
+                    path,
+                    found: found.to_owned(),
+                });
+            }
+        }
+        Ok(store)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn schema(&self) -> Result<Option<String>, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let table = match read.open_table(META) {
+            Ok(table) => table,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+            Err(e) => return Err(err(e)),
+        };
+        Ok(table
+            .get("schema")
+            .map_err(err)?
+            .map(|v| v.value().to_owned()))
+    }
+
+    fn init(&self) -> Result<(), StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        {
+            write
+                .open_table(META)
+                .map_err(err)?
+                .insert("schema", SCHEMA_VERSION)
+                .map_err(err)?;
+            write.open_table(ACCOUNTS).map_err(err)?;
+            write.open_table(USERNAMES).map_err(err)?;
+            write.open_table(SETUP_LINKS).map_err(err)?;
+        }
+        write.commit().map_err(err)
+    }
+
+    /// Adds an account; its user name and id must be free.
+    pub fn create_account(&self, account: &Account) -> Result<(), CreateError> {
+        let bytes = encode(account)?;
+        let write = self.db.begin_write().map_err(err)?;
+        {
+            let mut names = write.open_table(USERNAMES).map_err(err)?;
+            let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
+            if names.get(account.username.as_str()).map_err(err)?.is_some()
+                || accounts.get(account.id.as_str()).map_err(err)?.is_some()
+            {
+                return Err(CreateError::UsernameTaken);
+            }
+            names
+                .insert(account.username.as_str(), account.id.as_str())
+                .map_err(err)?;
+            accounts
+                .insert(account.id.as_str(), bytes.as_slice())
+                .map_err(err)?;
+        }
+        write.commit().map_err(err)?;
+        Ok(())
+    }
+
+    pub fn account(&self, id: &str) -> Result<Option<Account>, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let accounts = read.open_table(ACCOUNTS).map_err(err)?;
+        accounts
+            .get(id)
+            .map_err(err)?
+            .map(|v| decode(v.value()))
+            .transpose()
+    }
+
+    pub fn account_by_username(&self, username: &str) -> Result<Option<Account>, StoreError> {
+        let id = {
+            let read = self.db.begin_read().map_err(err)?;
+            let names = read.open_table(USERNAMES).map_err(err)?;
+            names
+                .get(username)
+                .map_err(err)?
+                .map(|v| v.value().to_owned())
+        };
+        match id {
+            Some(id) => self.account(&id),
+            None => Ok(None),
+        }
+    }
+
+    /// Every account, in id order (oldest first: ids are ULIDs).
+    pub fn accounts(&self) -> Result<Vec<Account>, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let accounts = read.open_table(ACCOUNTS).map_err(err)?;
+        let mut out = Vec::new();
+        for row in accounts.iter().map_err(err)? {
+            let (_, value) = row.map_err(err)?;
+            out.push(decode(value.value())?);
+        }
+        Ok(out)
+    }
+
+    /// Changes an account in one transaction; `change` answers what to return. `None` when the
+    /// account does not exist. The user name cannot change here.
+    pub fn update_account<T>(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut Account) -> T,
+    ) -> Result<Option<T>, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let out = {
+            let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
+            let current = accounts.get(id).map_err(err)?.map(|v| decode(v.value()));
+            match current {
+                None => None,
+                Some(account) => {
+                    let mut account = account?;
+                    let username = account.username.clone();
+                    let out = change(&mut account);
+                    account.username = username;
+                    let bytes = encode(&account)?;
+                    accounts.insert(id, bytes.as_slice()).map_err(err)?;
+                    Some(out)
+                }
+            }
+        };
+        write.commit().map_err(err)?;
+        Ok(out)
+    }
+
+    pub fn put_setup_link(
+        &self,
+        token_hash: [u8; 32],
+        account: &str,
+        expires: u64,
+    ) -> Result<(), StoreError> {
+        let row = serde_json::to_vec(&SetupRow {
+            account: account.to_owned(),
+            expires,
+        })
+        .map_err(err)?;
+        let write = self.db.begin_write().map_err(err)?;
+        {
+            let mut links = write.open_table(SETUP_LINKS).map_err(err)?;
+            // A new link for an account replaces its older ones.
+            let mut older = Vec::new();
+            for entry in links.iter().map_err(err)? {
+                let (key, value) = entry.map_err(err)?;
+                if let Ok(existing) = serde_json::from_slice::<SetupRow>(value.value())
+                    && existing.account == account
+                {
+                    older.push(key.value().to_vec());
+                }
+            }
+            for key in older {
+                links.remove(key.as_slice()).map_err(err)?;
+            }
+            links
+                .insert(token_hash.as_slice(), row.as_slice())
+                .map_err(err)?;
+        }
+        write.commit().map_err(err)
+    }
+
+    /// The account of a live setup link; with `take`, the link is removed (whether live or
+    /// expired) in the same transaction.
+    pub fn setup_link(
+        &self,
+        token_hash: [u8; 32],
+        now: u64,
+        take: bool,
+    ) -> Result<Option<String>, StoreError> {
+        let live = |bytes: &[u8]| {
+            serde_json::from_slice::<SetupRow>(bytes)
+                .ok()
+                .filter(|row| now < row.expires)
+                .map(|row| row.account)
+        };
+        if !take {
+            let read = self.db.begin_read().map_err(err)?;
+            let links = read.open_table(SETUP_LINKS).map_err(err)?;
+            return Ok(links
+                .get(token_hash.as_slice())
+                .map_err(err)?
+                .and_then(|v| live(v.value())));
+        }
+        let write = self.db.begin_write().map_err(err)?;
+        let found = {
+            let mut links = write.open_table(SETUP_LINKS).map_err(err)?;
+            let removed = links.remove(token_hash.as_slice()).map_err(err)?;
+            removed.and_then(|v| live(v.value()))
+        };
+        write.commit().map_err(err)?;
+        Ok(found)
+    }
+
+    /// Setup links held (expired ones included).
+    pub fn setup_links(&self) -> Result<usize, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let links = read.open_table(SETUP_LINKS).map_err(err)?;
+        Ok(links.len().map_err(err)? as usize)
+    }
+}
+
+/// Mode 0600 on Unix. A file that already existed keeps its content but has its mode put right.
+fn restrict(path: &Path, _created: bool) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+/// [`AccountStore`] on the server's [`Store`], each operation on the blocking pool.
+#[derive(Clone)]
+pub struct McAccountStore(pub Arc<Store>);
+
+impl McAccountStore {
+    fn run<'a, T: Send + 'static>(
+        &'a self,
+        work: impl FnOnce(&Store) -> T + Send + 'static,
+    ) -> BoxFuture<'a, Result<T, StoreError>> {
+        let store = Arc::clone(&self.0);
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || work(&store))
+                .await
+                .map_err(|e| err(format!("the store task failed: {e}")))
+        })
+    }
+}
+
+impl AccountStore for McAccountStore {
+    fn create<'a>(&'a self, account: Account) -> BoxFuture<'a, Result<(), CreateError>> {
+        let run = self.run(move |s| s.create_account(&account));
+        Box::pin(async move { run.await.map_err(CreateError::Store)? })
+    }
+
+    fn by_username<'a>(
+        &'a self,
+        username: &'a str,
+    ) -> BoxFuture<'a, Result<Option<Account>, StoreError>> {
+        let username = username.to_owned();
+        let run = self.run(move |s| s.account_by_username(&username));
+        Box::pin(async move { run.await? })
+    }
+
+    fn by_id<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<Account>, StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| s.account(&id));
+        Box::pin(async move { run.await? })
+    }
+
+    fn set_password<'a>(
+        &'a self,
+        id: &'a str,
+        hash: String,
+        must_change: bool,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| {
+            s.update_account(&id, |a| {
+                a.password_hash = Some(hash);
+                a.must_change_password = must_change;
+            })
+        });
+        Box::pin(async move { Ok(run.await??.is_some()) })
+    }
+
+    fn set_locked_until<'a>(
+        &'a self,
+        id: &'a str,
+        until_ms: Option<u64>,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| s.update_account(&id, |a| a.locked_until_ms = until_ms));
+        Box::pin(async move { run.await?.map(|_| ()) })
+    }
+
+    fn set_last_seen<'a>(
+        &'a self,
+        id: &'a str,
+        at_ms: u64,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| s.update_account(&id, |a| a.last_seen_ms = Some(at_ms)));
+        Box::pin(async move { run.await?.map(|_| ()) })
+    }
+
+    fn put_setup_token<'a>(
+        &'a self,
+        token_hash: [u8; 32],
+        account_id: &'a str,
+        expires_ms: u64,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        let account = account_id.to_owned();
+        let run = self.run(move |s| s.put_setup_link(token_hash, &account, expires_ms));
+        Box::pin(async move { run.await? })
+    }
+
+    fn peek_setup_token<'a>(
+        &'a self,
+        token_hash: [u8; 32],
+        now_ms: u64,
+    ) -> BoxFuture<'a, Result<Option<String>, StoreError>> {
+        let run = self.run(move |s| s.setup_link(token_hash, now_ms, false));
+        Box::pin(async move { run.await? })
+    }
+
+    fn take_setup_token<'a>(
+        &'a self,
+        token_hash: [u8; 32],
+        now_ms: u64,
+    ) -> BoxFuture<'a, Result<Option<String>, StoreError>> {
+        let run = self.run(move |s| s.setup_link(token_hash, now_ms, true));
+        Box::pin(async move { run.await? })
+    }
+
+    fn set_totp<'a>(
+        &'a self,
+        id: &'a str,
+        totp: Option<TotpRecord>,
+        recovery_codes: Vec<String>,
+    ) -> BoxFuture<'a, Result<(), StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| {
+            s.update_account(&id, |a| {
+                a.totp = totp;
+                a.recovery_codes = recovery_codes;
+            })
+        });
+        Box::pin(async move { run.await?.map(|_| ()) })
+    }
+
+    fn advance_totp_step<'a>(
+        &'a self,
+        id: &'a str,
+        step: u64,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        let id = id.to_owned();
+        let run = self.run(move |s| {
+            s.update_account(&id, |a| match a.totp.as_mut() {
+                Some(totp) if step > totp.last_step => {
+                    totp.last_step = step;
+                    true
+                }
+                _ => false,
+            })
+        });
+        Box::pin(async move { Ok(run.await??.unwrap_or(false)) })
+    }
+
+    fn remove_recovery_code<'a>(
+        &'a self,
+        id: &'a str,
+        hash: &'a str,
+    ) -> BoxFuture<'a, Result<bool, StoreError>> {
+        let id = id.to_owned();
+        let hash = hash.to_owned();
+        let run = self.run(move |s| {
+            s.update_account(&id, |a| {
+                let before = a.recovery_codes.len();
+                a.recovery_codes.retain(|h| *h != hash);
+                a.recovery_codes.len() < before
+            })
+        });
+        Box::pin(async move { Ok(run.await??.unwrap_or(false)) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account(id: &str, username: &str) -> Account {
+        Account {
+            id: id.into(),
+            username: username.into(),
+            display_name: username.into(),
+            password_hash: Some("$argon2id$v=19$m=8,t=1,p=1$c2FsdHNhbHQ$aGFzaA".into()),
+            must_change_password: true,
+            created_by: CreatedBy::Administrator("human:account:01A".into()),
+            created_ms: 1,
+            last_seen_ms: None,
+            disabled: false,
+            locked_until_ms: None,
+            totp: Some(TotpRecord {
+                key: Zeroizing::new(vec![1, 2, 0xff]),
+                last_step: 7,
+                enrolled_ms: 2,
+            }),
+            recovery_codes: vec!["$argon2id$x".into()],
+        }
+    }
+
+    #[test]
+    fn accounts_round_trip_and_names_stay_unique() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let a = account("01A", "alice");
+        store.create_account(&a).unwrap();
+        assert_eq!(store.account("01A").unwrap(), Some(a.clone()));
+        assert_eq!(store.account_by_username("alice").unwrap(), Some(a.clone()));
+        assert_eq!(
+            store.create_account(&account("01B", "alice")),
+            Err(CreateError::UsernameTaken)
+        );
+        assert_eq!(
+            store.create_account(&account("01A", "bob")),
+            Err(CreateError::UsernameTaken)
+        );
+        let changed = store
+            .update_account("01A", |a| {
+                a.disabled = true;
+                a.username = "mallory".into();
+            })
+            .unwrap();
+        assert_eq!(changed, Some(()));
+        let back = store.account("01A").unwrap().unwrap();
+        assert!(back.disabled);
+        assert_eq!(
+            back.username, "alice",
+            "the name cannot change through an update"
+        );
+        assert_eq!(store.update_account("nope", |_| ()).unwrap(), None);
+        assert_eq!(store.accounts().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_file_is_private_reopens_and_is_locked_while_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        store.create_account(&account("01A", "alice")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = fs::metadata(store.path()).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        drop(store);
+        let store = Store::open(dir.path()).unwrap();
+        assert!(store.account("01A").unwrap().is_some());
+        // A second process (here: a second open) is refused while it is open.
+        assert!(matches!(Store::open(dir.path()), Err(OpenError::Locked(_))));
+    }
+
+    #[test]
+    fn an_unknown_schema_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let store = Store::open(dir.path()).unwrap();
+            let write = store.db.begin_write().unwrap();
+            write
+                .open_table(META)
+                .unwrap()
+                .insert("schema", "99")
+                .unwrap();
+            write.commit().unwrap();
+        }
+        let e = Store::open(dir.path()).unwrap_err();
+        assert!(matches!(e, OpenError::Schema { .. }), "{e}");
+        assert!(e.to_string().contains("\"99\""));
+    }
+
+    #[tokio::test]
+    async fn the_account_store_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = McAccountStore(Arc::new(Store::open(dir.path()).unwrap()));
+        store.create(account("01A", "alice")).await.unwrap();
+        assert!(store.by_username("alice").await.unwrap().is_some());
+        assert!(store.by_username("bob").await.unwrap().is_none());
+        assert!(
+            store
+                .set_password("01A", "$argon2id$new".into(), false)
+                .await
+                .unwrap()
+        );
+        assert!(!store.set_password("nope", "x".into(), false).await.unwrap());
+        let a = store.by_id("01A").await.unwrap().unwrap();
+        assert_eq!(a.password_hash.as_deref(), Some("$argon2id$new"));
+        assert!(!a.must_change_password);
+
+        // A step works once; an older one never.
+        assert!(store.advance_totp_step("01A", 8).await.unwrap());
+        assert!(!store.advance_totp_step("01A", 8).await.unwrap());
+        assert!(!store.advance_totp_step("01A", 3).await.unwrap());
+        assert!(
+            store
+                .remove_recovery_code("01A", "$argon2id$x")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .remove_recovery_code("01A", "$argon2id$x")
+                .await
+                .unwrap()
+        );
+        store.set_totp("01A", None, vec![]).await.unwrap();
+        assert!(!store.advance_totp_step("01A", 9).await.unwrap());
+
+        store.put_setup_token([1; 32], "01A", 100).await.unwrap();
+        store.put_setup_token([2; 32], "01A", 100).await.unwrap();
+        assert_eq!(
+            store.0.setup_links().unwrap(),
+            1,
+            "a new link replaces the old"
+        );
+        assert_eq!(
+            store
+                .peek_setup_token([2; 32], 99)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("01A")
+        );
+        assert_eq!(store.peek_setup_token([2; 32], 100).await.unwrap(), None);
+        assert_eq!(
+            store
+                .take_setup_token([2; 32], 50)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("01A")
+        );
+        assert_eq!(store.take_setup_token([2; 32], 50).await.unwrap(), None);
+    }
+}

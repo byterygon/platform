@@ -149,6 +149,8 @@ pub struct AuthSection {
     pub session_absolute: Option<String>,
     pub max_sessions_per_user: Option<usize>,
     pub max_sessions: Option<usize>,
+    /// The default administrator (DOC-25 §3.2.7); default true.
+    pub default_admin: Option<bool>,
     pub oidc: Option<OidcSection>,
 }
 
@@ -175,6 +177,8 @@ pub struct AuthSettings {
     /// `auth.tenant`: the one tenant of this server.
     pub tenant: String,
     pub limits: SessionLimits,
+    /// `auth.default_admin`: the account `admin` with a generated password (DOC-25 §3.2.7).
+    pub default_admin: bool,
     /// `[auth.oidc]`, when configured.
     pub oidc: Option<OidcSettings>,
 }
@@ -184,6 +188,7 @@ impl Default for AuthSettings {
         AuthSettings {
             tenant: "default".into(),
             limits: SessionLimits::default(),
+            default_admin: true,
             oidc: None,
         }
     }
@@ -360,6 +365,9 @@ pub fn auth_settings(section: AuthSection, file: &Path) -> Result<AuthSettings, 
     }
     if auth.limits.idle.is_zero() || auth.limits.absolute.is_zero() {
         return Err("auth.session_idle and auth.session_absolute must be longer than 0".into());
+    }
+    if let Some(default_admin) = section.default_admin {
+        auth.default_admin = default_admin;
     }
     if let Some(oidc) = section.oidc {
         let token_auth = match oidc.token_auth.as_deref() {

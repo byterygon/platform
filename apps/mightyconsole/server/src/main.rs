@@ -37,6 +37,10 @@ fn main() -> ExitCode {
             Some(runtime) => runtime.block_on(serve(config)),
             None => ExitCode::FAILURE,
         },
+        Command::ResetAdmin { config, print } => match runtime() {
+            Some(runtime) => runtime.block_on(reset_admin(config, print)),
+            None => ExitCode::FAILURE,
+        },
         Command::ConfigCheck { config, online } => match runtime() {
             Some(runtime) => runtime.block_on(config_check(config, online)),
             None => ExitCode::FAILURE,
@@ -247,4 +251,105 @@ async fn wait_for_signal() {
 #[cfg(not(unix))]
 async fn wait_for_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+/// `reset-admin [--print]` (DOC-25 §3.2.7): with the server stopped, the store is opened here and
+/// `auth.admin.reset` (via stopped) goes to the audit log; with it running (the store is
+/// locked), the server is asked through `DATA/reset-admin.request` and performs it. Never listens.
+async fn reset_admin(config: ServeConfig, print: bool) -> ExitCode {
+    use mightyconsole_server::admin::{self, REQUEST_WAIT};
+    use mightyconsole_server::store::{OpenError, Store};
+    let Some(data) = config.data.clone() else {
+        eprintln!("mightyconsole-server: reset-admin: no data directory");
+        return ExitCode::from(2);
+    };
+    if !config.auth.default_admin {
+        eprintln!(
+            "mightyconsole-server: reset-admin: auth.default_admin = false: the default administrator is turned off"
+        );
+        return ExitCode::FAILURE;
+    }
+    let opened = {
+        let data = data.clone();
+        tokio::task::spawn_blocking(move || Store::open(&data)).await
+    };
+    let file = match opened {
+        Ok(Ok(store)) => {
+            // Stopped: the audit log first, as at a start: a reset that cannot be recorded does
+            // not happen.
+            let tenant = mightyconsole_server::audit_tenant(&config);
+            let (settings, log_data) = (config.audit, data.clone());
+            let opened = tokio::task::spawn_blocking(move || {
+                mightyconsole_server::audit::open_log(&log_data, &settings, &tenant, None)
+            })
+            .await;
+            let sink = match opened {
+                Ok(Ok((sink, _))) => std::sync::Arc::new(sink),
+                Ok(Err(e)) => {
+                    eprintln!("mightyconsole-server: reset-admin: audit log: {e}");
+                    return ExitCode::FAILURE;
+                }
+                Err(e) => {
+                    eprintln!("mightyconsole-server: reset-admin: audit log: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let store = std::sync::Arc::new(store);
+            let hasher = ambidex_axum::accounts::PasswordHasher::new();
+            let reset =
+                match admin::reset(&store, &data, &hasher, security_types::unix_now_ms()).await {
+                    Ok(reset) => reset,
+                    Err(e) => {
+                        eprintln!("mightyconsole-server: reset-admin: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            let (events, task) = mightyconsole_server::audit::EventLog::spawn(
+                sink,
+                &mightyconsole_server::audit_tenant(&config),
+                false,
+                std::sync::Arc::new(mightyconsole_server::audit::Stderr),
+            );
+            events.record(&mightyconsole_server::audit::Event::AdminReset {
+                via: "stopped".into(),
+            });
+            events.flush().await;
+            task.abort();
+            reset.password_file
+        }
+        Ok(Err(OpenError::Locked(_))) => {
+            eprintln!(
+                "mightyconsole-server: reset-admin: the server is running; asking it (up to {} s)",
+                REQUEST_WAIT.as_secs()
+            );
+            if let Err(e) = admin::request_and_wait(&data, REQUEST_WAIT).await {
+                eprintln!("mightyconsole-server: reset-admin: {e}");
+                return ExitCode::FAILURE;
+            }
+            admin::password_file(&data)
+        }
+        Ok(Err(e)) => {
+            eprintln!("mightyconsole-server: reset-admin: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("mightyconsole-server: reset-admin: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!(
+        "the default administrator `{}` was reset; its new password is in {} and must be changed at the next sign-in",
+        admin::ADMIN_USERNAME,
+        file.display()
+    );
+    if print {
+        match std::fs::read_to_string(&file) {
+            Ok(password) => println!("{}", password.trim()),
+            Err(e) => {
+                eprintln!("mightyconsole-server: reset-admin: {}: {e}", file.display());
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }

@@ -13,6 +13,8 @@
 //!   everything until roles land).
 //! - [`audit`]: the durable audit log (DOC-25 §3.5, `audit-jsonl`): the filter in front of it
 //!   (Write and Destructive calls, sensitive reads, refusals), and the sign-in and server events.
+//! - [`store`]: `DATA/store.redb`, the accounts (DOC-25 §3.1); [`admin`]: the default
+//!   administrator and `reset-admin` (DOC-25 §3.2.7).
 //! - [`core`]: live handles per connection, events, terminals, stream progress, `ToolError`.
 //! - [`api`]: `app.info`, `app.events`, `term.*`.
 //! - [`tools`]: one module per tool (the `echo` sample in the foundation).
@@ -22,6 +24,7 @@
 // every tool, as in dbee-core.
 #![allow(clippy::result_large_err)]
 
+pub mod admin;
 pub mod api;
 pub mod audit;
 pub mod authz;
@@ -30,6 +33,7 @@ pub mod config;
 pub mod core;
 pub mod sessions;
 pub mod static_ui;
+pub mod store;
 pub mod tls;
 pub mod tools;
 
@@ -41,6 +45,7 @@ use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
 use ambidex::{Router, ServerConfig};
+use ambidex_axum::accounts::PasswordHasher;
 use ambidex_axum::oidc::{LoginRoutes, OidcLogin};
 use ambidex_axum::{ConfigError, DEFAULT_SESSION_COOKIE, LoginSessions, WsConfig, WsTransport};
 use security_types::{AuditSink, Clock, SystemClock};
@@ -229,6 +234,9 @@ pub enum StartError {
     /// The audit log cannot be used (DOC-25 §3.6.2 point 6): no data directory, or a log that
     /// does not open or whose chain is broken. The server does not start without it.
     Audit(String),
+    /// `DATA/store.redb` cannot be used (DOC-25 §3.6.2 point 7): no data directory, another
+    /// process holds it, an unknown schema; or the default administrator cannot be made.
+    Store(String),
     Web(ConfigError),
     Ui {
         path: PathBuf,
@@ -246,6 +254,7 @@ impl std::fmt::Display for StartError {
             StartError::Tls(e) => e.fmt(f),
             StartError::Auth(e) => write!(f, "sign-in: {e}"),
             StartError::Audit(e) => write!(f, "audit log: {e}"),
+            StartError::Store(e) => write!(f, "{e}"),
             StartError::Web(e) => write!(f, "web configuration: {e}"),
             StartError::Ui { path, error } => {
                 write!(f, "UI directory {}: {error}", path.display())
@@ -357,6 +366,66 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
     }
 }
 
+/// The tenant the audit log records in: the server's (`auth.tenant`) with sign-in, v0.1's local
+/// one without.
+pub fn audit_tenant(config: &ServeConfig) -> String {
+    match &config.auth.oidc {
+        Some(_) => config.auth.tenant.clone(),
+        None => authz::LOCAL_TENANT.to_owned(),
+    }
+}
+
+/// Why `auth.default_admin = false` does not start yet (DOC-25 §3.2.7, §3.6.2 point 1).
+pub const DEFAULT_ADMIN_OFF: &str = "auth.default_admin = false needs a pinned \
+     [[auth.group_roles]] entry granting admin, and group mappings arrive with roles (TSK-138); \
+     keep the default administrator until then";
+
+/// The running server's side of `reset-admin` (DOC-25 §3.2.7): performs a request, ends the
+/// administrator's sessions, records `auth.admin.reset` and says where the password is.
+fn reset_watcher(
+    store: &Arc<store::Store>,
+    data: &Path,
+    hasher: PasswordHasher,
+    clock: &Arc<dyn Clock>,
+    sessions: &ServerSessions,
+    events: &EventLog,
+    log: &Arc<dyn LineWriter>,
+) -> JoinHandle<()> {
+    let (sessions, events, done_log, failed_log) = (
+        sessions.clone(),
+        events.clone(),
+        Arc::clone(log),
+        Arc::clone(log),
+    );
+    admin::watch_requests(
+        Arc::clone(store),
+        data.to_path_buf(),
+        hasher,
+        Arc::clone(clock),
+        move |reset: &admin::Reset| {
+            if let ServerSessions::SignIn(signed) = &sessions {
+                signed.sessions.revoke_user(
+                    &ambidex_axum::accounts::principal_id(&reset.account),
+                    Some("system:server"),
+                );
+            }
+            events.record(&Event::AdminReset {
+                via: "request".into(),
+            });
+            done_log.line(&format!(
+                "mightyconsole-server: reset-admin: the default administrator was reset; its new \
+                 password is in {}",
+                reset.password_file.display()
+            ));
+        },
+        move |error: &str| {
+            failed_log.line(&format!(
+                "mightyconsole-server: WARNING: reset-admin: the reset failed: {error}"
+            ));
+        },
+    )
+}
+
 /// How often the audit log's retention and size policy is applied (DOC-25 §3.5.6).
 pub const RETENTION_EVERY: Duration = Duration::from_secs(24 * 3600);
 
@@ -398,8 +467,9 @@ pub struct Server {
     events: EventLog,
     event_task: JoinHandle<()>,
     retention_task: Option<JoinHandle<()>>,
-    /// The JWKS refresh and the session sweep, with sign-in.
+    /// The JWKS refresh and the session sweep, with sign-in; the `reset-admin` watcher.
     auth_tasks: Vec<JoinHandle<()>>,
+    store: Arc<store::Store>,
     tls: ServerTls,
     local_addr: SocketAddr,
     ui: ServedUi,
@@ -440,16 +510,17 @@ impl Server {
             None => ServedUi::Placeholder,
         };
 
+        // Someone can sign in (DOC-25 §3.6.2 point 1). Pinned group mappings come with roles.
+        if !config.auth.default_admin {
+            return Err(StartError::Auth(DEFAULT_ADMIN_OFF.into()));
+        }
         if let Some(worker) = options.jq_worker {
             core::jq::set_worker_program(worker);
         }
         let principal = local_principal();
         let log: Arc<dyn LineWriter> = Arc::new(Stderr);
         // The audit log first: a server that cannot record does not start (DOC-25 §3.6.2).
-        let tenant = match &config.auth.oidc {
-            Some(_) => config.auth.tenant.clone(),
-            None => authz::LOCAL_TENANT.to_owned(),
-        };
+        let tenant = audit_tenant(&config);
         let mut retention_sink: Option<Arc<audit_jsonl::SegmentedSink>> = None;
         let sink: Arc<dyn AuditSink> = match options.audit_sink {
             Some(sink) => sink,
@@ -509,7 +580,36 @@ impl Server {
             config.audit.stderr,
             Arc::clone(&log),
         );
-        let (sessions, authorizer, auth_tasks) = match &config.auth.oidc {
+        // The store, and the default administrator on a first start (DOC-25 §3.2.7): the log
+        // names the file, never the password.
+        let data = config.data.clone().ok_or_else(|| {
+            StartError::Store(
+                "no data directory for the store: give --data or set MIGHTYCONSOLE_DATA".into(),
+            )
+        })?;
+        let store = {
+            let data = data.clone();
+            tokio::task::spawn_blocking(move || store::Store::open(&data))
+                .await
+                .map_err(|e| StartError::Store(format!("opening the store panicked: {e}")))?
+                .map_err(|e| StartError::Store(e.to_string()))?
+        };
+        let store = Arc::new(store);
+        let hasher = PasswordHasher::new();
+        if let Some(file) = admin::ensure(&store, &data, &hasher, options.clock.now_unix_ms())
+            .await
+            .map_err(|e| StartError::Store(format!("the default administrator: {e}")))?
+        {
+            log.line(&format!(
+                "mightyconsole-server: made the default administrator `{}`; its password is in {} \
+                 (in a container: docker cp <container>:/data/{} -). It must be changed at the \
+                 first sign-in, and the file is then deleted.",
+                admin::ADMIN_USERNAME,
+                file.display(),
+                admin::PASSWORD_FILE,
+            ));
+        }
+        let (sessions, authorizer, mut auth_tasks) = match &config.auth.oidc {
             None => (
                 ServerSessions::Local(Arc::new(LocalSessions::new(principal.clone()))),
                 LocalAuthorizer::new(principal.id.clone()),
@@ -550,6 +650,15 @@ impl Server {
                 )
             }
         };
+        auth_tasks.push(reset_watcher(
+            &store,
+            &data,
+            hasher,
+            &options.clock,
+            &sessions,
+            &events,
+            &log,
+        ));
         let hub = Arc::new(Hub::new(options.clock, options.idle_timeout));
         let state = Arc::new(AppState {
             hub: Arc::clone(&hub),
@@ -649,6 +758,7 @@ impl Server {
             event_task,
             retention_task,
             auth_tasks,
+            store,
             tls,
             local_addr,
             ui: served_ui,
@@ -670,6 +780,11 @@ impl Server {
 
     pub fn sessions(&self) -> &ServerSessions {
         &self.sessions
+    }
+
+    /// `DATA/store.redb`.
+    pub fn store(&self) -> &Arc<store::Store> {
+        &self.store
     }
 
     /// The local browser sessions, when no sign-in is configured.

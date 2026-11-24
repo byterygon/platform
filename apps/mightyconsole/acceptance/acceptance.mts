@@ -383,7 +383,10 @@ async function openBrowser(run: Run): Promise<BrowserSession | { skipped: string
   let child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--codec-listen", `127.0.0.1:${codecPort}`, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
   let [startup] = await cdpModule.waitForLine(child, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
   if (!/UI built in/.test(startup ?? "")) {
+    // The store is open in one process at a time: wait for this one to end before the next.
+    const exited = new Promise((resolve) => child.once("exit", resolve));
     child.kill();
+    await exited;
     const build = execute(["pnpm", "--filter", "@byterygon/mightyconsole", "build"], { log: join(run.logs, "ui-build.log") });
     if (build.code !== 0) return { skipped: "the UI does not build (logs/ui-build.log)" };
     child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--codec-listen", `127.0.0.1:${codecPort}`, "--ui", join(UI, "dist"), "--data", data], { stdio: ["ignore", "ignore", "pipe"] });

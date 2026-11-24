@@ -26,6 +26,14 @@ edition = "2024"
 rust-version = "1.99"
 repository = "https://github.com/byterygon/platform"
 
+# Argon2id at DOC-25's parameters (19 MiB) takes seconds unoptimised, and every server test
+# start hashes the default administrator's password (TSK-142): optimise the hash in test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
