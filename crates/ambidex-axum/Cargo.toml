@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 ambidex = { path = "../ambidex" }
+# Argon2id password hashes of the built-in accounts (DOC-25 §3.2.6); already in the lockfile.
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc", "getrandom", "password-hash"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws", "query", "form"] }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bytes = "1.12.1"

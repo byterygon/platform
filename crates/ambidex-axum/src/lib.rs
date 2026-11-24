@@ -18,7 +18,8 @@
 //! client must send at most one maximum-size frame per message.
 //!
 //! Sign-in and sessions (DOC-25 §3.2): [`oidc`] is the OIDC login (authorization code with
-//! PKCE), [`LoginSessions`] the server-side sessions it creates, with idle and absolute expiry
+//! PKCE), [`accounts`] the built-in accounts (passwords, sign-up, setup links), [`LoginSessions`]
+//! the server-side sessions both create, with idle and absolute expiry
 //! and revocation. An ended session's connections get Goaway `Unauthenticated`
 //! ([`WebSessions::revocation`]), and every call a client starts counts as activity
 //! ([`WebSessions::touch`]). Every request carries the peer's address as a [`ClientAddr`]
@@ -26,6 +27,7 @@
 //!
 //! Not here: mTLS and plain HTTP behind a reverse proxy.
 
+pub mod accounts;
 pub mod oidc;
 mod session;
 mod store;

@@ -88,6 +88,8 @@
 //! - Limitation: the mock runtime does not expose a channel's end-of-stream (an `eval`), so the
 //!   harness detects a closed connection by asking the hub (see `tauri::TauriWire`).
 
+#[cfg(feature = "ws")]
+pub mod accounts;
 pub mod cases;
 pub mod client;
 pub mod clock;

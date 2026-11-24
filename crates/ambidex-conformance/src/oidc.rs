@@ -860,7 +860,7 @@ impl Browser<'_> {
     }
 }
 
-async fn send<S>(stream: S, request: hyper::Request<Full<Bytes>>) -> Answer
+pub(crate) async fn send<S>(stream: S, request: hyper::Request<Full<Bytes>>) -> Answer
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
