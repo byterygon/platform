@@ -551,8 +551,11 @@ mod tests {
 
     #[tokio::test]
     async fn three_failures_in_a_row_end_the_stream_and_an_answer_between_resets_the_count() {
-        let code = "if .value % 3 == 0 then true else (def f: f; f) end";
-        let mut f = JqFilter::start("test", code, MIN_BUDGET).unwrap();
+        // Stack overflows end a worker in milliseconds; a program that never ends would hold a
+        // core for the budget each time, beside the timing tests of `core::jq` (tests/filter_worker.rs
+        // runs those in a row end to end).
+        let code = "if .value % 3 == 0 then true else (def f: 1 + f; f) end";
+        let mut f = JqFilter::start("test", code, Duration::from_secs(10)).unwrap();
         // 1 and 2 fail, 3 answers, 4 and 5 fail, 6 answers: never three in a row.
         f.send((1..=6).map(|i| line(i.into())).collect());
         let got = answers(&mut f, 6).await;
@@ -566,7 +569,7 @@ mod tests {
         assert_eq!(e.kind, ToolErrorKind::Invalid);
         assert_eq!(e.field.as_deref(), Some("filter"));
         assert!(e.message.contains("3 messages in a row"), "{}", e.message);
-        assert!(e.message.contains("ran for more than"), "{}", e.message);
+        assert!(e.message.contains("recursed too deeply"), "{}", e.message);
     }
 
     #[tokio::test]
