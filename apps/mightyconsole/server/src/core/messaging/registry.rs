@@ -268,7 +268,8 @@ impl RegistryApi {
     #[rpc::query(
         perm = "messaging.read",
         risk = Risk::Read,
-        redact = ["registry.password", "registry.token", "registry.tls.clientKeyPem"]
+        redact = ["registry.password", "registry.token", "registry.tls.clientKeyPem"],
+        audit = "always",
     )]
     async fn test(&self, _ctx: Ctx, input: RegistryTestInput) -> ToolResult<RegistryTestOutput> {
         let client = input.registry.client_with(TEST_TIMEOUT)?;

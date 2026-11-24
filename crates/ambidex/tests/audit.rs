@@ -16,9 +16,9 @@ use ambidex::security_types::{
 };
 use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
 use ambidex::{
-    AuditError, AuditPolicy, AuditReporter, AuditSink, Authenticate, Call, Code, Ctx, ErrorPayload,
-    Hello, HumanReads, MemoryAuditLog, Risk, Router, RpcError, Server, ServerConfig, Session,
-    TargetRef, rpc,
+    AuditError, AuditMode, AuditPolicy, AuditReporter, AuditSink, Authenticate, Call, Code, Ctx,
+    ErrorPayload, Hello, HumanReads, MemoryAuditLog, Risk, Router, RpcError, Server, ServerConfig,
+    Session, TargetRef, rpc,
 };
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
@@ -137,6 +137,21 @@ impl AuditApi {
             .call(session, Call::new(&procedure, Value::Null))
             .await;
         Ok(json!(result.err().map(|err| err.code)))
+    }
+
+    /// A sensitive Read (it uses stored credentials): recorded before it runs, whoever calls.
+    #[rpc::query(perm = "audit.use", risk = Risk::Read, audit = "always")]
+    async fn sensitive(&self, _ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        self.enter();
+        Ok(input)
+    }
+
+    /// Takes a secret: the digests cover the input without it.
+    #[rpc::mutation(perm = "audit.use", risk = Risk::Write, redact = ["password"])]
+    async fn connect(&self, _ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        self.enter();
+        let _ = input;
+        Ok(Value::Null)
     }
 
     /// Requires a permission the policy does not grant.
@@ -1055,4 +1070,70 @@ fn completions_dropped_with_the_runtime_are_reported_lost() {
         s.reports.all()
     );
     drop(client);
+}
+
+#[tokio::test]
+async fn a_sensitive_read_fails_closed_for_a_human_and_is_marked_in_the_table() {
+    let s = setup(Mode::Fail);
+    let err = call(&s.router, human(), "audit.sensitive", json!(1))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, Code::Unavailable);
+    assert!(err.retryable, "nothing ran");
+    assert_eq!(s.entered(), 0, "the handler was not entered");
+    assert_eq!(
+        s.reports.all(),
+        [(
+            AuditEntryKind::Admission,
+            AuditFailureEffect::Blocked,
+            "audit.sensitive".to_owned()
+        )]
+    );
+    // An ordinary Read still fails open, and the table says which is which.
+    assert!(
+        call(&s.router, human(), "audit.read", json!(1))
+            .await
+            .is_ok()
+    );
+    let always: Vec<String> = s
+        .router
+        .procedures()
+        .into_iter()
+        .filter(|m| m.audit == AuditMode::Always)
+        .map(|m| m.name.clone())
+        .collect();
+    assert_eq!(always, ["audit.sensitive"]);
+    // With a working sink the sensitive Read runs and leaves both entries.
+    s.sink.set(Mode::Record);
+    assert!(
+        call(&s.router, human(), "audit.sensitive", json!(2))
+            .await
+            .is_ok()
+    );
+    assert_eq!(s.sink.of("audit.sensitive").len(), 2);
+}
+
+#[tokio::test]
+async fn digests_cover_the_input_without_its_redacted_fields() {
+    let s = setup(Mode::Record);
+    let digests = |procedure: &'static str, input: Value| {
+        let (router, sink) = (s.router.clone(), s.sink.clone());
+        async move {
+            call(&router, human(), procedure, input).await.unwrap();
+            sink.of(procedure)
+                .last()
+                .expect("an entry")
+                .input_digest
+                .to_string()
+        }
+    };
+    let a = digests("audit.connect", json!({"host": "h", "password": "one"})).await;
+    let b = digests("audit.connect", json!({"host": "h", "password": "two"})).await;
+    let c = digests("audit.connect", json!({"host": "other", "password": "one"})).await;
+    assert_eq!(a, b, "two calls differing only in a secret share a digest");
+    assert_ne!(a, c, "a different host is a different digest");
+    // A procedure without redacted fields is digested as before: over its whole input.
+    let d = digests("audit.write", json!({"password": "one"})).await;
+    let e = digests("audit.write", json!({"password": "two"})).await;
+    assert_ne!(d, e);
 }

@@ -739,5 +739,11 @@ export default {
         }),
       ],
     },
+    {
+      id: "audit",
+      text: "(TSK-137, DOC-25 section 6, Audit) A connect, a write, a destroy and a download (a sensitive read) on the lab's NATS leave their entries in the durable audit log, which verifies and holds no credential.",
+      lab: true,
+      checks: [lab("a_connect_a_write_a_destroy_and_a_download_are_recorded_in_the_audit_log")],
+    },
   ],
 } satisfies Checklist;

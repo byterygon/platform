@@ -84,6 +84,7 @@ pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
         base_path: String::new(),
         data: Some(dir.to_path_buf()),
         auth: Default::default(),
+        audit: Default::default(),
     }
 }
 
@@ -94,13 +95,36 @@ pub async fn start_with(ui: Option<std::path::PathBuf>, options: StartOptions) -
 /// A server whose configuration `change` adjusts (router mode, base path).
 pub async fn start_configured(
     ui: Option<std::path::PathBuf>,
+    options: StartOptions,
+    change: impl FnOnce(&mut ServeConfig),
+) -> TestServer {
+    start_inner(ui, options, change, true).await
+}
+
+/// A server on the real audit log of its data directory (`TestServer::_dir`/audit), unless the
+/// options name a sink.
+pub async fn start_with_durable_audit(options: StartOptions) -> TestServer {
+    start_inner(None, options, |_| {}, false).await
+}
+
+async fn start_inner(
+    ui: Option<std::path::PathBuf>,
     mut options: StartOptions,
     change: impl FnOnce(&mut ServeConfig),
+    memory_audit: bool,
 ) -> TestServer {
     // The server runs inside the test harness: jq queries run in the built server binary.
     options
         .jq_worker
         .get_or_insert_with(|| env!("CARGO_BIN_EXE_mightyconsole-server").into());
+    // Most tests do not look at the audit log, and some make thousands of audited calls, each
+    // of which the durable log would fsync twice: they get an in-memory sink. tests/audit.rs
+    // starts the server on the real log.
+    if memory_audit {
+        options
+            .audit_sink
+            .get_or_insert_with(|| Arc::new(security_types::MemoryAuditLog::new()));
+    }
     let dir = tempfile::tempdir().unwrap();
     let mut config = config(dir.path(), ui);
     change(&mut config);

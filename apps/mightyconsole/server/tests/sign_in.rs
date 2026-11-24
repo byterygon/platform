@@ -60,11 +60,15 @@ fn settings(idp: &TestIdp, dir: &Path) -> OidcSettings {
 }
 
 async fn signed_in_server() -> (TestServer, TestIdp, tempfile::TempDir) {
+    signed_in_server_with(StartOptions::default()).await
+}
+
+async fn signed_in_server_with(options: StartOptions) -> (TestServer, TestIdp, tempfile::TempDir) {
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let idp = TestIdp::start(clock, &format!("{ORIGIN}/auth/callback")).await;
     let dir = tempfile::tempdir().unwrap();
     let oidc = settings(&idp, dir.path());
-    let t = start_configured(None, StartOptions::default(), |config| {
+    let t = start_configured(None, options, |config| {
         config.auth.oidc = Some(oidc);
         config.auth.tenant = "acme".into();
     })
@@ -347,12 +351,20 @@ async fn config_check_reports_and_reaches_the_idp_when_asked() {
         "{text}"
     );
     assert!(!text.contains("discovery"));
+    assert!(
+        text.contains("audit log ") && text.contains("0 records, chain intact"),
+        "{text}"
+    );
+    assert!(
+        !dir.path().join("audit").exists(),
+        "config check does not create the log"
+    );
     let online = run(true).await.unwrap();
     let text = String::from_utf8_lossy(&online.stdout).into_owned();
     assert!(online.status.success(), "{text}");
     assert!(text.contains("discovery and keys fetched"), "{text}");
     assert!(
-        !dir.path().join("tls").exists(),
+        !dir.path().join("tls").exists() && !dir.path().join("audit").exists(),
         "config check creates nothing"
     );
 
@@ -360,4 +372,87 @@ async fn config_check_reports_and_reaches_the_idp_when_asked() {
     let down = run(true).await.unwrap();
     assert!(!down.status.success());
     assert!(String::from_utf8_lossy(&down.stderr).contains("identity provider"));
+}
+
+/// DOC-25 §3.5.1: a sign-in, a refused sign-in and a sign-out each leave one entry, in the
+/// server's tenant, with identifiers and counts and never a token, code or cookie.
+#[tokio::test]
+async fn sign_in_a_refused_sign_in_and_sign_out_are_in_the_audit_log() {
+    use security_types::{AuditDecision, MemoryAuditLog, Outcome, PrincipalKind};
+
+    let log = Arc::new(MemoryAuditLog::new());
+    let options = StartOptions {
+        audit_sink: Some(Arc::clone(&log) as Arc<dyn security_types::AuditSink>),
+        ..StartOptions::default()
+    };
+    let (t, idp, _dir) = signed_in_server_with(options).await;
+    let (session, _) = sign_in(&t, &idp, "%2F").await;
+    // A callback from another browser: refused.
+    let start = t.request("GET", "/auth/login", HOST, &[]).await;
+    let at_idp = idp_get(&idp, start.header("location").unwrap()).await;
+    let back = url::Url::parse(at_idp.header("location").unwrap()).unwrap();
+    let callback = format!("{}?{}", back.path(), back.query().unwrap());
+    let refused = t.request("GET", &callback, HOST, &[]).await;
+    assert_eq!(refused.header("location"), Some("/?login_error=invalid"));
+    // Sign out.
+    let page = t.http("/", HOST, Some(&session)).await;
+    let csrf = page.csrf();
+    let cookie = format!("{COOKIE}={session}");
+    let out = t
+        .request(
+            "POST",
+            "/auth/logout",
+            HOST,
+            &[
+                ("Cookie", &cookie),
+                ("Origin", ORIGIN),
+                ("X-Mightyconsole-Csrf", &csrf),
+            ],
+        )
+        .await;
+    assert_eq!(out.status, 303);
+
+    let named = |name: &str| {
+        log.entries()
+            .into_iter()
+            .filter(|e| e.action.name == name)
+            .collect::<Vec<_>>()
+    };
+    eventually("the sign-out entry", || !named("auth.logout").is_empty()).await;
+    let logins = named("auth.login");
+    assert_eq!(logins.len(), 2, "{logins:?}");
+    let ok = &logins[0];
+    assert_eq!(ok.tenant.as_str(), "acme");
+    assert_eq!(ok.principal_chain[0].id, "human:oidc:alice");
+    assert_eq!(ok.principal_chain[0].kind, PrincipalKind::Human);
+    assert!(!ok.principal_chain[0].session.as_str().is_empty());
+    assert_eq!(ok.outcome, Outcome::Success);
+    let detail = serde_json::to_value(&ok.detail).unwrap();
+    assert_eq!(detail["method"], "oidc");
+    assert_eq!(detail["groups"], "1");
+    let bad = &logins[1];
+    assert_eq!(bad.principal_chain[0].id, "system:auth");
+    assert!(matches!(bad.decision, AuditDecision::Deny { .. }));
+    assert_eq!(
+        bad.outcome,
+        Outcome::Error {
+            code: "invalid".into()
+        }
+    );
+    let out = &named("auth.logout")[0];
+    assert_eq!(out.principal_chain[0].id, "human:oidc:alice");
+    assert_eq!(
+        out.principal_chain[0].session, ok.principal_chain[0].session,
+        "the same session signed in and out"
+    );
+    assert!(
+        named("auth.session.end").is_empty(),
+        "a sign-out is auth.logout, not a session end"
+    );
+    assert_eq!(named("server.start").len(), 1);
+    // Nothing secret: the session cookie, the CSRF token and the client secret are not in it.
+    let text = serde_json::to_string(&log.entries()).unwrap();
+    for secret in [session.as_str(), csrf.as_str(), CLIENT_SECRET] {
+        assert!(!text.contains(secret), "a secret reached the audit log");
+    }
 }

@@ -19,7 +19,8 @@
 //! **Failing closed.** When an admission (or re-check) entry cannot be written — the sink fails,
 //! does not answer within [`AuditPolicy::write_timeout`], or the router has no sink — a call with
 //! risk Write or Destructive, and any call with an agent anywhere in its principal chain (Reads
-//! included), does not run: it ends with `Unavailable`, retryable, because nothing ran. A human
+//! included), and any sensitive Read (`audit = "always"`, [`AuditMode::Always`](crate::AuditMode)),
+//! does not run: it ends with `Unavailable`, retryable, because nothing ran. A human
 //! Read call follows [`AuditPolicy::human_reads`]: by default it runs and the failure is
 //! reported. Every failure goes to the router's [`AuditReporter`] (by default a rate-limited
 //! line on stderr).
@@ -115,6 +116,8 @@ pub(crate) struct Admission<'a> {
     pub correlation_id: &'a str,
     /// The calling call's id, for a call made from inside another call's handler.
     pub parent_correlation_id: Option<&'a str>,
+    /// `audit = "always"`: a sensitive Read, which fails closed like a Write call.
+    pub always: bool,
 }
 
 impl Recorder {
@@ -198,9 +201,11 @@ impl Recorder {
     }
 
     /// Whether a call or re-check that cannot be recorded must not run: Write and Destructive
-    /// risk, an agent anywhere in the chain, or a human Read under [`HumanReads::FailClosed`].
-    fn fails_closed(&self, principal: &Principal, risk: Risk) -> bool {
+    /// risk, a sensitive Read (`audit = "always"`), an agent anywhere in the chain, or a human
+    /// Read under [`HumanReads::FailClosed`].
+    fn fails_closed(&self, principal: &Principal, risk: Risk, always: bool) -> bool {
         risk >= Risk::Write
+            || always
             || acts_as_agent(principal)
             || self.policy.human_reads == HumanReads::FailClosed
     }
@@ -238,7 +243,7 @@ impl Recorder {
     }
 
     async fn write_started(&self, entry: AuditEntry, admission: &Admission<'_>) -> Result<(), ()> {
-        let blocked = self.fails_closed(admission.principal, admission.risk);
+        let blocked = self.fails_closed(admission.principal, admission.risk, admission.always);
         let effect = || {
             if blocked {
                 AuditFailureEffect::Blocked

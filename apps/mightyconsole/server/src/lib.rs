@@ -11,7 +11,8 @@
 //!   `ambidex-axum`), else the local browser session of v0.1.
 //! - [`authz`]: the static Authorizer (the local user, or every signed-in person, may do
 //!   everything until roles land).
-//! - [`audit`]: the call log the router needs to run Write calls.
+//! - [`audit`]: the durable audit log (DOC-25 §3.5, `audit-jsonl`): the filter in front of it
+//!   (Write and Destructive calls, sensitive reads, refusals), and the sign-in and server events.
 //! - [`core`]: live handles per connection, events, terminals, stream progress, `ToolError`.
 //! - [`api`]: `app.info`, `app.events`, `term.*`.
 //! - [`tools`]: one module per tool (the `echo` sample in the foundation).
@@ -42,13 +43,15 @@ use ambidex::codegen::{self, ApiInfo};
 use ambidex::{Router, ServerConfig};
 use ambidex_axum::oidc::{LoginRoutes, OidcLogin};
 use ambidex_axum::{ConfigError, DEFAULT_SESSION_COOKIE, LoginSessions, WsConfig, WsTransport};
-use security_types::{Clock, SystemClock};
+use security_types::{AuditSink, Clock, SystemClock};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::api::{AppApi, AppState, ServerFacts, TermApi};
-use crate::audit::{LogAuditSink, Stderr};
+use crate::audit::{
+    AuditSettings, Event, EventLog, LineWriter, McAuditSink, SensitiveTable, Stderr,
+};
 use crate::authz::LocalAuthorizer;
 use crate::config::{AuthSettings, OIDC_CLIENT_SECRET_ENV};
 use crate::core::{Hub, IDLE_TIMEOUT, SWEEP_INTERVAL};
@@ -137,6 +140,8 @@ pub struct ServeConfig {
     pub data: Option<PathBuf>,
     /// Sign-in (`[auth]`, DOC-25 §3.2).
     pub auth: AuthSettings,
+    /// The audit log (`[audit]`, DOC-25 §3.5), kept in `data/audit`.
+    pub audit: AuditSettings,
 }
 
 impl ServeConfig {
@@ -221,6 +226,9 @@ pub enum StartError {
     Tls(TlsError),
     /// The sign-in configuration (DOC-25 §3.6.2 point 2).
     Auth(String),
+    /// The audit log cannot be used (DOC-25 §3.6.2 point 6): no data directory, or a log that
+    /// does not open or whose chain is broken. The server does not start without it.
+    Audit(String),
     Web(ConfigError),
     Ui {
         path: PathBuf,
@@ -237,6 +245,7 @@ impl std::fmt::Display for StartError {
         match self {
             StartError::Tls(e) => e.fmt(f),
             StartError::Auth(e) => write!(f, "sign-in: {e}"),
+            StartError::Audit(e) => write!(f, "audit log: {e}"),
             StartError::Web(e) => write!(f, "web configuration: {e}"),
             StartError::Ui { path, error } => {
                 write!(f, "UI directory {}: {error}", path.display())
@@ -281,6 +290,28 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
     {
         problems.push(format!("UI directory {}: {e}", ui.display()));
     }
+    // The log is verified, not opened: `config check` creates nothing (DOC-25 §3.6.1).
+    match &config.data {
+        None => problems
+            .push("audit log: no data directory: give --data or set MIGHTYCONSOLE_DATA".into()),
+        Some(data) => {
+            let path = audit::log_path(data);
+            match audit_jsonl::verify(&path) {
+                Ok(verified) => report.push(format!(
+                    "audit log {}: {} records, chain intact; reads: {}{}",
+                    path.display(),
+                    verified.records,
+                    config.audit.reads.as_str(),
+                    if config.audit.stderr {
+                        ", also on stderr"
+                    } else {
+                        ""
+                    }
+                )),
+                Err(e) => problems.push(e.to_string()),
+            }
+        }
+    }
     match &config.auth.oidc {
         None => report.push("sign-in: none configured ([auth.oidc]); the local user only".into()),
         Some(oidc) => match oidc.load(std::env::var(OIDC_CLIENT_SECRET_ENV).ok()) {
@@ -292,7 +323,11 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
                     config.auth.limits,
                     Arc::new(ambidex_axum::NoSessionEvents),
                 ));
-                let hooks = Arc::new(McSignIn::new(&config.auth.tenant, Arc::new(Stderr)));
+                let hooks = Arc::new(McSignIn::new(
+                    &config.auth.tenant,
+                    Arc::new(Stderr),
+                    EventLog::discard(),
+                ));
                 let issuer = loaded.issuer.clone();
                 match OidcLogin::new(loaded, config.login_routes(), store, hooks, clock) {
                     Err(e) => problems.push(format!("[auth.oidc]: {e}")),
@@ -332,6 +367,10 @@ pub struct StartOptions {
     /// The program jq queries run in (spec §5.4.1): `None` is the server's own binary. Tests that
     /// start the server inside the test harness name the built server binary.
     pub jq_worker: Option<std::path::PathBuf>,
+    /// Where the audit entries go instead of the durable log in `data/audit` (tests that make
+    /// thousands of audited calls, or that read the entries back). `None` is the log of the
+    /// data directory, opened and verified before the server listens.
+    pub audit_sink: Option<Arc<dyn AuditSink>>,
 }
 
 impl Default for StartOptions {
@@ -341,6 +380,7 @@ impl Default for StartOptions {
             idle_timeout: IDLE_TIMEOUT,
             sweep_interval: Some(SWEEP_INTERVAL),
             jq_worker: None,
+            audit_sink: None,
         }
     }
 }
@@ -349,6 +389,9 @@ impl Default for StartOptions {
 pub struct Server {
     hub: Arc<Hub>,
     sessions: ServerSessions,
+    /// The audit log's event writer, flushed at shutdown.
+    events: EventLog,
+    event_task: JoinHandle<()>,
     /// The JWKS refresh and the session sweep, with sign-in.
     auth_tasks: Vec<JoinHandle<()>>,
     tls: ServerTls,
@@ -395,7 +438,35 @@ impl Server {
             core::jq::set_worker_program(worker);
         }
         let principal = local_principal();
-        let log: Arc<dyn audit::LineWriter> = Arc::new(Stderr);
+        let log: Arc<dyn LineWriter> = Arc::new(Stderr);
+        // The audit log first: a server that cannot record does not start (DOC-25 §3.6.2).
+        let sink: Arc<dyn AuditSink> = match options.audit_sink {
+            Some(sink) => sink,
+            None => {
+                let data = config.data.clone().ok_or_else(|| {
+                    StartError::Audit(
+                        "no data directory for the audit log: give --data or set \
+                         MIGHTYCONSOLE_DATA"
+                            .into(),
+                    )
+                })?;
+                let durable = tokio::task::spawn_blocking(move || audit::open_log(&data))
+                    .await
+                    .map_err(|e| StartError::Audit(format!("opening the log panicked: {e}")))?
+                    .map_err(|e| StartError::Audit(e.to_string()))?;
+                Arc::new(durable)
+            }
+        };
+        let tenant = match &config.auth.oidc {
+            Some(_) => config.auth.tenant.as_str(),
+            None => authz::LOCAL_TENANT,
+        };
+        let (events, event_task) = EventLog::spawn(
+            Arc::clone(&sink),
+            tenant,
+            config.audit.stderr,
+            Arc::clone(&log),
+        );
         let (sessions, authorizer, auth_tasks) = match &config.auth.oidc {
             None => (
                 ServerSessions::Local(Arc::new(LocalSessions::new(principal.clone()))),
@@ -409,9 +480,13 @@ impl Server {
                 let store = Arc::new(LoginSessions::new(
                     Arc::clone(&clock),
                     config.auth.limits,
-                    Arc::new(SessionLog(Arc::clone(&log))),
+                    Arc::new(SessionLog(events.clone())),
                 ));
-                let hooks = Arc::new(McSignIn::new(&config.auth.tenant, Arc::clone(&log)));
+                let hooks = Arc::new(McSignIn::new(
+                    &config.auth.tenant,
+                    Arc::clone(&log),
+                    events.clone(),
+                ));
                 let login = OidcLogin::new(
                     oidc,
                     config.login_routes(),
@@ -442,8 +517,17 @@ impl Server {
                 certificate_fingerprint: tls.fingerprint.clone(),
             },
         });
-        let router = Router::new(authorizer).with_audit(LogAuditSink::new(Arc::new(Stderr)));
+        // The router offers every call and refusal to the filter in front of the log; which reads
+        // are sensitive is read from the router's own table once everything is mounted.
+        let sensitive = SensitiveTable::default();
+        let router = Router::new(authorizer).with_audit(McAuditSink::new(
+            sink,
+            sensitive.clone(),
+            config.audit,
+            Arc::clone(&log),
+        ));
         mount(&router, &state);
+        sensitive.fill(&router);
         let engine = ServerConfig::new(API_NAME, SCHEMA_HASH.as_str(), API_VERSION);
 
         let transport = WsTransport::new(ws_config, engine, sessions.clone(), router)
@@ -506,9 +590,21 @@ impl Server {
                 }
             })
         });
+        events.record(&Event::ServerStart {
+            version: VERSION.to_owned(),
+            mode: if config.auth.oidc.is_some() {
+                "oidc"
+            } else {
+                "local"
+            }
+            .to_owned(),
+            exposed: config.is_exposed(),
+        });
         Ok(Server {
             hub,
             sessions,
+            events,
+            event_task,
             auth_tasks,
             tls,
             local_addr,
@@ -571,6 +667,9 @@ impl Server {
         if let Some(sweep) = self.sweep.take() {
             sweep.abort();
         }
+        self.events.record(&Event::ServerStop);
+        self.events.flush().await;
+        self.event_task.abort();
         for task in self.auth_tasks.drain(..) {
             task.abort();
         }

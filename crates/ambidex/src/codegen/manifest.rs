@@ -8,7 +8,7 @@
 //! - `api`: `{name, version}`; `schema_hash`;
 //! - `procedures`: sorted by name, each with the full [`ProcedureMeta`](crate::ProcedureMeta)
 //!   (`name`, `kind`, `perm`, `risk`, `agent`, `deprecated`, `timeout_default_ms`,
-//!   `timeout_max_ms`, `log_input`, `redact`; a timeout is `null` when the procedure has none: a
+//!   `timeout_max_ms`, `log_input`, `redact`, and `audit` (`"always"`, only on a sensitive Read); a timeout is `null` when the procedure has none: a
 //!   subscription never has a default deadline, and has a maximum only if it declares one) and
 //!   the JSON Schemas `input` (what the server
 //!   accepts), `output` (what it sends: the event of a subscription, the final result of a stream)
@@ -218,6 +218,10 @@ pub(crate) fn render(model: &Model) -> (String, String) {
             );
             obj.insert("log_input".into(), json!(meta.log_input));
             obj.insert("redact".into(), json!(meta.redact));
+            // Only a sensitive Read says so: every other procedure's entry is as it was.
+            if meta.audit == crate::AuditMode::Always {
+                obj.insert("audit".into(), json!("always"));
+            }
             Value::Object(obj)
         })
         .collect();

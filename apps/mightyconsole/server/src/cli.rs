@@ -309,6 +309,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         _ => return Err("--tls-cert and --tls-key go together".into()),
     };
     let auth: AuthSettings = config::auth_settings(file.auth, &file_path)?;
+    let audit = config::audit_settings(file.audit)?;
     Ok(ServeConfig {
         listen,
         allowed_hosts,
@@ -320,6 +321,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         base_path,
         data,
         auth,
+        audit,
     })
 }
 

@@ -1,8 +1,9 @@
 // Security acceptance (DOC-25 §6), run on the lab with the identity provider (the `idp` profile:
 // Dex). Each build task wires its own items; TSK-141 attaches the evidence. Wired so far: "Login and
-// sessions" (TSK-136). The parts other tasks own are `manual` checks naming them; the built-in
-// accounts item (TSK-142) and the Start, Authorization, Destroy, Secrets and Audit sections come
-// with their tasks.
+// sessions" (TSK-136) and "Audit" (TSK-137: the log, its events and the sensitive reads; verify
+// and rotation come in its last batch). The parts other tasks own are `manual` checks naming them;
+// the built-in accounts item (TSK-142) and the Start, Authorization, Destroy and Secrets sections
+// come with their tasks.
 import { cargo, command, manual } from "../checklist.mts";
 import type { Checklist } from "../checklist.mts";
 
@@ -38,7 +39,7 @@ export default {
         conformance("state and browser binding", "state_mismatch_and_another_browser_are_refused"),
         conformance("replayed code", "a_replayed_code_is_refused"),
         cargo("a_failed_sign_in_returns_to_the_page_with_its_code"),
-        manual("the audit entry of each refusal: TSK-137 (until then the reason is a line in the server log)"),
+        cargo("sign_in_a_refused_sign_in_and_sign_out_are_in_the_audit_log", { label: "the refusal's entry (system:auth, Deny, the error code), and the sign-in and sign-out entries" }),
       ],
     },
     {
@@ -79,6 +80,35 @@ export default {
       id: "fixation",
       text: "(TSK-136) A cookie from before the sign-in is not accepted after it (fixation).",
       checks: [conformance("fixation", "no_session_fixation")],
+    },
+    {
+      id: "audit-events",
+      text: "(TSK-137) A sign-in, a refused call, a write, a destroy with its confirmation, a Secret reveal, a file download, a connect and a role change each leave the entries of 3.5.1, with digests and no values.",
+      checks: [
+        manual("on the lab's NATS: a connect, a write, a destroy and a download are in the log, which verifies, with no credential in it: runs as the nats checklist's `audit` item (the lab here has only the idp profile)"),
+        cargo("a_session_leaves_the_calls_the_spec_lists_and_never_a_value", { label: "the principal chain, tenant, session, correlation id, risk, decision and duration; no secret and no payload in the file" }),
+        cargo("the_digest_does_not_depend_on_the_secret", { label: "the digest covers the redacted input" }),
+        cargo("sign_in_a_refused_sign_in_and_sign_out_are_in_the_audit_log", { label: "sign-in, refused sign-in, sign-out" }),
+        cargo("the_sensitive_reads_are_the_ones_the_spec_names", { label: "the sensitive reads are marked on the procedures, and are the spec's list" }),
+        manual("a refused call by role, the destroy confirmation and a role change leave their entries: TSK-138 (the entries are written by the router and the management procedures; the sink keeps every refusal, tested in the unit tests of audit.rs)"),
+        manual("a Kubernetes Secret reveal: with the Kubernetes tool (TSK-82), its procedure carries audit = \"always\""),
+      ],
+    },
+    {
+      id: "audit-verify",
+      text: "(TSK-137) audit verify passes on the lab's log and fails, naming the line, on a copy with an edited line, a deleted line, a cut tail (checkpoint) and a gap across a segment boundary.",
+      checks: [
+        cargo("a_tampered_log_refuses_the_start_and_names_the_file", { label: "an edited line refuses the start, naming the file" }),
+        manual("the audit verify command, the deleted line, the cut tail and the gap across segments: the next batch of TSK-137 (the checkpoint needs the key of TSK-139)"),
+      ],
+    },
+    {
+      id: "audit-fail-closed",
+      text: "(TSK-137) With the audit directory made unwritable, Write, Destructive and sensitive Read calls are refused with Unavailable; ordinary reads still work.",
+      checks: [
+        cargo("without_a_writable_log_writes_and_sensitive_reads_are_refused_and_other_reads_run", { label: "a log that refuses entries: a sensitive read is Unavailable, an ordinary read runs" }),
+        command("Ambidex: Write and Destructive calls are refused before the handler, a sensitive read fails closed for a human", ["cargo", "test", "-p", "ambidex", "--test", "audit", "--", "a_failing_sink_stops_writes_and_agent_calls_before_the_handler", "a_sensitive_read_fails_closed_for_a_human_and_is_marked_in_the_table"], { requires: ["cargo"] }),
+      ],
     },
   ],
 } satisfies Checklist;

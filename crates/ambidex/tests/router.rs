@@ -505,7 +505,10 @@ async fn handler_reauthorizes_with_target_and_escalated_risk() {
         (seen[1].risk, seen[1].target.clone()),
         (Risk::Destructive, Some(TargetRef::connection("c-9")))
     );
-    assert_eq!(seen[1].digest, input_digest(&input));
+    // The digest covers the input with its `redact` paths replaced (DOC-25 §3.5.3).
+    let redacted = json!({"connection": "c-9", "password": "<redacted>"});
+    assert_eq!(seen[1].digest, input_digest(&redacted));
+    assert_ne!(seen[1].digest, input_digest(&input));
 }
 
 #[tokio::test]

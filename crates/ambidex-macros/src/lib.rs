@@ -90,6 +90,7 @@ struct Procedure {
     timeout_max_ms: Option<u64>,
     log_input: bool,
     redact: Vec<LitStr>,
+    audit_always: bool,
     deprecated: bool,
     input_ty: Type,
     /// The return type as written, `Result<O, E>` (`Result<(), E>` for a subscription).
@@ -208,6 +209,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
     let mut timeout_max_ms = None;
     let mut log_input = false;
     let mut redact = Vec::new();
+    let mut audit_always = false;
     let mut deprecated = false;
     let mut name: Option<LitStr> = None;
 
@@ -255,6 +257,15 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
                 }
             }
             redact.extend(paths);
+        } else if meta.path.is_ident("audit") {
+            let lit: LitStr = meta.value()?.parse()?;
+            if lit.value() != "always" {
+                return Err(syn::Error::new(
+                    lit.span(),
+                    "`audit` must be \"always\" (a sensitive Read recorded before it runs)",
+                ));
+            }
+            audit_always = true;
         } else if meta.path.is_ident("name") {
             let lit: LitStr = meta.value()?.parse()?;
             if !is_name_segment(&lit.value(), false) {
@@ -267,7 +278,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         } else {
             return Err(meta.error(
                 "unknown procedure argument; expected perm, risk, agent, timeout_default, \
-                 timeout_max, log_input, redact, name or deprecated",
+                 timeout_max, log_input, redact, audit, name or deprecated",
             ));
         }
         Ok(())
@@ -320,6 +331,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         timeout_max_ms,
         log_input,
         redact,
+        audit_always,
         deprecated,
         input_ty,
         ret_ty,
@@ -531,6 +543,7 @@ fn meta_expr(p: &Procedure) -> TokenStream2 {
         risk,
         agent,
         log_input,
+        audit_always,
         deprecated,
         ..
     } = p;
@@ -575,6 +588,11 @@ fn meta_expr(p: &Procedure) -> TokenStream2 {
         #timeout_max
         meta.log_input = #log_input;
         meta.redact = ::std::vec![#(::std::string::String::from(#redact)),*];
+        meta.audit = if #audit_always {
+            ::ambidex::AuditMode::Always
+        } else {
+            ::ambidex::AuditMode::Default
+        };
         meta.deprecated = #deprecated;
         meta
     }}
