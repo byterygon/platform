@@ -1,4 +1,8 @@
-//! The local browser session (Mightyconsole spec §2.3, "Session"; Open question 1).
+//! Browser sessions: signed in through OIDC ([`SignInSessions`], DOC-25 §3.2) when `[auth.oidc]`
+//! is configured, else the local browser session of v0.1 ([`LocalSessions`]), until built-in
+//! accounts replace it (TSK-142). [`ServerSessions`] is whichever the server runs.
+//!
+//! # The local browser session (Mightyconsole spec §2.3, "Session"; Open question 1)
 //!
 //! v0.1 has no login (DOC-20 decision 5). `ambidex-axum` is unchanged: it still checks the Host
 //! allowlist on every request, the exact Origin on the upgrade, a `__Host-` session cookie that
@@ -22,10 +26,17 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Mutex, MutexGuard};
 
-use ambidex::Session;
+use std::sync::Arc;
+
 use ambidex::engine::BoxFuture;
-use ambidex_axum::{WebSession, WebSessions};
+use ambidex::{CancellationToken, Session};
+use ambidex_axum::oidc::{
+    AuthEvent, OidcIdentity, OidcLogin, SignInHooks, SignInRefusal, SignedIn,
+};
+use ambidex_axum::{EndedSession, LoginSessions, SessionEvents, WebSession, WebSessions};
 use security_types::{Principal, PrincipalKind, SessionId, TenantId};
+
+use crate::audit::LineWriter;
 
 use crate::authz::LOCAL_TENANT;
 use crate::core::random_id;
@@ -160,6 +171,148 @@ impl WebSessions for LocalSessions {
             }
         });
         Box::pin(async move { found })
+    }
+}
+
+/// The sessions the server runs.
+#[derive(Clone)]
+pub enum ServerSessions {
+    /// No login configured: v0.1's one local user.
+    Local(Arc<LocalSessions>),
+    /// Signed in through OIDC.
+    SignIn(SignInSessions),
+}
+
+/// The OIDC sign-in and the sessions it makes.
+#[derive(Clone)]
+pub struct SignInSessions {
+    pub sessions: Arc<LoginSessions>,
+    pub login: OidcLogin<Arc<McSignIn>>,
+}
+
+impl WebSessions for ServerSessions {
+    fn lookup<'a>(&'a self, cookie: &'a str) -> BoxFuture<'a, Option<WebSession>> {
+        match self {
+            ServerSessions::Local(local) => local.lookup(cookie),
+            ServerSessions::SignIn(signed) => signed.sessions.lookup(cookie),
+        }
+    }
+
+    fn revocation(&self, session: &Session) -> Option<CancellationToken> {
+        match self {
+            ServerSessions::Local(local) => local.revocation(session),
+            ServerSessions::SignIn(signed) => signed.sessions.revocation(session),
+        }
+    }
+
+    fn touch(&self, session: &Session) {
+        match self {
+            ServerSessions::Local(local) => local.touch(session),
+            ServerSessions::SignIn(signed) => signed.sessions.touch(session),
+        }
+    }
+}
+
+/// Mightyconsole's side of the OIDC sign-in (DOC-25 §3.2.3): the principal is
+/// `human:oidc:<sub>` in the server's tenant. Roles come with TSK-138 (until then every
+/// signed-in person may do everything, as v0.1's one user could); the user records with the
+/// store (TSK-142). Events go to the server log, one line each, until the audit log (TSK-137)
+/// records them: names, addresses, counts and reasons, never a token, code or secret.
+pub struct McSignIn {
+    tenant: TenantId,
+    out: Arc<dyn LineWriter>,
+}
+
+impl McSignIn {
+    pub fn new(tenant: &str, out: Arc<dyn LineWriter>) -> McSignIn {
+        McSignIn {
+            tenant: TenantId::new(tenant),
+            out,
+        }
+    }
+
+    /// The line for an event.
+    pub fn format(event: &AuthEvent) -> String {
+        let ip = |client: &Option<std::net::IpAddr>| {
+            client.map_or_else(|| "-".to_owned(), |ip| ip.to_string())
+        };
+        let line = match event {
+            AuthEvent::SignedIn {
+                user,
+                session,
+                method,
+                client,
+                groups,
+                ..
+            } => format!(
+                "auth.login ok {user} session {session} method {} from {} ({groups} groups)",
+                method.as_str(),
+                ip(client)
+            ),
+            AuthEvent::SignInFailed {
+                error,
+                reason,
+                client,
+            } => format!(
+                "auth.login refused ({}) from {}: {reason}",
+                error.as_str(),
+                ip(client)
+            ),
+            AuthEvent::SignedOut {
+                user,
+                session,
+                client,
+            } => format!("auth.logout {user} session {session} from {}", ip(client)),
+            AuthEvent::GroupsDropped { user, dropped } => {
+                format!(
+                    "WARNING: {dropped} groups of {user} were not kept (at most 256 of 256 bytes)"
+                )
+            }
+            AuthEvent::IdpUnreachable { reason } => {
+                format!("identity provider unreachable: {reason}")
+            }
+            AuthEvent::RateLimited { route, client } => {
+                format!("{route}: too many requests from {client}")
+            }
+        };
+        format!("mightyconsole-server: {line}")
+    }
+}
+
+impl SignInHooks for McSignIn {
+    fn sign_in<'a>(
+        &'a self,
+        identity: &'a OidcIdentity,
+    ) -> BoxFuture<'a, Result<SignedIn, SignInRefusal>> {
+        let user = identity.principal_id();
+        let principal = Principal {
+            kind: PrincipalKind::Human,
+            id: user.clone(),
+            tenant: self.tenant.clone(),
+            on_behalf_of: None,
+            roles: vec![],
+            session: SessionId::new("set per connection"),
+        };
+        Box::pin(async move { Ok(SignedIn { user, principal }) })
+    }
+
+    fn record(&self, event: AuthEvent) {
+        self.out.line(&McSignIn::format(&event));
+    }
+}
+
+/// Writes `auth.session.end` lines (DOC-25 §3.5.1) to the server log.
+pub struct SessionLog(pub Arc<dyn LineWriter>);
+
+impl SessionEvents for SessionLog {
+    fn session_ended(&self, ended: &EndedSession, by: Option<&str>) {
+        let by = by.map(|by| format!(" by {by}")).unwrap_or_default();
+        self.0.line(&format!(
+            "mightyconsole-server: auth.session.end {} session {} ({}){by}",
+            ended.user,
+            ended.id,
+            ended.reason.as_str()
+        ));
     }
 }
 

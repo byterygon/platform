@@ -43,7 +43,7 @@ async fn the_page_gives_a_session_with_its_headers() {
     assert_eq!(again.status, 200);
     assert!(again.header("set-cookie").is_none());
     assert_eq!(again.csrf(), csrf);
-    assert_eq!(t.server.sessions().len(), 1);
+    assert_eq!(t.server.local_sessions().unwrap().len(), 1);
 
     // Another accepted Host is sent to the public origin; an unknown Host is refused.
     let alias = t.http("/x?y=1", ALIAS, None).await;
@@ -53,7 +53,7 @@ async fn the_page_gives_a_session_with_its_headers() {
     assert_eq!(t.http("/", "evil.test", None).await.status, 421);
     // A file that is not there is 404, not the page.
     assert_eq!(t.http("/missing.js", HOST, None).await.status, 404);
-    assert_eq!(t.server.sessions().len(), 1);
+    assert_eq!(t.server.local_sessions().unwrap().len(), 1);
 }
 
 #[tokio::test]

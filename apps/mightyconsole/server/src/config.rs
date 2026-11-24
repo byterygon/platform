@@ -1,0 +1,481 @@
+//! The configuration file (DOC-25 §3.6.1): TOML, from `--config FILE`, else
+//! `$MIGHTYCONSOLE_CONFIG`, else `DATA/config.toml` when it exists. Flags win over the
+//! environment, which wins over the file, which wins over the defaults.
+//!
+//! The file holds no secret material, only paths: the OIDC client secret comes from
+//! `client_secret_file` or the environment variable [`OIDC_CLIENT_SECRET_ENV`] (which wins). A
+//! file that is group- or world-writable is refused (Unix). Unknown keys are refused, so a typo
+//! is not silently ignored; the keys of later tasks (accounts, roles, secrets, audit) are added
+//! with those tasks. Relative paths are relative to the file's directory.
+//!
+//! ```toml
+//! [server]
+//! listen = "0.0.0.0:7443"
+//! public_origin = "https://mc.example.com"
+//! hosts = ["mc.example.com"]
+//!
+//! [auth]
+//! tenant = "default"
+//! session_idle = "60m"
+//! session_absolute = "12h"
+//!
+//! [auth.oidc]
+//! issuer = "https://idp.example.com/dex"
+//! client_id = "mightyconsole"
+//! client_secret_file = "/etc/mightyconsole/oidc-secret"
+//! ca_file = "/etc/mightyconsole/idp-ca.pem"
+//! scopes = ["openid", "profile", "email", "groups"]
+//! ```
+
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use ambidex_axum::SessionLimits;
+use ambidex_axum::oidc::{ClaimsSource, OidcConfig, SignatureAlgorithm, TokenAuth};
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::pem::PemObject as _;
+use serde::Deserialize;
+use zeroize::Zeroizing;
+
+/// The environment variable naming the configuration file.
+pub const CONFIG_ENV: &str = "MIGHTYCONSOLE_CONFIG";
+/// The environment variable holding the OIDC client secret (wins over `client_secret_file`).
+pub const OIDC_CLIENT_SECRET_ENV: &str = "MIGHTYCONSOLE_OIDC_CLIENT_SECRET";
+/// The file looked for in the data directory.
+pub const DEFAULT_FILE: &str = "config.toml";
+
+/// The file, as written.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileConfig {
+    #[serde(default)]
+    pub server: ServerSection,
+    #[serde(default)]
+    pub auth: AuthSection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerSection {
+    pub listen: Option<String>,
+    pub hosts: Option<Vec<String>>,
+    pub public_origin: Option<String>,
+    pub base_path: Option<String>,
+    pub router: Option<String>,
+    pub ui: Option<PathBuf>,
+    pub tls_cert: Option<PathBuf>,
+    pub tls_key: Option<PathBuf>,
+    pub data: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthSection {
+    pub tenant: Option<String>,
+    pub session_idle: Option<String>,
+    pub session_absolute: Option<String>,
+    pub max_sessions_per_user: Option<usize>,
+    pub max_sessions: Option<usize>,
+    pub oidc: Option<OidcSection>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OidcSection {
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret_file: Option<PathBuf>,
+    pub token_auth: Option<String>,
+    pub ca_file: PathBuf,
+    pub scopes: Option<Vec<String>>,
+    pub groups_claim: Option<String>,
+    pub claims_source: Option<String>,
+    pub display_name: Option<String>,
+    pub clock_skew: Option<String>,
+    pub idp_logout: Option<bool>,
+    pub algorithms: Option<Vec<String>>,
+}
+
+/// Sign-in settings, resolved (DOC-25 §3.2, §3.6.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthSettings {
+    /// `auth.tenant`: the one tenant of this server.
+    pub tenant: String,
+    pub limits: SessionLimits,
+    /// `[auth.oidc]`, when configured.
+    pub oidc: Option<OidcSettings>,
+}
+
+impl Default for AuthSettings {
+    fn default() -> Self {
+        AuthSettings {
+            tenant: "default".into(),
+            limits: SessionLimits::default(),
+            oidc: None,
+        }
+    }
+}
+
+/// `[auth.oidc]`, with paths resolved. The CA and the secret are read by [`OidcSettings::load`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcSettings {
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret_file: Option<PathBuf>,
+    pub token_auth: TokenAuth,
+    pub ca_file: PathBuf,
+    pub scopes: Option<Vec<String>>,
+    pub groups_claim: Option<String>,
+    pub claims_source: ClaimsSource,
+    pub display_name: Option<String>,
+    pub clock_skew: Option<Duration>,
+    pub idp_logout: bool,
+    pub algorithms: Option<Vec<SignatureAlgorithm>>,
+}
+
+impl OidcSettings {
+    /// Reads the CA file and the client secret and checks everything that needs no network
+    /// (DOC-25 §3.6.2 point 2). `env_secret` is [`OIDC_CLIENT_SECRET_ENV`]'s value.
+    pub fn load(&self, env_secret: Option<String>) -> Result<OidcConfig, String> {
+        let pem = std::fs::read(&self.ca_file)
+            .map_err(|e| format!("[auth.oidc] ca_file {}: {e}", self.ca_file.display()))?;
+        let ca: Vec<CertificateDer<'static>> = CertificateDer::pem_slice_iter(&pem)
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("[auth.oidc] ca_file {}: {e}", self.ca_file.display()))?;
+        if ca.is_empty() {
+            return Err(format!(
+                "[auth.oidc] ca_file {}: no certificate in it",
+                self.ca_file.display()
+            ));
+        }
+        let mut config = OidcConfig::new(self.issuer.clone(), self.client_id.clone(), ca);
+        config.token_auth = self.token_auth;
+        if self.token_auth != TokenAuth::None {
+            let secret = match env_secret.filter(|s| !s.is_empty()) {
+                Some(secret) => Zeroizing::new(secret),
+                None => {
+                    let path = self.client_secret_file.as_ref().ok_or_else(|| {
+                        format!(
+                            "[auth.oidc] needs client_secret_file or ${OIDC_CLIENT_SECRET_ENV} \
+                             (or token_auth = \"none\" for a public client)"
+                        )
+                    })?;
+                    let text = Zeroizing::new(std::fs::read_to_string(path).map_err(|e| {
+                        format!("[auth.oidc] client_secret_file {}: {e}", path.display())
+                    })?);
+                    Zeroizing::new(text.trim_end_matches(['\r', '\n']).to_owned())
+                }
+            };
+            config.client_secret = Some(secret);
+        }
+        if let Some(scopes) = &self.scopes {
+            config.scopes = scopes.clone();
+        }
+        if let Some(claim) = &self.groups_claim {
+            config.groups_claim = claim.clone();
+        }
+        config.claims_source = self.claims_source;
+        if let Some(name) = &self.display_name {
+            config.display_name = name.clone();
+        }
+        if let Some(skew) = self.clock_skew {
+            config.clock_skew = skew;
+        }
+        config.idp_logout = self.idp_logout;
+        if let Some(algorithms) = &self.algorithms {
+            config.algorithms = algorithms.clone();
+        }
+        config.validate().map_err(|e| format!("[auth.oidc]: {e}"))?;
+        Ok(config)
+    }
+}
+
+/// Reads and parses the file. A group- or world-writable file is refused.
+pub fn read(path: &Path) -> Result<FileConfig, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let meta = std::fs::metadata(path)
+            .map_err(|e| format!("configuration file {}: {e}", path.display()))?;
+        if meta.permissions().mode() & 0o022 != 0 {
+            return Err(format!(
+                "configuration file {} is group- or world-writable; chmod go-w it",
+                path.display()
+            ));
+        }
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("configuration file {}: {e}", path.display()))?;
+    toml::from_str(&text).map_err(|e| format!("configuration file {}: {e}", path.display()))
+}
+
+/// `path` relative to the configuration file's directory, unless absolute.
+pub fn relative_to(file: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        file.parent().unwrap_or(Path::new(".")).join(path)
+    }
+}
+
+/// Resolves the `[auth]` section.
+pub fn auth_settings(section: AuthSection, file: &Path) -> Result<AuthSettings, String> {
+    let mut auth = AuthSettings::default();
+    if let Some(tenant) = section.tenant {
+        if tenant.is_empty() || !tenant.bytes().all(|b| b.is_ascii_graphic()) {
+            return Err("auth.tenant must be printable ASCII without spaces".into());
+        }
+        auth.tenant = tenant;
+    }
+    if let Some(idle) = section.session_idle {
+        auth.limits.idle = duration(&idle).map_err(|e| format!("auth.session_idle: {e}"))?;
+    }
+    if let Some(absolute) = section.session_absolute {
+        auth.limits.absolute =
+            duration(&absolute).map_err(|e| format!("auth.session_absolute: {e}"))?;
+    }
+    if let Some(n) = section.max_sessions_per_user {
+        if n == 0 {
+            return Err("auth.max_sessions_per_user must be at least 1".into());
+        }
+        auth.limits.max_per_user = n;
+    }
+    if let Some(n) = section.max_sessions {
+        if n == 0 {
+            return Err("auth.max_sessions must be at least 1".into());
+        }
+        auth.limits.max_total = n;
+    }
+    if auth.limits.idle.is_zero() || auth.limits.absolute.is_zero() {
+        return Err("auth.session_idle and auth.session_absolute must be longer than 0".into());
+    }
+    if let Some(oidc) = section.oidc {
+        let token_auth = match oidc.token_auth.as_deref() {
+            None | Some("basic") => TokenAuth::Basic,
+            Some("post") => TokenAuth::Post,
+            Some("none") => TokenAuth::None,
+            Some(other) => {
+                return Err(format!(
+                    "[auth.oidc] token_auth {other:?}: basic, post or none"
+                ));
+            }
+        };
+        let claims_source = match oidc.claims_source.as_deref() {
+            None | Some("id_token") => ClaimsSource::IdToken,
+            Some("userinfo") => ClaimsSource::Userinfo,
+            Some(other) => {
+                return Err(format!(
+                    "[auth.oidc] claims_source {other:?}: id_token or userinfo"
+                ));
+            }
+        };
+        let algorithms = match oidc.algorithms {
+            None => None,
+            Some(names) => Some(
+                names
+                    .iter()
+                    .map(|name| {
+                        SignatureAlgorithm::parse(name).ok_or_else(|| {
+                            format!(
+                                "[auth.oidc] algorithms: {name:?} is not allowed (none and HS* \
+                                 never are); allowed: {}",
+                                SignatureAlgorithm::ALL.map(|a| a.as_str()).join(" ")
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+        };
+        let clock_skew = match oidc.clock_skew {
+            None => None,
+            Some(text) => {
+                Some(duration(&text).map_err(|e| format!("[auth.oidc] clock_skew: {e}"))?)
+            }
+        };
+        auth.oidc = Some(OidcSettings {
+            issuer: oidc.issuer,
+            client_id: oidc.client_id,
+            client_secret_file: oidc.client_secret_file.map(|p| relative_to(file, &p)),
+            token_auth,
+            ca_file: relative_to(file, &oidc.ca_file),
+            scopes: oidc.scopes,
+            groups_claim: oidc.groups_claim,
+            claims_source,
+            display_name: oidc.display_name,
+            clock_skew,
+            idp_logout: oidc.idp_logout.unwrap_or(true),
+            algorithms,
+        });
+    }
+    Ok(auth)
+}
+
+/// A duration: one or more `<number><unit>` with units `s`, `m`, `h`, `d` (`90s`, `1h30m`).
+pub fn duration(text: &str) -> Result<Duration, String> {
+    let mut total = Duration::ZERO;
+    let mut number = String::new();
+    let mut any = false;
+    for c in text.trim().chars() {
+        if c.is_ascii_digit() {
+            number.push(c);
+            continue;
+        }
+        let unit = match c {
+            's' => 1,
+            'm' => 60,
+            'h' => 3600,
+            'd' => 86_400,
+            _ => return Err(format!("{text:?}: use s, m, h or d, e.g. 60m")),
+        };
+        let n: u64 = number
+            .parse()
+            .map_err(|_| format!("{text:?}: a number goes before each unit"))?;
+        total += Duration::from_secs(n.saturating_mul(unit));
+        number.clear();
+        any = true;
+    }
+    if !number.is_empty() || !any {
+        return Err(format!("{text:?}: give a unit, e.g. 60m"));
+    }
+    Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durations() {
+        assert_eq!(duration("60m"), Ok(Duration::from_secs(3600)));
+        assert_eq!(duration("1h30m"), Ok(Duration::from_secs(5400)));
+        assert_eq!(duration("2d"), Ok(Duration::from_secs(172_800)));
+        for bad in ["", "60", "m", "5x", "1.5h"] {
+            assert!(duration(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_auth_section_resolves_and_refuses_bad_values() {
+        let file: FileConfig = toml::from_str(
+            r#"
+            [auth]
+            tenant = "acme"
+            session_idle = "30m"
+            [auth.oidc]
+            issuer = "https://idp.test/dex"
+            client_id = "mc"
+            client_secret_file = "secret"
+            ca_file = "/etc/ca.pem"
+            token_auth = "post"
+            algorithms = ["RS256", "ES256"]
+            clock_skew = "30s"
+            "#,
+        )
+        .unwrap();
+        let auth = auth_settings(file.auth, Path::new("/etc/mc/config.toml")).unwrap();
+        assert_eq!(auth.tenant, "acme");
+        assert_eq!(auth.limits.idle, Duration::from_secs(1800));
+        assert_eq!(auth.limits.absolute, Duration::from_secs(12 * 3600));
+        let oidc = auth.oidc.unwrap();
+        assert_eq!(
+            oidc.client_secret_file,
+            Some(PathBuf::from("/etc/mc/secret"))
+        );
+        assert_eq!(oidc.ca_file, PathBuf::from("/etc/ca.pem"));
+        assert_eq!(oidc.token_auth, TokenAuth::Post);
+        assert_eq!(oidc.clock_skew, Some(Duration::from_secs(30)));
+        for bad in [
+            "[auth.oidc]\nissuer='https://i'\nclient_id='c'\nca_file='a'\nalgorithms=['HS256']",
+            "[auth.oidc]\nissuer='https://i'\nclient_id='c'\nca_file='a'\nalgorithms=['none']",
+            "[auth.oidc]\nissuer='https://i'\nclient_id='c'\nca_file='a'\ntoken_auth='jwt'",
+            "[auth]\nsession_idle='forever'",
+            "[auth]\nmax_sessions=0",
+        ] {
+            let file: FileConfig = toml::from_str(bad).unwrap();
+            assert!(
+                auth_settings(file.auth, Path::new("/c.toml")).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(toml::from_str::<FileConfig>("[auth]\ntypo = 1").is_err());
+        assert!(
+            toml::from_str::<FileConfig>(
+                "[auth.oidc]\nissuer='x'\nclient_id='c'\nca_file='a'\nclient_secret='inline'"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn loading_reads_the_ca_and_the_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = rcgen::generate_simple_self_signed(vec!["idp.test".into()]).unwrap();
+        std::fs::write(dir.path().join("ca.pem"), cert.cert.pem()).unwrap();
+        std::fs::write(dir.path().join("secret"), "s3cret\n").unwrap();
+        std::fs::write(dir.path().join("empty.pem"), "").unwrap();
+        let settings = OidcSettings {
+            issuer: "https://idp.test/dex".into(),
+            client_id: "mc".into(),
+            client_secret_file: Some(dir.path().join("secret")),
+            token_auth: TokenAuth::Basic,
+            ca_file: dir.path().join("ca.pem"),
+            scopes: None,
+            groups_claim: None,
+            claims_source: ClaimsSource::IdToken,
+            display_name: Some("Acme SSO".into()),
+            clock_skew: None,
+            idp_logout: true,
+            algorithms: None,
+        };
+        let config = settings.load(None).unwrap();
+        assert_eq!(
+            config.client_secret.as_deref().map(String::as_str),
+            Some("s3cret")
+        );
+        assert_eq!(config.display_name, "Acme SSO");
+        assert_eq!(config.ca_certs.len(), 1);
+        let from_env = settings.load(Some("from-env".into())).unwrap();
+        assert_eq!(
+            from_env.client_secret.as_deref().map(String::as_str),
+            Some("from-env")
+        );
+        let no_secret = OidcSettings {
+            client_secret_file: None,
+            ..settings.clone()
+        };
+        assert!(
+            no_secret
+                .load(None)
+                .unwrap_err()
+                .contains("client_secret_file")
+        );
+        let public = OidcSettings {
+            token_auth: TokenAuth::None,
+            ..no_secret
+        };
+        assert!(public.load(None).unwrap().client_secret.is_none());
+        let empty = OidcSettings {
+            ca_file: dir.path().join("empty.pem"),
+            ..settings.clone()
+        };
+        assert!(empty.load(None).unwrap_err().contains("no certificate"));
+        let http = OidcSettings {
+            issuer: "http://idp.test".into(),
+            ..settings
+        };
+        assert!(http.load(None).unwrap_err().contains("https://"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_writable_file_is_refused() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[auth]\ntenant = \"t\"\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(read(&path).is_ok());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        assert!(read(&path).unwrap_err().contains("writable"));
+    }
+}

@@ -312,6 +312,21 @@ fn the_idp_down_gives_unreachable() {
     });
 }
 
+/// A sign-in that arrives while the start's fetch of discovery is still running waits for it
+/// instead of answering `unreachable`.
+#[test]
+fn a_sign_in_during_the_first_fetch_waits_for_it() {
+    run(false, async |s: &SignInServer| {
+        let refresh = s.login.spawn_refresh();
+        // Let the background fetch start, then sign in while it runs.
+        tokio::task::yield_now().await;
+        let answer = s.browser().sign_in("/").await;
+        assert_eq!(answer.status, 200, "{answer:?}");
+        assert_eq!(s.idp.counts().0, 1, "one discovery fetch");
+        refresh.abort();
+    });
+}
+
 /// A signed-in session ends past the idle limit and past the absolute limit: its connection gets
 /// Goaway, new upgrades are refused, the page sees no session.
 #[test]

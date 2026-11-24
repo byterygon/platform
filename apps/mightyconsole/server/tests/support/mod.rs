@@ -82,6 +82,8 @@ pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
         codec_listen: None,
         router: Default::default(),
         base_path: String::new(),
+        data: Some(dir.to_path_buf()),
+        auth: Default::default(),
     }
 }
 
@@ -153,6 +155,27 @@ impl HttpResponse {
     }
 }
 
+/// Reads one HTTP/1.1 answer to the end of the connection.
+pub async fn read_response<S: tokio::io::AsyncRead + Unpin>(stream: &mut S) -> HttpResponse {
+    let mut raw = Vec::new();
+    let _ = stream.read_to_end(&mut raw).await;
+    let split = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .expect("end of headers");
+    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
+    let mut lines = head.lines();
+    let status = lines.next().unwrap().split(' ').nth(1).unwrap().parse();
+    HttpResponse {
+        status: status.unwrap(),
+        headers: lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(n, v)| (n.trim().to_ascii_lowercase(), v.trim().to_owned()))
+            .collect(),
+        body: String::from_utf8_lossy(&raw[split + 4..]).into_owned(),
+    }
+}
+
 /// A browser's credentials: the cookie and the page's token.
 #[derive(Clone)]
 pub struct Browser {
@@ -181,30 +204,34 @@ impl TestServer {
     }
 
     pub async fn http(&self, path: &str, host: &str, cookie: Option<&str>) -> HttpResponse {
+        let cookie = cookie.map(|c| format!("{}={c}", self.cookie_name));
+        let headers: Vec<(&str, &str)> = cookie.iter().map(|c| ("Cookie", c.as_str())).collect();
+        self.request("GET", path, host, &headers).await
+    }
+
+    /// Any request, with the given headers, through `host`.
+    pub async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        host: &str,
+        headers: &[(&str, &str)],
+    ) -> HttpResponse {
         let mut tls = self.tls().await;
-        let cookie = cookie
-            .map(|c| format!("Cookie: {}={c}\r\n", self.cookie_name))
-            .unwrap_or_default();
-        let request =
-            format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n{cookie}Connection: close\r\n\r\n");
+        let extra: String = headers
+            .iter()
+            .map(|(name, value)| format!("{name}: {value}\r\n"))
+            .collect();
+        let length = if method == "POST" {
+            "Content-Length: 0\r\n"
+        } else {
+            ""
+        };
+        let request = format!(
+            "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{extra}{length}Connection: close\r\n\r\n"
+        );
         tls.write_all(request.as_bytes()).await.unwrap();
-        let mut raw = Vec::new();
-        let _ = tls.read_to_end(&mut raw).await;
-        let split = raw
-            .windows(4)
-            .position(|w| w == b"\r\n\r\n")
-            .expect("end of headers");
-        let head = String::from_utf8_lossy(&raw[..split]).into_owned();
-        let mut lines = head.lines();
-        let status = lines.next().unwrap().split(' ').nth(1).unwrap().parse();
-        HttpResponse {
-            status: status.unwrap(),
-            headers: lines
-                .filter_map(|line| line.split_once(':'))
-                .map(|(n, v)| (n.trim().to_ascii_lowercase(), v.trim().to_owned()))
-                .collect(),
-            body: String::from_utf8_lossy(&raw[split + 4..]).into_owned(),
-        }
+        read_response(&mut tls).await
     }
 
     /// Loads the page as a new browser.

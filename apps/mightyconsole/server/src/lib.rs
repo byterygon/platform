@@ -6,8 +6,11 @@
 //! connections; it keeps no configuration: the browser sends a profile when it connects.
 //!
 //! - [`tls`]: the user's certificate, or a self-signed one made on first start and reused.
-//! - [`sessions`]: the local browser session (no login in v0.1, spec Open question 1).
-//! - [`authz`]: the static Authorizer (the local user may do everything).
+//! - [`config`]: the configuration file (DOC-25 §3.6.1) behind the flags.
+//! - [`sessions`]: OIDC sign-in when `[auth.oidc]` is configured (DOC-25 §3.2, through
+//!   `ambidex-axum`), else the local browser session of v0.1.
+//! - [`authz`]: the static Authorizer (the local user, or every signed-in person, may do
+//!   everything until roles land).
 //! - [`audit`]: the call log the router needs to run Write calls.
 //! - [`core`]: live handles per connection, events, terminals, stream progress, `ToolError`.
 //! - [`api`]: `app.info`, `app.events`, `term.*`.
@@ -22,6 +25,7 @@ pub mod api;
 pub mod audit;
 pub mod authz;
 pub mod cli;
+pub mod config;
 pub mod core;
 pub mod sessions;
 pub mod static_ui;
@@ -36,7 +40,8 @@ use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
 use ambidex::{Router, ServerConfig};
-use ambidex_axum::{ConfigError, DEFAULT_SESSION_COOKIE, WsConfig, WsTransport};
+use ambidex_axum::oidc::{LoginRoutes, OidcLogin};
+use ambidex_axum::{ConfigError, DEFAULT_SESSION_COOKIE, LoginSessions, WsConfig, WsTransport};
 use security_types::{Clock, SystemClock};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -45,8 +50,10 @@ use tokio::task::JoinHandle;
 use crate::api::{AppApi, AppState, ServerFacts, TermApi};
 use crate::audit::{LogAuditSink, Stderr};
 use crate::authz::LocalAuthorizer;
+use crate::config::{AuthSettings, OIDC_CLIENT_SECRET_ENV};
 use crate::core::{Hub, IDLE_TIMEOUT, SWEEP_INTERVAL};
 use crate::sessions::{LocalSessions, local_principal};
+use crate::sessions::{McSignIn, ServerSessions, SessionLog, SignInSessions};
 use crate::tls::{ServerTls, TlsError, TlsSource};
 
 /// The `api` the server announces in Hello.
@@ -126,6 +133,10 @@ pub struct ServeConfig {
     /// The path everything is served under (`""` or e.g. `/tools/mc`, see
     /// [`ambidex_axum::valid_path_prefix`]): the page, its assets, `/rpc/ws` and the codec endpoint.
     pub base_path: String,
+    /// The data directory, when one is known.
+    pub data: Option<PathBuf>,
+    /// Sign-in (`[auth]`, DOC-25 §3.2).
+    pub auth: AuthSettings,
 }
 
 impl ServeConfig {
@@ -139,7 +150,31 @@ impl ServeConfig {
     pub fn session_cookie(&self) -> String {
         session_cookie_for(&self.base_path)
     }
+
+    /// The login cookie of a pending OIDC sign-in (DOC-25 §3.2.2): `__Host-mc_login`, with the
+    /// base path in its name as for the session cookie.
+    pub fn login_cookie(&self) -> String {
+        if self.base_path.is_empty() {
+            "__Host-mc_login".to_owned()
+        } else {
+            format!("__Host-mc_login{}", self.base_path.replace('/', "_"))
+        }
+    }
+
+    /// The routes of the OIDC sign-in, the redirect URI included.
+    pub fn login_routes(&self) -> LoginRoutes {
+        let mut routes = LoginRoutes::new(self.public_origin.clone());
+        routes.base_path = self.base_path.clone();
+        routes.session_cookie = self.session_cookie();
+        routes.login_cookie = self.login_cookie();
+        routes.csrf_header = CSRF_HEADER.clone();
+        routes
+    }
 }
+
+/// The header that carries the anti-CSRF token on `POST /auth/*` (DOC-25 §3.2.4).
+pub static CSRF_HEADER: axum::http::HeaderName =
+    axum::http::HeaderName::from_static("x-mightyconsole-csrf");
 
 /// [`ServeConfig::session_cookie`] for a base path: `/tools/mc` gives `__Host-ambidex_session_tools_mc`.
 pub fn session_cookie_for(base_path: &str) -> String {
@@ -184,15 +219,24 @@ pub enum ServedUi {
 #[derive(Debug)]
 pub enum StartError {
     Tls(TlsError),
+    /// The sign-in configuration (DOC-25 §3.6.2 point 2).
+    Auth(String),
     Web(ConfigError),
-    Ui { path: PathBuf, error: io::Error },
-    Bind { addr: SocketAddr, error: io::Error },
+    Ui {
+        path: PathBuf,
+        error: io::Error,
+    },
+    Bind {
+        addr: SocketAddr,
+        error: io::Error,
+    },
 }
 
 impl std::fmt::Display for StartError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StartError::Tls(e) => e.fmt(f),
+            StartError::Auth(e) => write!(f, "sign-in: {e}"),
             StartError::Web(e) => write!(f, "web configuration: {e}"),
             StartError::Ui { path, error } => {
                 write!(f, "UI directory {}: {error}", path.display())
@@ -203,6 +247,81 @@ impl std::fmt::Display for StartError {
 }
 
 impl std::error::Error for StartError {}
+
+/// What `config check` validates (DOC-25 §3.6.1): the TLS files, the UI directory, the
+/// sign-in configuration (the CA file, the client secret, the issuer, the routes) and, with
+/// `online`, the IdP's discovery document and keys. Never listens and creates nothing. `Ok`
+/// lists what was checked; `Err` every problem found.
+pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<String>, Vec<String>> {
+    let mut report = Vec::new();
+    let mut problems = Vec::new();
+    report.push(format!(
+        "listen {}{}; public origin {}{}",
+        config.listen,
+        if config.is_exposed() {
+            " (beyond loopback)"
+        } else {
+            ""
+        },
+        config.public_origin,
+        config.base_path
+    ));
+    match &config.tls {
+        TlsSource::Files { .. } => match tls::load(&config.tls) {
+            Ok(tls) => report.push(format!("certificate SHA-256 {}", tls.fingerprint)),
+            Err(e) => problems.push(e.to_string()),
+        },
+        TlsSource::Generated { dir } => report.push(format!(
+            "certificate: self-signed, kept in {}",
+            dir.display()
+        )),
+    }
+    if let Some(ui) = &config.ui
+        && let Err(e) = static_ui::StaticUi::open(ui)
+    {
+        problems.push(format!("UI directory {}: {e}", ui.display()));
+    }
+    match &config.auth.oidc {
+        None => report.push("sign-in: none configured ([auth.oidc]); the local user only".into()),
+        Some(oidc) => match oidc.load(std::env::var(OIDC_CLIENT_SECRET_ENV).ok()) {
+            Err(e) => problems.push(e),
+            Ok(loaded) => {
+                let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+                let store = Arc::new(LoginSessions::new(
+                    Arc::clone(&clock),
+                    config.auth.limits,
+                    Arc::new(ambidex_axum::NoSessionEvents),
+                ));
+                let hooks = Arc::new(McSignIn::new(&config.auth.tenant, Arc::new(Stderr)));
+                let issuer = loaded.issuer.clone();
+                match OidcLogin::new(loaded, config.login_routes(), store, hooks, clock) {
+                    Err(e) => problems.push(format!("[auth.oidc]: {e}")),
+                    Ok(login) => {
+                        report.push(format!(
+                            "sign-in: OIDC through {issuer}; register the redirect URI {}",
+                            login.redirect_uri()
+                        ));
+                        if online {
+                            match login.discover().await {
+                                Ok(()) => report
+                                    .push("identity provider: discovery and keys fetched".into()),
+                                Err(e) => problems.push(format!("identity provider: {e}")),
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+    if problems.is_empty() {
+        Ok(report)
+    } else {
+        Err(problems)
+    }
+}
+
+/// How often expired sessions are ended, so their connections get Goaway.
+pub const SESSION_SWEEP: Duration = Duration::from_secs(15);
 
 /// Options for tests: the clock of the idle sweep, and whether the server runs the sweep.
 pub struct StartOptions {
@@ -229,7 +348,9 @@ impl Default for StartOptions {
 /// A running server.
 pub struct Server {
     hub: Arc<Hub>,
-    sessions: Arc<LocalSessions>,
+    sessions: ServerSessions,
+    /// The JWKS refresh and the session sweep, with sign-in.
+    auth_tasks: Vec<JoinHandle<()>>,
     tls: ServerTls,
     local_addr: SocketAddr,
     ui: ServedUi,
@@ -274,6 +395,44 @@ impl Server {
             core::jq::set_worker_program(worker);
         }
         let principal = local_principal();
+        let log: Arc<dyn audit::LineWriter> = Arc::new(Stderr);
+        let (sessions, authorizer, auth_tasks) = match &config.auth.oidc {
+            None => (
+                ServerSessions::Local(Arc::new(LocalSessions::new(principal.clone()))),
+                LocalAuthorizer::new(principal.id.clone()),
+                Vec::new(),
+            ),
+            Some(oidc) => {
+                let env_secret = std::env::var(OIDC_CLIENT_SECRET_ENV).ok();
+                let oidc = oidc.load(env_secret).map_err(StartError::Auth)?;
+                let clock: Arc<dyn Clock> = Arc::clone(&options.clock);
+                let store = Arc::new(LoginSessions::new(
+                    Arc::clone(&clock),
+                    config.auth.limits,
+                    Arc::new(SessionLog(Arc::clone(&log))),
+                ));
+                let hooks = Arc::new(McSignIn::new(&config.auth.tenant, Arc::clone(&log)));
+                let login = OidcLogin::new(
+                    oidc,
+                    config.login_routes(),
+                    Arc::clone(&store),
+                    hooks,
+                    clock,
+                )
+                .map_err(|e| StartError::Auth(e.to_string()))?;
+                // The IdP being unreachable is not a start failure (DOC-25 §3.2.1): the refresh
+                // task retries with backoff and sign-in answers `unreachable` meanwhile.
+                let tasks = vec![login.spawn_refresh(), store.spawn_sweeper(SESSION_SWEEP)];
+                (
+                    ServerSessions::SignIn(SignInSessions {
+                        sessions: store,
+                        login,
+                    }),
+                    LocalAuthorizer::signed_in(&config.auth.tenant),
+                    tasks,
+                )
+            }
+        };
         let hub = Arc::new(Hub::new(options.clock, options.idle_timeout));
         let state = Arc::new(AppState {
             hub: Arc::clone(&hub),
@@ -283,13 +442,11 @@ impl Server {
                 certificate_fingerprint: tls.fingerprint.clone(),
             },
         });
-        let router = Router::new(LocalAuthorizer::new(principal.id.clone()))
-            .with_audit(LogAuditSink::new(Arc::new(Stderr)));
+        let router = Router::new(authorizer).with_audit(LogAuditSink::new(Arc::new(Stderr)));
         mount(&router, &state);
         let engine = ServerConfig::new(API_NAME, SCHEMA_HASH.as_str(), API_VERSION);
 
-        let sessions = Arc::new(LocalSessions::new(principal));
-        let transport = WsTransport::new(ws_config, engine, Arc::clone(&sessions), router)
+        let transport = WsTransport::new(ws_config, engine, sessions.clone(), router)
             .map_err(StartError::Web)?;
         let page = static_ui::PageConfig {
             cookie_name: config.session_cookie(),
@@ -302,7 +459,10 @@ impl Server {
         } else {
             axum::Router::new().nest(&config.base_path, tools::temporal::codec::routes())
         };
-        let routes = static_ui::routes(ui, Arc::clone(&sessions), page).merge(codec);
+        let mut routes = static_ui::routes(ui, sessions.clone(), page).merge(codec);
+        if let ServerSessions::SignIn(signed) = &sessions {
+            routes = routes.merge(signed.login.routes());
+        }
         let codec_task = match config.codec_listen {
             Some(addr) => {
                 let listener = TcpListener::bind(addr)
@@ -349,6 +509,7 @@ impl Server {
         Ok(Server {
             hub,
             sessions,
+            auth_tasks,
             tls,
             local_addr,
             ui: served_ui,
@@ -368,8 +529,24 @@ impl Server {
         &self.hub
     }
 
-    pub fn sessions(&self) -> &Arc<LocalSessions> {
+    pub fn sessions(&self) -> &ServerSessions {
         &self.sessions
+    }
+
+    /// The local browser sessions, when no sign-in is configured.
+    pub fn local_sessions(&self) -> Option<&Arc<LocalSessions>> {
+        match &self.sessions {
+            ServerSessions::Local(local) => Some(local),
+            ServerSessions::SignIn(_) => None,
+        }
+    }
+
+    /// The signed-in sessions, with OIDC sign-in.
+    pub fn login_sessions(&self) -> Option<&Arc<LoginSessions>> {
+        match &self.sessions {
+            ServerSessions::Local(_) => None,
+            ServerSessions::SignIn(signed) => Some(&signed.sessions),
+        }
     }
 
     pub fn tls(&self) -> &ServerTls {
@@ -393,6 +570,9 @@ impl Server {
     pub async fn shutdown(mut self) -> io::Result<()> {
         if let Some(sweep) = self.sweep.take() {
             sweep.abort();
+        }
+        for task in self.auth_tasks.drain(..) {
+            task.abort();
         }
         if let Some(codec) = self.codec_task.take() {
             codec.abort();
