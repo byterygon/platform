@@ -210,6 +210,7 @@ impl Ws {
                 auth_time_ms: 0,
                 id_token: None,
                 client: None,
+                must_change_password: false,
             })
             .expect("below the session cap");
         let csrf = self.sessions.page(&issued.cookie).expect("live").csrf_token;

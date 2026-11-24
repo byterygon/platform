@@ -270,8 +270,12 @@ pub struct LoginRoutes {
     pub session_cookie: String,
     /// The login cookie that binds a pending login to the browser.
     pub login_cookie: String,
-    /// The header logout's anti-CSRF token comes in.
+    /// The header logout's anti-CSRF token comes in, and the pre-session token of the
+    /// built-in accounts' routes ([`crate::accounts`]).
     pub csrf_header: HeaderName,
+    /// The signed-out page's pre-session cookie (`SameSite=Strict`) that every `POST` of the
+    /// built-in accounts must match in [`LoginRoutes::csrf_header`].
+    pub pre_cookie: String,
 }
 
 impl LoginRoutes {
@@ -282,6 +286,7 @@ impl LoginRoutes {
             session_cookie: crate::DEFAULT_SESSION_COOKIE.into(),
             login_cookie: "__Host-ambidex_login".into(),
             csrf_header: HeaderName::from_static("x-ambidex-csrf"),
+            pre_cookie: "__Host-ambidex_pre".into(),
         }
     }
 
@@ -310,7 +315,7 @@ impl LoginRoutes {
             Err(crate::ConfigError::PublicOrigin) => return Err(OidcConfigError::PublicOrigin),
             Err(_) => return Err(OidcConfigError::Cookie),
         }
-        if !self.login_cookie.starts_with("__Host-") {
+        if !self.login_cookie.starts_with("__Host-") || !self.pre_cookie.starts_with("__Host-") {
             return Err(OidcConfigError::Cookie);
         }
         Ok(())
@@ -420,6 +425,18 @@ pub enum AuthEvent {
     IdpUnreachable { reason: String },
     /// A client address went over a sign-in limit and gets 429.
     RateLimited { route: &'static str, client: IpAddr },
+    /// `auth.signup`: a built-in account was made by sign-up ([`crate::accounts`]).
+    SignedUp {
+        user: String,
+        client: Option<IpAddr>,
+    },
+    /// `auth.lockout` (principal `system:auth`): too many failures locked an account until
+    /// `until_ms`.
+    Lockout {
+        user: String,
+        client: Option<IpAddr>,
+        until_ms: u64,
+    },
 }
 
 /// The product side of the sign-in.
@@ -1011,6 +1028,7 @@ async fn callback<H: SignInHooks>(
         auth_time_ms: auth_time_ms.unwrap_or_else(|| inner.clock.now_unix_ms()),
         id_token: Some(id_token),
         client,
+        must_change_password: false,
     }) {
         Ok(issued) => issued,
         Err(_) => return failed(LoginError::Busy, "too many sessions"),

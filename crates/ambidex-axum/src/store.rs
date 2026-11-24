@@ -99,6 +99,10 @@ pub struct NewSession {
     /// The ID token, kept only for RP-initiated logout (`id_token_hint`).
     pub id_token: Option<Zeroizing<String>>,
     pub client: Option<IpAddr>,
+    /// The session may only change the password (DOC-25 §3.2.6, `mustChangePassword`): the
+    /// product's Authorizer reads [`SessionInfo::must_change_password`] and refuses everything
+    /// else until [`LoginSessions::set_must_change`] clears it.
+    pub must_change_password: bool,
 }
 
 impl fmt::Debug for NewSession {
@@ -142,6 +146,8 @@ pub struct SessionInfo {
     pub idle_expires_ms: u64,
     pub absolute_expires_ms: u64,
     pub client: Option<IpAddr>,
+    /// Only `app.account.changePassword` and `app.me` are allowed (DOC-25 §3.2.6).
+    pub must_change_password: bool,
 }
 
 /// What a page load of a signed-in browser gets.
@@ -205,6 +211,7 @@ struct Entry {
     auth_time_ms: u64,
     id_token: Option<Zeroizing<String>>,
     client: Option<IpAddr>,
+    must_change_password: bool,
     revoked: CancellationToken,
 }
 
@@ -306,6 +313,7 @@ impl LoginSessions {
                 .created_ms
                 .saturating_add(millis(self.limits.absolute)),
             client: entry.client,
+            must_change_password: entry.must_change_password,
         }
     }
 
@@ -355,6 +363,7 @@ impl LoginSessions {
                         auth_time_ms: new.auth_time_ms,
                         id_token: new.id_token,
                         client: new.client,
+                        must_change_password: new.must_change_password,
                         revoked: CancellationToken::new(),
                     },
                 );
@@ -430,6 +439,33 @@ impl LoginSessions {
         if let Some(entry) = inner.by_id.get_mut(id) {
             entry.last_activity_ms = entry.last_activity_ms.max(now);
         }
+    }
+
+    /// Sets or clears the "may only change the password" restriction of a live session.
+    pub fn set_must_change(&self, id: &str, must_change: bool) {
+        if let Some(entry) = self.lock().by_id.get_mut(id) {
+            entry.must_change_password = must_change;
+        }
+    }
+
+    /// Ends every session of `user` except `keep` (the caller's own): a password change ends the
+    /// others. Returns how many ended.
+    pub fn revoke_user_except(&self, user: &str, keep: Option<&str>, by: Option<&str>) -> usize {
+        let ended = {
+            let mut inner = self.lock();
+            let ids: Vec<String> = inner
+                .by_id
+                .values()
+                .filter(|e| e.user == user && Some(e.id.as_str()) != keep)
+                .map(|e| e.id.clone())
+                .collect();
+            ids.iter()
+                .filter_map(|id| inner.remove(id, EndReason::Revoked))
+                .collect::<Vec<_>>()
+        };
+        let count = ended.len();
+        self.report(ended, by);
+        count
     }
 
     /// Ends a session. `by` names who revoked it. Returns whether it was live.
@@ -707,6 +743,7 @@ mod tests {
             auth_time_ms: 0,
             id_token: Some(Zeroizing::new("id-token".into())),
             client: None,
+            must_change_password: false,
         }
     }
 
