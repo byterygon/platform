@@ -10,6 +10,7 @@ import os
 import secrets
 import sys
 
+import bcrypt
 import nkeys
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -264,11 +265,98 @@ def ensure_codec():
     print("generate: added the payload codec of Temporal")
 
 
+IDP_ISSUER = "https://localhost:5556/dex"
+# The redirect URIs the lab's client accepts: the server's tests (public origin https://mc.test),
+# the acceptance browser walk (acceptance/sign-in-walk.mts, port 17443) and a server started by
+# hand on the default port.
+IDP_REDIRECTS = [
+    "https://mc.test/auth/callback",
+    "https://localhost:17443/auth/callback",
+    "https://localhost:7443/auth/callback",
+    "https://127.0.0.1:7443/auth/callback",
+]
+# Fixed users and groups (DOC-25 §3.2.3); their passwords are generated.
+IDP_USERS = [
+    ("alice", "Alice Admin", ["mc-admins", "ops"]),
+    ("bob", "Bob Viewer", ["mc-viewers"]),
+    ("carol", "Carol Nogroup", []),
+]
+
+DEX_CONFIG = """# Dex for the lab (TSK-136): written by `lab up` (generate); nothing here is a real secret.
+issuer: {issuer}
+storage:
+  type: memory
+web:
+  https: 0.0.0.0:5556
+  tlsCert: /generated/idp/dex.pem
+  tlsKey: /generated/idp/dex-key.pem
+telemetry:
+  http: 0.0.0.0:5558
+logger:
+  level: info
+oauth2:
+  skipApprovalScreen: true
+  passwordConnector: local
+enablePasswordDB: true
+staticClients:
+{clients}
+staticPasswords:
+{passwords}
+"""
+
+
+def ensure_idp():
+    """The lab's identity provider (TSK-136): Dex over TLS with its own CA (as an operator gives the
+    server the IdP's CA), one confidential client and fixed users with groups, added to an existing
+    credentials.json without touching the rest."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    if "idp" in credentials and os.path.exists(os.path.join(OUT, "idp/config.yaml")):
+        return
+    ca_key, ca_cert = ca()
+    ca_pem = ca_cert.public_bytes(serialization.Encoding.PEM)
+    write("idp/ca.pem", ca_pem)
+    key, cert = leaf(ca_key, ca_cert, "dex", ["localhost", "dex"], ["127.0.0.1"])
+    write("idp/dex.pem", cert.public_bytes(serialization.Encoding.PEM) + ca_pem)
+    write("idp/dex-key.pem", pem_key(key))
+    secret = secrets.token_urlsafe(24)
+    write("idp/client-secret", secret + "\n", 0o600)
+    users = []
+    passwords = []
+    for username, name, groups in IDP_USERS:
+        password = secrets.token_urlsafe(12)
+        email = f"{username}@lab.test"
+        digest = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode()
+        passwords.append(
+            f'- email: "{email}"\n  username: "{username}"\n  name: "{name}"\n'
+            f'  preferredUsername: "{username}"\n  userID: "{username}-0000"\n'
+            f'  hash: "{digest}"\n  groups: {json.dumps(groups)}'
+        )
+        users.append({"username": username, "email": email, "name": name, "password": password, "groups": groups})
+    clients = (
+        f'- id: mightyconsole\n  name: Mightyconsole\n  secret: "{secret}"\n'
+        f"  redirectURIs: {json.dumps(IDP_REDIRECTS)}"
+    )
+    write("idp/config.yaml", DEX_CONFIG.format(issuer=IDP_ISSUER, clients=clients, passwords="\n".join(passwords)))
+    credentials["idp"] = {
+        "issuer": IDP_ISSUER,
+        "caFile": "idp/ca.pem",
+        "clientId": "mightyconsole",
+        "clientSecretFile": "idp/client-secret",
+        "redirectUris": IDP_REDIRECTS,
+        "users": users,
+    }
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the identity provider (Dex)")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
         ensure_s3()
         ensure_codec()
+        ensure_idp()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -344,6 +432,7 @@ def main(argv):
     write("credentials.json", json.dumps(credentials, indent=2) + "\n")
     ensure_s3()
     ensure_codec()
+    ensure_idp()
     print(f"generate: wrote {OUT}")
     return 0
 

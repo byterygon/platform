@@ -171,6 +171,19 @@ services:
       retries: 60
     profiles: [langgraph, all]
 
+  # The identity provider for sign-in (TSK-136, DOC-25): Dex over TLS with its own CA, fixed
+  # users and groups, one confidential client; everything generated into .generated/idp/.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.46.1@sha256:65b72ca0f4b0bf6d4ada84ec21da8851782563404ac7b8f926923d27ceced9ab
+    command: ["dex", "serve", "/generated/idp/config.yaml"]
+    volumes: ["./.generated:/generated:ro"]
+    ports: ["127.0.0.1:5556:5556"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5558/healthz/ready"]
+      interval: 2s
+      retries: 60
+    profiles: [idp, all]
+
 volumes:
   seaweedfs-data: {}
   nats-data: {}

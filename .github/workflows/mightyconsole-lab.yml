@@ -129,15 +129,17 @@ jobs:
           # messaging core (TSK-80; the kafka profile's Confluent Schema Registry) and Temporal
           # (TSK-83, TSK-92: the dev server and the lab worker), with every item of temporal-more
           # (TSK-92 wired all eight). NATS (TSK-85) runs only the items wired so far: each batch
-          # adds the ids it wired to nats_only, and TSK-104 to detail (temporal-detail).
+          # adds the ids it wired to nats_only, and TSK-104 to detail (temporal-detail). Security
+          # (DOC-25 section 6) runs with the idp profile (Dex): its login items (TSK-136).
           more=""
           detail=""
           nats_only=""
           case " $LAB_TOOLS " in
-            " all ") lists="foundation langgraph messaging temporal" ;;
+            " all ") lists="foundation langgraph messaging temporal security" ;;
             *)
               lists=""
               case " $LAB_TOOLS " in *" langgraph "*) lists="langgraph" ;; esac
+              case " $LAB_TOOLS " in *" idp "*) lists="${lists:+$lists }security" ;; esac
               case " $LAB_TOOLS " in *" kafka "*) lists="${lists:+$lists }messaging" ;; esac
               case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal" ;; esac
               ;;

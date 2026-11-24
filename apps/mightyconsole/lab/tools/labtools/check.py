@@ -3,6 +3,8 @@ reads the system through its own API and fails with what is missing. Kubernetes 
 host are checked by lab.mts (kubectl and docker inside their containers)."""
 
 import asyncio
+import json
+import os
 import sys
 import time
 
@@ -205,7 +207,25 @@ def check_langgraph():
     expect("user_id" in context.get("properties", {}), f"langgraph: the context schema has no user_id ({context})")
 
 
-CHECKS = {"nats": lambda: asyncio.run(check_nats()), "kafka": check_kafka, "kafka-listeners": check_kafka_listeners, "temporal": lambda: asyncio.run(check_temporal()), "langgraph": check_langgraph}
+def check_idp():
+    """Dex answers discovery over TLS checked against its own CA, names the lab issuer, and has a
+    signing key; the client's users are there."""
+    import requests
+
+    with open("/generated/credentials.json") as f:
+        idp = json.load(f)["idp"]
+    ca = os.path.join("/generated", idp["caFile"])
+    # Inside the compose network Dex is `dex`; its certificate names it as well as localhost.
+    base = "https://dex:5556/dex"
+    doc = requests.get(base + "/.well-known/openid-configuration", verify=ca, timeout=10).json()
+    assert doc["issuer"] == idp["issuer"], doc["issuer"]
+    keys = requests.get(base + "/keys", verify=ca, timeout=10).json()["keys"]
+    assert keys and all(k.get("use", "sig") == "sig" for k in keys), keys
+    assert len(idp["users"]) == 3, idp["users"]
+    print(f"check: idp ok ({doc['issuer']}, {len(keys)} key(s), algorithms {doc.get('id_token_signing_alg_values_supported')})")
+
+
+CHECKS = {"nats": lambda: asyncio.run(check_nats()), "kafka": check_kafka, "kafka-listeners": check_kafka_listeners, "temporal": lambda: asyncio.run(check_temporal()), "langgraph": check_langgraph, "idp": check_idp}
 
 
 def main(argv):
