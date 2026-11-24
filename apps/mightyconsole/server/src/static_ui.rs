@@ -24,6 +24,11 @@
 //! [`EMBEDDED`] and serves it when no `--ui` directory is given; the same segment checks apply,
 //! and a path is looked up by name in the sorted list, so nothing outside it can be named.
 //!
+//! **Signed in or out** (DOC-25 §3.2.5). With OIDC sign-in, the page loads either way: a live
+//! session cookie gets that session's anti-CSRF token and counts as activity; without one the
+//! page carries `<meta name="mightyconsole-auth" content="signed-out">` and the IdP's display
+//! name in `<meta name="mightyconsole-idp">`, and no token. `GET <base>/healthz` answers `ok`.
+//!
 //! **Headers.** The Content-Security-Policy of spec §2.3 (with `base-uri` and `form-action`
 //! closed as well), `nosniff`, no referrer, HSTS, same-origin opener.
 
@@ -38,7 +43,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::RouterMode;
-use crate::sessions::LocalSessions;
+use crate::sessions::ServerSessions;
 
 /// The `<meta>` name the UI reads the anti-CSRF token from.
 pub const CSRF_META: &str = "mightyconsole-csrf";
@@ -100,6 +105,11 @@ impl StaticUi {
     }
 }
 
+/// Whether the page is signed in (`signed-in`, `signed-out`; absent without sign-in).
+pub const AUTH_META: &str = "mightyconsole-auth";
+/// The IdP's display name for the sign-in link.
+pub const IDP_META: &str = "mightyconsole-idp";
+
 /// The `<meta>` names the UI reads its history and base path from (DOC-21 §3.7).
 pub const ROUTER_META: &str = "mightyconsole-router";
 pub const BASE_META: &str = "mightyconsole-base";
@@ -116,7 +126,7 @@ pub struct PageConfig {
 
 struct Shared {
     ui: Option<UiSource>,
-    sessions: Arc<LocalSessions>,
+    sessions: ServerSessions,
     page: PageConfig,
     /// `host[:port]` of the public origin.
     origin_host: String,
@@ -124,7 +134,7 @@ struct Shared {
 }
 
 /// The HTTP routes next to `/rpc/ws`.
-pub fn routes(ui: Option<UiSource>, sessions: Arc<LocalSessions>, page: PageConfig) -> Router {
+pub fn routes(ui: Option<UiSource>, sessions: ServerSessions, page: PageConfig) -> Router {
     let shared = Arc::new(Shared {
         ui,
         sessions,
@@ -184,6 +194,16 @@ async fn serve(
             StatusCode::NOT_FOUND.into_response()
         };
     };
+    if path == "/healthz" {
+        return respond(
+            &shared,
+            &method,
+            "text/plain; charset=utf-8",
+            "no-store",
+            Bytes::from_static(b"ok"),
+            None,
+        );
+    }
     // A path that cannot name a file is the page when it looks like a route (no extension).
     let hash = shared.page.router == RouterMode::Hash;
     let segments = match segments(path) {
@@ -248,21 +268,37 @@ async fn page(
     };
     let page = &shared.page;
     let cookie = request_cookie(headers, &page.cookie_name);
-    let credentials = shared.sessions.for_page(cookie);
     // DOC-21 §2.3: the history and the base path for the UI; both are fixed words or a
     // validated path, so they need no escaping.
     let html = absolute_assets(&html, &page.base_path);
     let html = inject_meta(&html, ROUTER_META, page.router.as_str());
     let html = inject_meta(&html, BASE_META, &page.base_path);
-    let html = inject_csrf(&html, &credentials.csrf_token);
-    // `__Host-` needs `Path=/`: the cookie does not follow the base path, its name does.
-    let set_cookie = credentials.new.then(|| {
-        HeaderValue::from_str(&format!(
-            "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
-            page.cookie_name, credentials.cookie
-        ))
-        .expect("hex cookie value")
-    });
+    let (html, set_cookie) = match &shared.sessions {
+        ServerSessions::Local(local) => {
+            let credentials = local.for_page(cookie);
+            let html = inject_csrf(&html, &credentials.csrf_token);
+            // `__Host-` needs `Path=/`: the cookie does not follow the base path, its name does.
+            let set_cookie = credentials.new.then(|| {
+                HeaderValue::from_str(&format!(
+                    "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
+                    page.cookie_name, credentials.cookie
+                ))
+                .expect("hex cookie value")
+            });
+            (html, set_cookie)
+        }
+        ServerSessions::SignIn(signed) => match cookie.and_then(|c| signed.sessions.page(c)) {
+            Some(session) => {
+                let html = inject_meta(&html, AUTH_META, "signed-in");
+                (inject_csrf(&html, &session.csrf_token), None)
+            }
+            None => {
+                let html = inject_meta(&html, AUTH_META, "signed-out");
+                let idp = ambidex_axum::web::html_escape(signed.login.display_name());
+                (inject_meta(&html, IDP_META, &idp), None)
+            }
+        },
+    };
     respond(
         shared,
         method,

@@ -148,6 +148,11 @@ impl Provider {
     /// Fetches discovery and the JWKS.
     pub async fn load(&self) -> Result<Arc<Loaded>, String> {
         let _one = self.fetching.lock().await;
+        self.load_locked().await
+    }
+
+    /// [`Provider::load`] with the fetch lock held.
+    async fn load_locked(&self) -> Result<Arc<Loaded>, String> {
         self.attempts().last_load_ms = Some(self.clock.now_unix_ms());
         let base = self.issuer.trim_end_matches('/');
         let url = Url::parse(&format!("{base}/.well-known/openid-configuration"))
@@ -162,9 +167,14 @@ impl Provider {
         }))
     }
 
-    /// The loaded IdP; when there is none, one attempt now unless one was made in the last
+    /// The loaded IdP. When there is none: waits for a fetch in flight (the start's, or the
+    /// background retry's), then makes one attempt unless one ended in the last
     /// [`RETRY_ON_DEMAND`].
     pub async fn ensure(&self) -> Result<Arc<Loaded>, String> {
+        if let Some(loaded) = self.current() {
+            return Ok(loaded);
+        }
+        let _one = self.fetching.lock().await;
         if let Some(loaded) = self.current() {
             return Ok(loaded);
         }
@@ -176,7 +186,7 @@ impl Provider {
         if recent {
             return Err("the identity provider was unreachable moments ago".into());
         }
-        self.load().await
+        self.load_locked().await
     }
 
     /// Fetches the JWKS again, keeping the old keys when that fails.

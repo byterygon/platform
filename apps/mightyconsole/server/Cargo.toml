@@ -59,10 +59,12 @@ sha2 = "0.11"
 time = { version = "0.3.55", default-features = false, features = ["std", "formatting", "parsing"] }
 tokio = { version = "1.54.1", default-features = false, features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7.20", default-features = false }
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
 tonic = { version = "0.14.9", default-features = false, features = ["transport", "tls-ring", "tls-native-roots", "codegen"] }
 tonic-prost = "0.14.9"
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 url = "2.5.8"
+zeroize = "1.9.1"
 russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
 
 # The jq worker limits its own memory and CPU time (spec §5.4.1); safe Rust, Linux only.
@@ -72,7 +74,8 @@ rustix = { version = "1.1.6", default-features = false, features = ["process", "
 [dev-dependencies]
 arrow-ipc = { version = "60.1.0", default-features = false }
 arrow-select = { version = "60.1.0", default-features = false }
-ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
+# `ws` for the test identity provider of tests/sign_in.rs.
+ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false, features = ["ws"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 # The stand-in Docker Engine of tests/docker.rs.
 hyper = { version = "1.12.0", default-features = false, features = ["http1", "server"] }

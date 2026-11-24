@@ -3,7 +3,8 @@
 
 use std::process::ExitCode;
 
-use mightyconsole_server::cli::{Command, USAGE, default_data_dir, parse};
+use mightyconsole_server::cli::{Command, Env, USAGE, parse};
+use mightyconsole_server::tls::TlsSource;
 use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, ServedUi, Server, VERSION};
 
 fn main() -> ExitCode {
@@ -12,7 +13,7 @@ fn main() -> ExitCode {
     if args.first().map(String::as_str) == Some(mightyconsole_server::core::jq::WORKER_ARG) {
         return ExitCode::from(mightyconsole_server::core::jq::worker_main(&args[1..]));
     }
-    let command = match parse(args, default_data_dir()) {
+    let command = match parse(args, &Env::from_process()) {
         Ok(command) => command,
         Err(message) => {
             eprintln!("mightyconsole-server: {message}\n\n{USAGE}");
@@ -31,24 +32,55 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        Command::Serve(config) => {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(e) => {
-                    eprintln!("mightyconsole-server: cannot start the runtime: {e}");
-                    return ExitCode::FAILURE;
-                }
-            };
-            runtime.block_on(serve(config))
+        Command::Serve(config) => match runtime() {
+            Some(runtime) => runtime.block_on(serve(config)),
+            None => ExitCode::FAILURE,
+        },
+        Command::ConfigCheck { config, online } => match runtime() {
+            Some(runtime) => runtime.block_on(config_check(config, online)),
+            None => ExitCode::FAILURE,
+        },
+    }
+}
+
+fn runtime() -> Option<tokio::runtime::Runtime> {
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => Some(runtime),
+        Err(e) => {
+            eprintln!("mightyconsole-server: cannot start the runtime: {e}");
+            None
+        }
+    }
+}
+
+/// `config check [--online]` (DOC-25 §3.6.1): everything that needs no network, and with
+/// `--online` the IdP's discovery and keys. Never listens.
+async fn config_check(config: ServeConfig, online: bool) -> ExitCode {
+    match mightyconsole_server::check_config(&config, online).await {
+        Ok(report) => {
+            for line in report {
+                println!("{line}");
+            }
+            println!("configuration ok");
+            ExitCode::SUCCESS
+        }
+        Err(problems) => {
+            for problem in problems {
+                eprintln!("mightyconsole-server: {problem}");
+            }
+            ExitCode::FAILURE
         }
     }
 }
 
 async fn serve(config: ServeConfig) -> ExitCode {
     let exposed = config.is_exposed();
+    let sign_in = config.auth.oidc.as_ref().map(|oidc| oidc.issuer.clone());
+    let redirect_uri = config.login_routes().redirect_uri();
+    let generated_cert = matches!(config.tls, TlsSource::Generated { .. });
     let origin = format!("{}{}", config.public_origin, config.base_path);
     let hosts = config.allowed_hosts.join(", ");
     let server = match Server::start(config).await {
@@ -83,11 +115,27 @@ async fn serve(config: ServeConfig) -> ExitCode {
             eprintln!("mightyconsole-server: no --ui directory; serving a placeholder page")
         }
     }
-    if exposed {
-        eprintln!(
-            "mightyconsole-server: WARNING: listening beyond loopback. There is no login in \
-             this version: anyone who reaches this port can use every connection you open."
-        );
+    match &sign_in {
+        Some(issuer) => {
+            eprintln!(
+                "mightyconsole-server: sign-in through {issuer} (redirect URI {redirect_uri})"
+            );
+            eprintln!(
+                "mightyconsole-server: WARNING: roles are not built yet: every signed-in person \
+                 may do everything"
+            );
+            if exposed && generated_cert {
+                eprintln!(
+                    "mightyconsole-server: WARNING: the certificate is self-signed: give \
+                     --tls-cert and --tls-key"
+                );
+            }
+        }
+        None if exposed => eprintln!(
+            "mightyconsole-server: WARNING: listening beyond loopback without [auth.oidc]: \
+             there is no login, anyone who reaches this port can use every connection you open."
+        ),
+        None => {}
     }
     eprintln!("mightyconsole-server: open {origin}/");
 

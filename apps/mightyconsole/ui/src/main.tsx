@@ -1,4 +1,4 @@
-// Entry: the browser storage (IndexedDB, or memory with a warning), the persisted tabs, layout and
+// Entry: a signed-out page goes to the sign-in first; then the browser storage (IndexedDB, or memory with a warning), the persisted tabs, layout and
 // settings, the router's mode and base path from the page (DOC-21 §3.7), one client over the
 // WebSocket under that base path, the store, the shell.
 import { StrictMode } from "react";
@@ -8,11 +8,22 @@ import { App } from "./app/App";
 import { ServicesContext, createServices } from "./app/client";
 import { applyAppearance } from "./app/presets";
 import { createAppHistory, readRouterConfig } from "./app/router";
+import { renderSignInFailure, signInState } from "./app/sign-in";
 import { StoreProvider, loadPersisted } from "./app/store";
 import { openStorage } from "./profiles/storage";
 import { TOOLS, orderedTools } from "./tools/registry";
 
 async function boot(): Promise<void> {
+  // Signed out (DOC-25 §3.2.5): to the sign-in, or why it failed; the app needs a session.
+  const signIn = signInState();
+  if (signIn.kind === "redirect") {
+    window.location.replace(signIn.to);
+    return;
+  }
+  if (signIn.kind === "failed") {
+    renderSignInFailure(document.getElementById("root")!, signIn);
+    return;
+  }
   const storage = await openStorage();
   const persisted = await loadPersisted(
     storage,
