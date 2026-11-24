@@ -10,7 +10,8 @@
 //   node lab.mts lock                re-lock the Python packages with hashes (uv, in a container)
 //   node lab.mts langgraph-offline   the LangGraph server starts and serves a run with no egress
 //
-// Tools: nats, kafka (with the Schema Registry), k8s, temporal, docker, langgraph; none means all.
+// Tools: nats, kafka (with the Schema Registry), k8s, temporal, docker, langgraph, and idp (Dex, the
+// identity provider for sign-in, TSK-136); none means all.
 // Through pnpm: `pnpm --filter @byterygon/mightyconsole lab up nats`. Needs Docker with compose.
 import { type SpawnSyncOptions, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -19,7 +20,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const LAB = dirname(fileURLToPath(import.meta.url));
-export const TOOLS = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph"] as const;
+export const TOOLS = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph", "idp"] as const;
 type Tool = (typeof TOOLS)[number];
 
 const UV = "ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58";
@@ -99,7 +100,7 @@ async function check(tools: readonly Tool[]): Promise<number> {
   for (const row of rows) {
     for (const p of row.Publishers ?? []) if (p.PublishedPort > 0 && p.URL !== "127.0.0.1") failures.push(`${row.Service} publishes port ${p.PublishedPort} on ${p.URL}`);
   }
-  const python = tools.filter((t) => t === "nats" || t === "kafka" || t === "temporal" || t === "langgraph");
+  const python = tools.filter((t) => t === "nats" || t === "kafka" || t === "temporal" || t === "langgraph" || t === "idp");
   if (python.length > 0) {
     try {
       compose(["run", "--rm", "--no-deps", "tools", "check", ...python]);
