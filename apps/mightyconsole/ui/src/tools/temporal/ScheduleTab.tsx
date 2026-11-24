@@ -37,6 +37,28 @@ import { statusLabel } from "./WorkflowsTab";
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 const num = (value: unknown): number => Number(text(value) || 0) || 0;
 
+/** How often, and for how long, the tab follows a Trigger now, Pause or Unpause until the server shows its effect (TSK-132). */
+export const FOLLOW_EVERY_MS = 1500;
+export const FOLLOW_FOR_MS = 30_000;
+
+/** What moves when the server takes an action or skips one: the actions taken plus those skipped. */
+const progress = (info: Record<string, unknown>): number => num(info["actionCount"]) + num(info["overlapSkipped"]);
+
+/** Temporal rate limits a query on a schedule's workflow that has not run its first task yet ("consistent query buffer is full"); the same call works a moment later, so a call asks again this many times. */
+export const BUSY_RETRIES = 4;
+
+/** `call`, asked again a moment later while Temporal answers ResourceExhausted (what the user would do with Retry); stops asking once `stale()`. */
+async function whenBusy<T>(call: () => Promise<T>, note: TabProps["note"], stale: () => boolean): Promise<T> {
+  for (let tries = 0; ; tries += 1) {
+    try {
+      return await call();
+    } catch (e) {
+      if (tries >= BUSY_RETRIES || stale() || note(e).remoteCode !== "ResourceExhausted") throw e;
+      await new Promise((r) => setTimeout(r, FOLLOW_EVERY_MS));
+    }
+  }
+}
+
 /** Runs per page of the Runs tab. */
 export const RUNS_PAGE = 20;
 const UPCOMING = 20;
@@ -85,7 +107,7 @@ function useRuns(client: TabProps["client"], connId: string | null, namespace: s
       setLoading(true);
       setError(null);
       try {
-        const o = await client.temporal.schedules.runs({ connId, namespace, scheduleId, pageSize: RUNS_PAGE, nextPageToken: token });
+        const o = await whenBusy(() => client.temporal.schedules.runs({ connId, namespace, scheduleId, pageSize: RUNS_PAGE, nextPageToken: token }), note, () => mine !== generation.current);
         if (mine !== generation.current) return;
         setOut(o);
         setPage(at);
@@ -134,6 +156,8 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
   const [view, setView] = useState<View>("runs");
   const [upcoming, setUpcoming] = useState<string[] | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // After Trigger now, Pause or Unpause: what the schedule shows once the server has taken it.
+  const [following, setFollowing] = useState<{ taken: (d: ScheduleDetail) => boolean } | null>(null);
   const action = useAction(note);
   const generation = useRef(0);
   const runs = useRuns(client, connId, namespace, scheduleId, note);
@@ -144,7 +168,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
     setLoading(true);
     setError(null);
     try {
-      const d = await client.temporal.schedules.describe({ connId, namespace, scheduleId });
+      const d = await whenBusy(() => client.temporal.schedules.describe({ connId, namespace, scheduleId }), note, () => mine !== generation.current);
       if (mine !== generation.current) return;
       setDetail(d);
       setNow(Date.now());
@@ -172,6 +196,25 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
     runs.reload();
   };
   useTabActions({ refresh });
+  // Temporal takes a trigger, a pause or an unpause as a signal to the schedule's workflow, which
+  // counts the run or flips the state a moment later (and the run reaches visibility later still),
+  // so one reload right after the action can show nothing new. Describe again until the schedule
+  // shows it, then reload Runs once; give up after FOLLOW_FOR_MS.
+  const runsReload = runs.reload;
+  useEffect(() => {
+    if (following === null) return;
+    const timer = setInterval(() => void load(), FOLLOW_EVERY_MS);
+    const stop = setTimeout(() => setFollowing(null), FOLLOW_FOR_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+  }, [following, load]);
+  useEffect(() => {
+    if (following === null || detail === null || !following.taken(detail)) return;
+    setFollowing(null);
+    runsReload();
+  }, [following, detail, runsReload]);
 
   const close = () => {
     setDialog(null);
@@ -398,7 +441,16 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
         pausing={dialog !== "unpause"}
         busy={action.busy}
         error={action.error}
-        onConfirm={(n) => void action.run(() => (dialog === "unpause" ? client.temporal.schedules.unpause({ ...ref, note: n || null, overlap: null }) : client.temporal.schedules.pause({ ...ref, note: n || null, overlap: null })).then(() => undefined), done)}
+        onConfirm={(n) => {
+          const pausing = dialog !== "unpause";
+          void action.run(
+            () => (pausing ? client.temporal.schedules.pause({ ...ref, note: n || null, overlap: null }) : client.temporal.schedules.unpause({ ...ref, note: n || null, overlap: null })).then(() => undefined),
+            () => {
+              setFollowing({ taken: (d) => d.summary.paused === pausing });
+              done();
+            },
+          );
+        }}
       />
       <TriggerDialog
         open={dialog === "trigger"}
@@ -406,7 +458,18 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
         scheduleId={scheduleId}
         busy={action.busy}
         error={action.error}
-        onConfirm={(overlap) => void action.run(() => client.temporal.schedules.trigger({ ...ref, note: null, overlap }).then(() => undefined), done)}
+        onConfirm={(overlap) =>
+          void action.run(
+            () => client.temporal.schedules.trigger({ ...ref, note: null, overlap }).then(() => undefined),
+            () => {
+              if (detail) {
+                const before = progress(detail.info);
+                setFollowing({ taken: (d) => progress(d.info) > before });
+              }
+              done();
+            },
+          )
+        }
       />
       <BackfillDialog
         open={dialog === "backfill"}

@@ -81,8 +81,9 @@ export default {
           await run(`__mc.click(${shownButton("Trigger now")})`);
           await until(dialogButton("Trigger now"), "the trigger dialog");
           await run(`__mc.click(${dialogButton("Trigger now")})`);
-          // 60 s: the run shows once the server has it in recent actions or visibility (TSK-121: 2
-          // timeouts at 20 s on a busy runner).
+          // 60 s: the tab follows Trigger now until the schedule counts the run, then reloads Runs
+          // (TSK-132; before it, one reload could beat Temporal's count and show nothing). TSK-121: 2
+          // timeouts at 20 s on a busy runner.
           await until(`!document.querySelector("[role=dialog]") && __mc.has(${JSON.stringify(`${id}-20`)})`, "the triggered run in Runs", 60_000);
           await shot("schedule-detail");
           // Pause with a note, then Unpause.
