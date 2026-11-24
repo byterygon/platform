@@ -276,6 +276,8 @@ pub struct LoginRoutes {
     /// The signed-out page's pre-session cookie (`SameSite=Strict`) that every `POST` of the
     /// built-in accounts must match in [`LoginRoutes::csrf_header`].
     pub pre_cookie: String,
+    /// The cookie that binds a sign-in waiting for its second factor to the browser.
+    pub totp_cookie: String,
 }
 
 impl LoginRoutes {
@@ -287,6 +289,7 @@ impl LoginRoutes {
             login_cookie: "__Host-ambidex_login".into(),
             csrf_header: HeaderName::from_static("x-ambidex-csrf"),
             pre_cookie: "__Host-ambidex_pre".into(),
+            totp_cookie: "__Host-ambidex_totp".into(),
         }
     }
 
@@ -315,7 +318,10 @@ impl LoginRoutes {
             Err(crate::ConfigError::PublicOrigin) => return Err(OidcConfigError::PublicOrigin),
             Err(_) => return Err(OidcConfigError::Cookie),
         }
-        if !self.login_cookie.starts_with("__Host-") || !self.pre_cookie.starts_with("__Host-") {
+        if !self.login_cookie.starts_with("__Host-")
+            || !self.pre_cookie.starts_with("__Host-")
+            || !self.totp_cookie.starts_with("__Host-")
+        {
             return Err(OidcConfigError::Cookie);
         }
         Ok(())
@@ -1029,6 +1035,7 @@ async fn callback<H: SignInHooks>(
         id_token: Some(id_token),
         client,
         must_change_password: false,
+        must_enrol_totp: false,
     }) {
         Ok(issued) => issued,
         Err(_) => return failed(LoginError::Busy, "too many sessions"),
