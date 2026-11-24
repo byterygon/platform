@@ -217,6 +217,7 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
           </span>
         ) : null}
         {s ? <span>Ended ({endText(s.endReason)}): scanned {s.scanned.toLocaleString()}, matched {s.matched.toLocaleString()}</span> : null}
+        {s?.filterError ? <span className="min-w-0 truncate text-warning-fg" title={s.filterError}>Filter: {s.filterError}</span> : null}
       </p>
       {projected ? (
         <Resizable

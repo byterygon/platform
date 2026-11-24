@@ -27,6 +27,7 @@ export function MessagesTab({ profile, connId, client, useTabActions, onLive, no
   const query = useValueQuery({ client, profile, updateProfile });
   const services = useServices();
   const { state } = useStore();
+  const jqTimeoutMs = state.settings.jqFilterTimeoutMs;
   const [decode, setDecode] = useState<api.DecodeOptions>({ key: { codec: "auto" }, value: { codec: "auto" } });
   const [filter, setFilter] = useState<api.Filter>({});
   const [start, setStart] = useState<StartKind>("latestN");
@@ -51,12 +52,13 @@ export function MessagesTab({ profile, connId, client, useTabActions, onLive, no
                 push,
                 decode,
                 filter,
+                jqTimeoutMs,
                 maxScan: null,
                 limit: null,
               },
               liveTimeout(api.procedures.echo.messages.tail),
             ),
-    [client, connId, start, latestN, follow, push, decode, filter],
+    [client, connId, start, latestN, follow, push, decode, filter, jqTimeoutMs],
   );
   const tail = useLiveTail(services, open, note, onLive, active);
   useTabActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });

@@ -2518,3 +2518,37 @@ async fn a_connect_a_write_a_destroy_and_a_download_are_recorded_in_the_audit_lo
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains(&password), "a credential reached the log");
 }
+
+/// The filter's throughput on the lab's ORDERS stream (TSK-143): messages per second of a browse
+/// from the first message with a simple jq filter, best of 30 runs. It measures, it does not
+/// check; run it by hand with `--ignored --nocapture`. The numbers are on the TSK-143 page.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "measures throughput; run by hand with --ignored --nocapture"]
+async fn filter_throughput_on_orders() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let mut id = 100;
+    for (name, filter) in [
+        ("no filter", Value::Null),
+        ("jq .subject | endswith(\"created\")", json!({ "jq": ".subject | endswith(\"created\")" })),
+        ("jq .value.amount > 50", json!({ "jq": ".value.amount > 50" })),
+    ] {
+        let mut best = 0f64;
+        let mut scanned = 0;
+        for _ in 0..30 {
+            id += 1;
+            let mut input = json!({ "connId": conn, "streamId": format!("t{id}"), "stream": "ORDERS", "start": { "from": "first" }, "follow": false, "maxScan": 0 });
+            if !filter.is_null() {
+                input["filter"] = filter.clone();
+            }
+            let started = std::time::Instant::now();
+            tab.call(id, "nats.js.streams.browse", input).await;
+            let (_, summary) = read_stream(&mut tab, id).await;
+            let took = started.elapsed();
+            scanned = summary["scanned"].as_u64().unwrap();
+            best = best.max(scanned as f64 / took.as_secs_f64());
+        }
+        println!("{name:<40} {best:>10.0} messages/s (best of 30, {scanned} messages)");
+    }
+}

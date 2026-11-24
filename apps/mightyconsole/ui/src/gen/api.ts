@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:c5e1792ec1139fe96e98fa2157f4fda8b6846297cf81bfd97227427463b639fb";
+export const SCHEMA_HASH = "sha256:8ba05636beb06f7ea4f85d0a04c58325456ead7539ca83182c1f9ffa9a1c523f";
 
 // ---- Types
 
@@ -858,6 +858,10 @@ follow: boolean,
  */
 push?: boolean | null, decode?: DecodeOptions | null, filter?: Filter | null, 
 /**
+ * The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).
+ */
+jqTimeoutMs?: number | null, 
+/**
  * Messages read before a filtered scan stops; 0 for no limit, 100,000 with a filter.
  */
 maxScan?: number | null, 
@@ -1598,7 +1602,11 @@ subject?: string | null,
 /**
  * Keep reading new messages after the last one there was at the start.
  */
-follow: boolean, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
+follow: boolean, decode?: DecodeOptions | null, filter?: Filter | null, 
+/**
+ * The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).
+ */
+jqTimeoutMs?: number | null, maxScan?: number | null, limit?: number | null, };
 
 export type NatsBrowseStart = { from: NatsBrowseFrom, 
 /**
@@ -1843,7 +1851,11 @@ includeHistory?: boolean | null,
 /**
  * Start at this revision (overrides `includeHistory`).
  */
-fromRevision?: number | null, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
+fromRevision?: number | null, decode?: DecodeOptions | null, filter?: Filter | null, 
+/**
+ * The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).
+ */
+jqTimeoutMs?: number | null, maxScan?: number | null, limit?: number | null, };
 
 /**
  * An object store's configuration and state.
@@ -2157,6 +2169,10 @@ subjects: Array<string>,
  * Share the messages with other members of the queue group.
  */
 queueGroup?: string | null, decode?: DecodeOptions | null, filter?: Filter | null, 
+/**
+ * The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).
+ */
+jqTimeoutMs?: number | null, 
 /**
  * Messages read before a filtered tail stops; 0 for no limit, 100,000 with a filter.
  */
@@ -3283,7 +3299,12 @@ limit?: number | null, offset?: number | null, };
 /**
  * The summary of a message stream (spec §5.5, `TailSummary`).
  */
-export type TailSummary = { scanned: number, matched: number, dropped: number, decodeErrors: number, endReason: EndReason, lastPositions: Array<LastPosition>, };
+export type TailSummary = { scanned: number, matched: number, dropped: number, decodeErrors: number, endReason: EndReason, lastPositions: Array<LastPosition>, 
+/**
+ * Why the filter's jq last failed on a message (its error, or the limit that stopped it);
+ * such a message counts in `decodeErrors`.
+ */
+filterError?: string, };
 
 /**
  * Where a message lives, for mappings and subject naming: a Kafka topic, a NATS subject (core

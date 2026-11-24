@@ -38,6 +38,7 @@ export function subjectsOf(params: Record<string, unknown>): string[] {
 export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLive, note, updateProfile, openTab, active }: TabProps) {
   const services = useServices();
   const { state } = useStore();
+  const jqTimeoutMs = state.settings.jqFilterTimeoutMs;
   const [subjects, setSubjects] = useState<string[]>(() => subjectsOf(tab.params));
   const [queueGroup, setQueueGroup] = useState(() => (typeof tab.params["queueGroup"] === "string" ? tab.params["queueGroup"] : ""));
   const [decode, setDecode] = useState<api.DecodeOptions>({ key: { codec: "auto" }, value: { codec: "auto" } });
@@ -49,10 +50,10 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
         ? null
         : (streamId: string) =>
             client.nats.core.subscribe(
-              { connId, streamId, subjects, queueGroup: queueGroup.trim() || null, decode, filter, maxScan: null, limit: null },
+              { connId, streamId, subjects, queueGroup: queueGroup.trim() || null, decode, filter, jqTimeoutMs, maxScan: null, limit: null },
               liveTimeout(api.procedures.nats.core.subscribe),
             ),
-    [client, connId, subjects, queueGroup, decode, filter],
+    [client, connId, subjects, queueGroup, decode, filter, jqTimeoutMs],
   );
   const tail = useLiveTail(services, open, note, onLive, active);
   // Core NATS cannot replay: Restart is a new subscription from now.

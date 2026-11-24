@@ -3023,6 +3023,16 @@
           "description": "Keep reading new messages; else stop at the end as of the start.",
           "type": "boolean"
         },
+        "jqTimeoutMs": {
+          "default": null,
+          "description": "The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "limit": {
           "default": null,
           "description": "Stop after this many matches.",
@@ -5446,6 +5456,16 @@
           "description": "Keep reading new messages after the last one there was at the start.",
           "type": "boolean"
         },
+        "jqTimeoutMs": {
+          "default": null,
+          "description": "The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "limit": {
           "default": null,
           "format": "uint64",
@@ -6530,6 +6550,16 @@
           "description": "Every revision kept first, then the changes (else the current value of each key first).",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "jqTimeoutMs": {
+          "default": null,
+          "description": "The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -8113,6 +8143,16 @@
             }
           ],
           "default": null
+        },
+        "jqTimeoutMs": {
+          "default": null,
+          "description": "The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "limit": {
           "default": null,
@@ -11467,6 +11507,13 @@
         },
         "endReason": {
           "$ref": "#/$defs/EndReason"
+        },
+        "filterError": {
+          "description": "Why the filter's jq last failed on a message (its error, or the limit that stopped it);\nsuch a message counts in `decodeErrors`.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "lastPositions": {
           "items": {
@@ -17397,5 +17444,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:c5e1792ec1139fe96e98fa2157f4fda8b6846297cf81bfd97227427463b639fb"
+  "schema_hash": "sha256:8ba05636beb06f7ea4f85d0a04c58325456ead7539ca83182c1f9ffa9a1c523f"
 }
