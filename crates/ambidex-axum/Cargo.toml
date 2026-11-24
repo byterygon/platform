@@ -13,16 +13,27 @@ workspace = true
 
 [dependencies]
 ambidex = { path = "../ambidex" }
-axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws", "query", "form"] }
+base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+bytes = "1.12.1"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 getrandom = "0.4.3"
-hyper = { version = "1.12.0", features = ["http1", "server"] }
-hyper-util = { version = "0.1.21", features = ["http1", "server", "service", "tokio"] }
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["client", "http1", "server"] }
+hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "ring", "tls12"] }
+hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "server", "service", "tokio"] }
+# JWS signature checks of ID tokens only; the OIDC flow and every claim check are ours (TSK-136
+# spike). `rust_crypto` uses the RustCrypto crates already in the lockfile, no C toolchain.
+jsonwebtoken = { version = "12.0.0", default-features = false, features = ["rust_crypto"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 security-types = { path = "../security-types" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11"
 tokio = { version = "1.54.1", default-features = false, features = ["macros", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+url = "2.5.8"
+zeroize = { version = "1.9.1", features = ["serde"] }
 
 [dev-dependencies]
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }

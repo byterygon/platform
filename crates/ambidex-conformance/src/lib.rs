@@ -23,14 +23,18 @@
 //!
 //! | Case | In-process | WebSocket | Tauri |
 //! | --- | --- | --- | --- |
-//! | `session_revocation_sends_goaway_and_cancels_calls` | yes | **not applicable** | yes (app lock: `Hub::end_all_sessions`) |
-//! | `session_revocation_ends_subscriptions_with_goaway` | yes | **not applicable** | yes (app lock) |
 //! | `full_event_buffer_ends_subscription` | yes | yes | **not asserted** |
 //!
-//! WebSocket session revocation is M3: `PlaceholderSessions` has no expiry or revocation, and
-//! removing a session only refuses new upgrades (asserted in `tests/ws.rs`). The cases report the
-//! reason and still check the call or subscription can be cancelled. When M3 lands, implement
-//! [`Harness::revoke_sessions`] for [`ws::Ws`] and they run as on the other transports.
+//! Session revocation runs everywhere: the WebSocket harness keeps its sessions in the real
+//! `LoginSessions` store and revokes them there (sign-out, an administrator); in-process and
+//! Tauri end them through their own session API (the app lock: `Hub::end_all_sessions`).
+//!
+//! **Sign-in** ([`oidc`], `tests/oidc.rs`) applies to the WebSocket transport only: the desktop
+//! has no login and the in-process harness no HTTP. Those cases run the real `ambidex-axum`
+//! OIDC routes against [`oidc::TestIdp`], an in-process identity provider over real TLS on
+//! loopback, and cover a valid sign-in, every refused token and callback, key rotation, clock
+//! skew at the edge, the IdP down, session idle and absolute expiry, logout, revocation and
+//! fixation.
 //!
 //! The exact subscription buffer bound needs a handler that outruns the connection task, which is
 //! only deterministic when the engine shares the case's current-thread runtime
@@ -90,6 +94,8 @@ pub mod clock;
 pub mod fixture;
 pub mod harness;
 pub mod in_process;
+#[cfg(feature = "ws")]
+pub mod oidc;
 #[cfg(feature = "tauri")]
 pub mod tauri;
 #[cfg(feature = "ws")]

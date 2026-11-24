@@ -17,11 +17,20 @@
 //! Each WebSocket message is bounded by the engine's frame limit plus the 12-byte header, so a
 //! client must send at most one maximum-size frame per message.
 //!
-//! Not here yet (M3, web security): OIDC login and `/auth/session`, session expiry and
-//! revocation with Goaway, mTLS, plain HTTP behind a reverse proxy, connection and rate limits.
+//! Sign-in and sessions (DOC-25 §3.2): [`oidc`] is the OIDC login (authorization code with
+//! PKCE), [`LoginSessions`] the server-side sessions it creates, with idle and absolute expiry
+//! and revocation. An ended session's connections get Goaway `Unauthenticated`
+//! ([`WebSessions::revocation`]), and every call a client starts counts as activity
+//! ([`WebSessions::touch`]). Every request carries the peer's address as a [`ClientAddr`]
+//! extension, for rate limits and the audit log.
+//!
+//! Not here: mTLS and plain HTTP behind a reverse proxy.
 
+pub mod oidc;
 mod session;
+mod store;
 mod transport;
+pub mod web;
 
 use std::future::Future;
 use std::io;
@@ -48,7 +57,16 @@ use ambidex::frame::HEADER_LEN;
 use ambidex::{Call, Chunks, Dispatch, ErrorPayload, Events, Server, ServerConfig, Session};
 
 pub use session::{IssuedSession, PlaceholderSessions, WebSession, WebSessions};
+pub use store::{
+    EndReason, EndedSession, IssuedLogin, LoginMethod, LoginSessions, NewSession, NoSessionEvents,
+    PageSession, SessionEvents, SessionInfo, SessionLimits, SessionsFull, login_session_of,
+};
 pub use transport::{WsRx, WsTx, split};
+
+/// The TCP peer of a request, inserted into every request's extensions by
+/// [`WsTransport::serve`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientAddr(pub SocketAddr);
 
 /// Path of the RPC WebSocket (spec §4).
 pub const RPC_WS_PATH: &str = "/rpc/ws";
@@ -224,7 +242,7 @@ impl<S: WebSessions, D: Dispatch> WsTransport<S, D> {
         let timeout = self.state.config.tls_handshake_timeout;
         let mut shutdown = std::pin::pin!(shutdown);
         loop {
-            let (tcp, _peer): (_, SocketAddr) = tokio::select! {
+            let (tcp, peer): (_, SocketAddr) = tokio::select! {
                 () = &mut shutdown => return Ok(()),
                 accepted = listener.accept() => match accepted {
                     Ok(accepted) => accepted,
@@ -244,6 +262,12 @@ impl<S: WebSessions, D: Dispatch> WsTransport<S, D> {
                     return;
                 };
                 let service = TowerToHyperService::new(app);
+                let service = hyper::service::service_fn(
+                    move |mut request: hyper::Request<hyper::body::Incoming>| {
+                        request.extensions_mut().insert(ClientAddr(peer));
+                        hyper::service::Service::call(&service, request)
+                    },
+                );
                 let _ = hyper::server::conn::http1::Builder::new()
                     .timer(TokioTimer::new())
                     .header_read_timeout(timeout)
@@ -299,36 +323,11 @@ fn host_allowed(config: &WsConfig, host: &str) -> bool {
         .any(|allowed| allowed.eq_ignore_ascii_case(host))
 }
 
-/// The value of a header that must appear exactly once, as text.
-fn single_header(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
-    let mut values = headers.get_all(name).iter();
-    let value = values.next()?;
-    if values.next().is_some() {
-        return None;
-    }
-    value.to_str().ok()
-}
+use web::single_header;
 
 /// The session cookie's value, if it appears exactly once across all `Cookie` headers.
 fn session_cookie<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    let mut found = None;
-    for header in headers.get_all(header::COOKIE) {
-        let header = header.to_str().ok()?;
-        for pair in header.split(';') {
-            let Some((key, value)) = pair.trim().split_once('=') else {
-                continue;
-            };
-            if key == name {
-                if found.is_some() {
-                    // Two cookies of the same name (e.g. one planted by a sibling subdomain
-                    // without the prefix): ambiguous, so fail closed.
-                    return None;
-                }
-                found = Some(value);
-            }
-        }
-    }
-    found.filter(|value| !value.is_empty())
+    web::cookie(headers, name)
 }
 
 /// `GET /rpc/ws`: Origin, then session, then the upgrade. Nothing reaches the engine on failure.
@@ -359,24 +358,43 @@ async fn upgrade<S: WebSessions, D: Dispatch>(
         .on_upgrade(move |socket| async move {
             let server = Server::new(
                 state.engine.clone(),
-                session::CsrfAuth(web),
-                SharedDispatch(Arc::clone(&state.dispatch)),
+                session::CsrfAuth(web, StateSessions(Arc::clone(&state))),
+                SharedDispatch(Arc::clone(&state)),
             );
             let (rx, tx) = split(socket);
             server.serve(rx, tx).closed().await;
         })
 }
 
-/// Lets every per-connection engine share the one dispatcher.
-struct SharedDispatch<D>(Arc<D>);
+/// The transport's session store, as each connection's [`session::CsrfAuth`] sees it.
+struct StateSessions<S, D>(Arc<Shared<S, D>>);
 
-impl<D: Dispatch> Dispatch for SharedDispatch<D> {
+impl<S: WebSessions, D: Dispatch> WebSessions for StateSessions<S, D> {
+    fn lookup<'a>(&'a self, cookie: &'a str) -> BoxFuture<'a, Option<WebSession>> {
+        self.0.sessions.lookup(cookie)
+    }
+
+    fn revocation(&self, session: &Session) -> Option<ambidex::CancellationToken> {
+        self.0.sessions.revocation(session)
+    }
+
+    fn touch(&self, session: &Session) {
+        self.0.sessions.touch(session);
+    }
+}
+
+/// Lets every per-connection engine share the one dispatcher, and records each call a client
+/// starts as activity on its web session.
+struct SharedDispatch<S, D>(Arc<Shared<S, D>>);
+
+impl<S: WebSessions, D: Dispatch> Dispatch for SharedDispatch<S, D> {
     fn call(
         &self,
         session: Arc<Session>,
         call: Call,
     ) -> BoxFuture<'static, Result<serde_json::Value, ErrorPayload>> {
-        self.0.call(session, call)
+        self.0.sessions.touch(&session);
+        self.0.dispatch.call(session, call)
     }
 
     fn call_stream(
@@ -385,7 +403,8 @@ impl<D: Dispatch> Dispatch for SharedDispatch<D> {
         call: Call,
         chunks: Chunks,
     ) -> BoxFuture<'static, Result<serde_json::Value, ErrorPayload>> {
-        self.0.call_stream(session, call, chunks)
+        self.0.sessions.touch(&session);
+        self.0.dispatch.call_stream(session, call, chunks)
     }
 
     fn subscribe(
@@ -394,7 +413,8 @@ impl<D: Dispatch> Dispatch for SharedDispatch<D> {
         call: Call,
         events: Events,
     ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
-        self.0.subscribe(session, call, events)
+        self.0.sessions.touch(&session);
+        self.0.dispatch.subscribe(session, call, events)
     }
 }
 

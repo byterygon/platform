@@ -6,9 +6,9 @@ Moved from the repository's CLAUDE.md (TSK-126), unchanged. CLAUDE.md points her
 | --- | --- | --- |
 | `crates/security-types` | Principal, authz request/decision, audit record, async audit sink and failure reporter, clock (`SystemClock` behind feature `tokio`), correlation ids | MIT OR Apache-2.0 |
 | `crates/ambidex`, `crates/ambidex-macros` | Ambidex dual-transport RPC engine and macros | MIT OR Apache-2.0 |
-| `crates/ambidex-axum` | Ambidex WebSocket transport (`/rpc/ws`, rustls TLS, Host/Origin checks) | MIT OR Apache-2.0 |
+| `crates/ambidex-axum` | Ambidex WebSocket transport (`/rpc/ws`, rustls TLS, Host/Origin checks); sign-in (DOC-25 §3.2, TSK-136): `oidc` (authorization code with PKCE, state bound to a login cookie, nonce, ID token checks on `jsonwebtoken` signatures, the IdP reached over TLS with the configured CA only), `LoginSessions` (server-side sessions behind a `__Host-` cookie, idle and absolute expiry, caps, revocation that sends Goaway through `WebSessions::revocation`), `web` (cookies, the `next` check) | MIT OR Apache-2.0 |
 | `crates/ambidex-tauri` | Ambidex Tauri IPC transport and desktop session (Tauri plugin) | MIT OR Apache-2.0 |
-| `crates/ambidex-conformance` | Ambidex conformance suite: each case written once, run on in-process, WebSocket and Tauri (mock runtime) harnesses | MIT OR Apache-2.0 |
+| `crates/ambidex-conformance` | Ambidex conformance suite: each case written once, run on in-process, WebSocket and Tauri (mock runtime) harnesses; the sign-in cases (`src/oidc.rs`, `tests/oidc.rs`) run the OIDC routes against an in-process test IdP over TLS | MIT OR Apache-2.0 |
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
 | `crates/db-driver` | db-driver contract (Rust trait + WIT); `conformance` feature for driver tests | MIT OR Apache-2.0 |
 | `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
