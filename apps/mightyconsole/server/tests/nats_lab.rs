@@ -2531,8 +2531,14 @@ async fn filter_throughput_on_orders() {
     let mut id = 100;
     for (name, filter) in [
         ("no filter", Value::Null),
-        ("jq .subject | endswith(\"created\")", json!({ "jq": ".subject | endswith(\"created\")" })),
-        ("jq .value.amount > 50", json!({ "jq": ".value.amount > 50" })),
+        (
+            "jq .subject | endswith(\"created\")",
+            json!({ "jq": ".subject | endswith(\"created\")" }),
+        ),
+        (
+            "jq .value.amount > 50",
+            json!({ "jq": ".value.amount > 50" }),
+        ),
     ] {
         let mut best = 0f64;
         let mut scanned = 0;

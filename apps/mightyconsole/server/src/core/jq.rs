@@ -489,7 +489,7 @@ fn ended_early(system: &str, status: Option<std::process::ExitStatus>, stderr: &
 /// The worker's main (`mightyconsole-server jq-worker <max output bytes> <max memory bytes>
 /// <max cpu seconds>`): limits itself where the OS allows it, then serves one run on stdin and
 /// stdout. `jq-worker filter <max memory bytes>` is a stream filter's worker instead
-/// ([`filter_worker_main`]). Returns the process's exit code.
+/// (`filter_worker_main`). Returns the process's exit code.
 pub fn worker_main(args: &[String]) -> u8 {
     if args.first().map(String::as_str) == Some(FILTER_ARG) {
         return filter_worker_main(&args[1..]);

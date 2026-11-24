@@ -111,7 +111,7 @@ impl JqProgram {
 /// does not compile, `F <message>` when it fails, `S` when the next result would pass the
 /// output cap, and `D` at the end of a run that was not stopped by the server.
 ///
-/// The filter's worker ([`super::serve_filter_worker`]) writes `E <issues>` or `K` (compiled,
+/// The filter's worker ([`crate::jq::serve_filter_worker`]) writes `E <issues>` or `K` (compiled,
 /// ready) first, then one line per message, in order: `M` (match), `N` (no match) or
 /// `F <message>` (the program failed on it).
 pub mod wire {
@@ -614,7 +614,10 @@ mod tests {
     fn the_filter_worker_decides_as_the_filter_does() {
         use crate::filter::{CompiledFilter, Filter, FilterInput, jq_input_line};
         let value = serde_json::json!({ "total": 12.5, "items": [{ "qty": 0 }, { "qty": 2 }], "big": 18446744073709551615u64, "note": null });
-        let headers = [crate::message::Header::new("tag", "a"), crate::message::Header::new("tag", "b")];
+        let headers = [
+            crate::message::Header::new("tag", "a"),
+            crate::message::Header::new("tag", "b"),
+        ];
         let m = FilterInput {
             source: "orders",
             subject: Some("orders.eu.created"),

@@ -29,7 +29,8 @@ describe("acceptance checklists", () => {
     expect(validate(lists)).toEqual([]);
     expect(lists.map((l) => [l.id, l.task, l.items.length])).toEqual([
       ["foundation", "TSK-79", 12],
-      ["messaging", "TSK-80", 10],
+      // TSK-143 added filter-worker.
+      ["messaging", "TSK-80", 11],
       ["nats", "TSK-85", 8],
       ["kafka", "TSK-86", 7],
       ["k8s", "TSK-82", 7],

@@ -23,7 +23,7 @@ const RUNS: usize = 3;
 fn order(i: usize) -> String {
     json!({
         "id": format!("o-{i}"),
-        "status": if i % 3 == 0 { "open" } else { "paid" },
+        "status": if i.is_multiple_of(3) { "open" } else { "paid" },
         "total": (i % 100) as f64 + 0.5,
         "currency": "EUR",
         "customer": { "id": format!("c-{}", i % 977), "country": "VN", "tier": "gold" },

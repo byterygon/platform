@@ -104,10 +104,18 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     };
 
     // A filter without trouble: the worker answers in order, as the filter did in process.
-    tab.call(1000, "echo.messages.tail", tail(1000, ".value.n % 3 == 0", json!({})))
-        .await;
+    tab.call(
+        1000,
+        "echo.messages.tail",
+        tail(1000, ".value.n % 3 == 0", json!({})),
+    )
+    .await;
     let s = summary(&mut tab, 1000).await;
-    assert_eq!((&s["scanned"], &s["matched"], &s["decodeErrors"]), (&json!(10), &json!(4), &json!(0)), "{s}");
+    assert_eq!(
+        (&s["scanned"], &s["matched"], &s["decodeErrors"]),
+        (&json!(10), &json!(4), &json!(0)),
+        "{s}"
+    );
     assert!(s.get("filterError").is_none(), "{s}");
 
     // A program that never ends on one message: stopped at the budget, that message is a decode
@@ -116,15 +124,30 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     tab.call(
         1001,
         "echo.messages.tail",
-        tail(1001, "if .value.n == 3 then (def f: f; f) else .value.n % 2 == 0 end", json!({ "jqTimeoutMs": 500 })),
+        tail(
+            1001,
+            "if .value.n == 3 then (def f: f; f) else .value.n % 2 == 0 end",
+            json!({ "jqTimeoutMs": 500 }),
+        ),
     )
     .await;
     let s = summary(&mut tab, 1001).await;
-    assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
-    assert_eq!((&s["scanned"], &s["matched"], &s["decodeErrors"]), (&json!(10), &json!(5), &json!(1)), "{s}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(
+        (&s["scanned"], &s["matched"], &s["decodeErrors"]),
+        (&json!(10), &json!(5), &json!(1)),
+        "{s}"
+    );
     assert_eq!(s["endReason"], "end");
     assert!(
-        s["filterError"].as_str().unwrap().contains("ran for more than 0.5 s"),
+        s["filterError"]
+            .as_str()
+            .unwrap()
+            .contains("ran for more than 0.5 s"),
         "{s}"
     );
 
@@ -132,13 +155,24 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     tab.call(
         1002,
         "echo.messages.tail",
-        tail(1002, "if .value.n == 5 then (def f: 1 + f; f) else true end", json!({})),
+        tail(
+            1002,
+            "if .value.n == 5 then (def f: 1 + f; f) else true end",
+            json!({}),
+        ),
     )
     .await;
     let s = summary(&mut tab, 1002).await;
-    assert_eq!((&s["matched"], &s["decodeErrors"]), (&json!(9), &json!(1)), "{s}");
+    assert_eq!(
+        (&s["matched"], &s["decodeErrors"]),
+        (&json!(9), &json!(1)),
+        "{s}"
+    );
     assert!(
-        s["filterError"].as_str().unwrap().contains("recursed too deeply"),
+        s["filterError"]
+            .as_str()
+            .unwrap()
+            .contains("recursed too deeply"),
         "{s}"
     );
 
@@ -149,11 +183,19 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
         tab.call(
             1003,
             "echo.messages.tail",
-            tail(1003, "if .value.n == 1 then (def f: f, f; [f]) else true end", json!({ "jqTimeoutMs": 30000 })),
+            tail(
+                1003,
+                "if .value.n == 1 then (def f: f, f; [f]) else true end",
+                json!({ "jqTimeoutMs": 30000 }),
+            ),
         )
         .await;
         let s = summary(&mut tab, 1003).await;
-        assert_eq!((&s["matched"], &s["decodeErrors"]), (&json!(9), &json!(1)), "{s}");
+        assert_eq!(
+            (&s["matched"], &s["decodeErrors"]),
+            (&json!(9), &json!(1)),
+            "{s}"
+        );
         assert!(
             s["filterError"].as_str().unwrap().contains("MiB of memory"),
             "{s}"
@@ -164,7 +206,11 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     tab.call(
         1004,
         "echo.messages.tail",
-        tail(1004, "if .value.n >= 4 then (def f: f; f) else true end", json!({ "jqTimeoutMs": 500 })),
+        tail(
+            1004,
+            "if .value.n >= 4 then (def f: f; f) else true end",
+            json!({ "jqTimeoutMs": 500 }),
+        ),
     )
     .await;
     let mut chunks = 0;
@@ -181,7 +227,10 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
         }
     };
-    assert!(chunks >= 1, "the schema and the matches before the failures");
+    assert!(
+        chunks >= 1,
+        "the schema and the matches before the failures"
+    );
     assert_eq!(err.code, Code::InvalidArgument, "{err:?}");
     assert_eq!(err.details.as_ref().unwrap()["field"], "filter", "{err:?}");
     let message = err.message.as_str();
@@ -194,7 +243,11 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     tab.call(
         1005,
         "echo.messages.tail",
-        tail(1005, "def f: f; f", json!({ "follow": true, "jqTimeoutMs": 30000 })),
+        tail(
+            1005,
+            "def f: f; f",
+            json!({ "follow": true, "jqTimeoutMs": 30000 }),
+        ),
     )
     .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -208,7 +261,11 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     tab.call(
         1007,
         "echo.messages.tail",
-        tail(1007, "def f: f; f", json!({ "follow": true, "jqTimeoutMs": 30000 })),
+        tail(
+            1007,
+            "def f: f; f",
+            json!({ "follow": true, "jqTimeoutMs": 30000 }),
+        ),
     )
     .await;
     tokio::time::sleep(Duration::from_millis(300)).await;

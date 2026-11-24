@@ -69,7 +69,8 @@ pub fn live_workers() -> Vec<u32> {
 }
 
 fn lock_live() -> std::sync::MutexGuard<'static, HashSet<u32>> {
-    LIVE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    LIVE.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The budget a call asked for, clamped to the setting's range.
@@ -158,87 +159,85 @@ impl JqFilter {
     /// worker that cannot start). Cancel-safe: dropping the future loses no answer.
     pub async fn next(&mut self) -> Result<Answer, ToolError> {
         assert!(!self.pending.is_empty(), "next() without a message queued");
-        loop {
-            if self.worker.is_none() {
-                self.worker = Some(self.spawn()?);
-            }
-            let w = self.worker.as_mut().expect("a worker");
-            if !w.ready {
-                match w.read_line(Instant::now() + STARTUP).await {
-                    Read::Line(l) if l == wire::READY => w.ready = true,
-                    Read::Line(l) => {
-                        let why = if let Some(issues) = l.strip_prefix(wire::ISSUES) {
-                            let issues: Vec<FilterIssue> =
-                                serde_json::from_str(issues).unwrap_or_default();
-                            issues
-                                .first()
-                                .map_or_else(|| "jq failed".to_owned(), |i| i.message.clone())
-                        } else {
-                            format!("it answered {l:?} when it started")
-                        };
-                        return Err(worker_failed(&self.system, &why));
-                    }
-                    Read::Timeout => {
-                        return Err(worker_failed(
-                            &self.system,
-                            &format!("it did not start within {}", human(STARTUP)),
-                        ));
-                    }
-                    Read::Ended => {
-                        let why = w.ended_words().await;
-                        return Err(worker_failed(
-                            &self.system,
-                            &format!("it ended as it started: {why}"),
-                        ));
-                    }
-                }
-            }
-            let reason = match w.read_line(Instant::now() + self.budget).await {
-                Read::Line(l) => {
-                    let answer = if l == wire::MATCH {
-                        Some(Answer::Match)
-                    } else if l == wire::NO_MATCH {
-                        Some(Answer::NoMatch)
-                    } else {
-                        l.strip_prefix(wire::FAILED).map(|m| {
-                            Answer::Failed(
-                                serde_json::from_str::<String>(m).unwrap_or_else(|_| m.to_owned()),
-                            )
-                        })
-                    };
-                    match answer {
-                        Some(answer) => {
-                            self.pending.pop_front();
-                            self.failures_in_row = 0;
-                            return Ok(answer);
-                        }
-                        None => "the jq worker wrote something the server cannot read".to_owned(),
-                    }
-                }
-                Read::Timeout => format!(
-                    "the filter's jq ran for more than {} on this message and was stopped (the \
-                     time limit is in Settings)",
-                    human(self.budget)
-                ),
-                Read::Ended => w.ended_words().await,
-            };
-            // This message stopped the worker: it counts as failed, and the next worker starts
-            // from the message after it.
-            self.worker = None;
-            self.pending.pop_front();
-            self.failures_in_row += 1;
-            if self.failures_in_row >= MAX_FAILURES_IN_ROW {
-                return Err(ToolError::invalid(
-                    &self.system,
-                    "filter",
-                    format!(
-                        "the filter's jq was stopped on {MAX_FAILURES_IN_ROW} messages in a row, \
-                         so the stream was stopped; the last time: {reason}"
-                    ),
-                ));
-            }
-            return Ok(Answer::Failed(reason));
+        if self.worker.is_none() {
+            self.worker = Some(self.spawn()?);
         }
+        let w = self.worker.as_mut().expect("a worker");
+        if !w.ready {
+            match w.read_line(Instant::now() + STARTUP).await {
+                Read::Line(l) if l == wire::READY => w.ready = true,
+                Read::Line(l) => {
+                    let why = if let Some(issues) = l.strip_prefix(wire::ISSUES) {
+                        let issues: Vec<FilterIssue> =
+                            serde_json::from_str(issues).unwrap_or_default();
+                        issues
+                            .first()
+                            .map_or_else(|| "jq failed".to_owned(), |i| i.message.clone())
+                    } else {
+                        format!("it answered {l:?} when it started")
+                    };
+                    return Err(worker_failed(&self.system, &why));
+                }
+                Read::Timeout => {
+                    return Err(worker_failed(
+                        &self.system,
+                        &format!("it did not start within {}", human(STARTUP)),
+                    ));
+                }
+                Read::Ended => {
+                    let why = w.ended_words().await;
+                    return Err(worker_failed(
+                        &self.system,
+                        &format!("it ended as it started: {why}"),
+                    ));
+                }
+            }
+        }
+        let reason = match w.read_line(Instant::now() + self.budget).await {
+            Read::Line(l) => {
+                let answer = if l == wire::MATCH {
+                    Some(Answer::Match)
+                } else if l == wire::NO_MATCH {
+                    Some(Answer::NoMatch)
+                } else {
+                    l.strip_prefix(wire::FAILED).map(|m| {
+                        Answer::Failed(
+                            serde_json::from_str::<String>(m).unwrap_or_else(|_| m.to_owned()),
+                        )
+                    })
+                };
+                match answer {
+                    Some(answer) => {
+                        self.pending.pop_front();
+                        self.failures_in_row = 0;
+                        return Ok(answer);
+                    }
+                    None => "the jq worker wrote something the server cannot read".to_owned(),
+                }
+            }
+            Read::Timeout => format!(
+                "the filter's jq ran for more than {} on this message and was stopped (the \
+                 time limit is in Settings)",
+                human(self.budget)
+            ),
+            Read::Ended => w.ended_words().await,
+        };
+        // This message stopped the worker: it counts as failed, and the next worker starts
+        // from the message after it.
+        self.worker = None;
+        self.pending.pop_front();
+        self.failures_in_row += 1;
+        if self.failures_in_row >= MAX_FAILURES_IN_ROW {
+            return Err(ToolError::invalid(
+                &self.system,
+                "filter",
+                format!(
+                    "the filter's jq was stopped on {MAX_FAILURES_IN_ROW} messages in a row, \
+                     so the stream was stopped; the last time: {reason}"
+                ),
+            ));
+        }
+        Ok(Answer::Failed(reason))
     }
 
     /// Starts a worker (the spare one when there is one): the program first, then every
@@ -257,7 +256,10 @@ impl JqFilter {
             Ok(pipes) => pipes,
             Err(e) => {
                 reap(child);
-                return Err(worker_failed(&self.system, &format!("cannot start it: {e}")));
+                return Err(worker_failed(
+                    &self.system,
+                    &format!("cannot start it: {e}"),
+                ));
             }
         };
         let (input, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -304,7 +306,9 @@ impl JqFilter {
 static SPARE: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
 fn lock_spare() -> std::sync::MutexGuard<'static, Option<std::process::Child>> {
-    SPARE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    SPARE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The spare worker when it still runs, else a new one; then a new spare, started on a thread
@@ -505,7 +509,9 @@ mod tests {
         assert_eq!(f.pending(), 0);
         f.send(vec![line("x".into()), b"{nope".to_vec()]);
         assert_eq!(f.next().await.unwrap(), M);
-        assert!(matches!(f.next().await.unwrap(), Answer::Failed(m) if m.starts_with("jq input: ")));
+        assert!(
+            matches!(f.next().await.unwrap(), Answer::Failed(m) if m.starts_with("jq input: "))
+        );
     }
 
     #[tokio::test]
@@ -516,7 +522,11 @@ mod tests {
         let started = std::time::Instant::now();
         let got = answers(&mut f, 5).await;
         // The budget, a restart and four quick answers (other tests' runaways share the cores).
-        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
         assert_eq!(got[..2], [Answer::NoMatch, Answer::Match]);
         assert!(
             matches!(&got[2], Answer::Failed(m) if m.contains("ran for more than 0.5 s")),
@@ -562,7 +572,12 @@ mod tests {
     #[tokio::test]
     async fn dropping_the_filter_kills_its_worker() {
         let mut f = JqFilter::start("test", "def f: f; f", MAX_BUDGET).unwrap();
-        let pid = f.worker.as_ref().and_then(|w| w.child.as_ref()).map(std::process::Child::id).unwrap();
+        let pid = f
+            .worker
+            .as_ref()
+            .and_then(|w| w.child.as_ref())
+            .map(std::process::Child::id)
+            .unwrap();
         f.send(vec![line(1.into())]);
         // The worker is busy forever on the message; the stream goes away.
         let waiting = tokio::time::timeout(Duration::from_millis(300), f.next()).await;
@@ -570,7 +585,10 @@ mod tests {
         drop(f);
         let started = std::time::Instant::now();
         while live_workers().contains(&pid) {
-            assert!(started.elapsed() < Duration::from_secs(5), "worker {pid} still runs");
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "worker {pid} still runs"
+            );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
