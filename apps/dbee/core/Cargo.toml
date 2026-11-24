@@ -25,6 +25,7 @@ arrow-array = { version = "60.1.0", default-features = false }
 arrow-buffer = { version = "60.1.0", default-features = false }
 arrow-ipc = { version = "60.1.0", default-features = false }
 arrow-schema = { version = "60.1.0", default-features = false }
+audit-jsonl = { path = "../../../crates/audit-jsonl" }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 db-driver = { path = "../../../crates/db-driver" }
 db-driver-postgres = { path = "../../../crates/db-driver-postgres", optional = true }
