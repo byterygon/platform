@@ -20,9 +20,10 @@
 //!   the data keys wrapped under each key (`wraps:<kekId>`).
 //!
 //! The tables of roles, groups and secrets are made on open when an older store lacks them.
-//! Profiles (TSK-139) add theirs with that task. Until an account's TOTP key moves into the
-//! `secrets` table (TSK-139, the next batch), it is kept in its row like the rest of it: the file
-//! is 0600 inside a 0700 data directory.
+//! Profiles (TSK-139) add theirs with that task. An account's TOTP key is a `secrets` entry
+//! (owner kind `account`, field `totp`), written in the transaction of its row; rows of TSK-142's
+//! stores that still hold the key are moved at start ([`Store::migrate_totp_keys`]). Reading an
+//! account with TOTP needs the keys ([`Store::set_vault`]).
 //!
 //! Every write is one transaction, durable when it commits. [`McAccountStore`] runs them on the
 //! blocking pool.
@@ -135,6 +136,9 @@ pub fn store_path(data: &Path) -> PathBuf {
 pub struct Store {
     db: Database,
     path: PathBuf,
+    /// The secret store's keys, once loaded: accounts' TOTP keys are entries of the `secrets`
+    /// table (DOC-25 §3.2.6, owner kind `account`).
+    vault: std::sync::OnceLock<Arc<crate::secrets::Vault>>,
 }
 
 impl fmt::Debug for Store {
@@ -149,8 +153,10 @@ fn err(e: impl fmt::Display) -> StoreError {
 
 #[derive(Serialize, Deserialize)]
 struct TotpRow {
-    /// Hex.
-    key: Zeroizing<String>,
+    /// Hex. Only in rows written before the key moved to the `secrets` table; moved at start
+    /// ([`Store::migrate_totp_keys`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key: Option<Zeroizing<String>>,
     last_step: u64,
     enrolled_ms: u64,
 }
@@ -173,6 +179,7 @@ struct AccountRow {
     recovery_codes: Vec<String>,
 }
 
+#[cfg(test)]
 fn hex(bytes: &[u8]) -> Zeroizing<String> {
     let mut out = Zeroizing::new(String::with_capacity(bytes.len() * 2));
     for b in bytes {
@@ -211,7 +218,7 @@ impl AccountRow {
             disabled: a.disabled,
             locked_until_ms: a.locked_until_ms,
             totp: a.totp.as_ref().map(|t| TotpRow {
-                key: hex(&t.key),
+                key: None,
                 last_step: t.last_step,
                 enrolled_ms: t.enrolled_ms,
             }),
@@ -219,10 +226,18 @@ impl AccountRow {
         }
     }
 
-    fn into_account(self) -> Result<Account, StoreError> {
+    /// The account; `totp_key` reads its TOTP key from the `secrets` table when the row has
+    /// none of its own.
+    fn into_account(
+        self,
+        totp_key: impl FnOnce(&str) -> Result<Zeroizing<Vec<u8>>, StoreError>,
+    ) -> Result<Account, StoreError> {
         let totp = match self.totp {
             Some(t) => Some(TotpRecord {
-                key: unhex(&t.key).ok_or_else(|| err("a TOTP key is not hex"))?,
+                key: match &t.key {
+                    Some(legacy) => unhex(legacy).ok_or_else(|| err("a TOTP key is not hex"))?,
+                    None => totp_key(&self.id)?,
+                },
                 last_step: t.last_step,
                 enrolled_ms: t.enrolled_ms,
             }),
@@ -257,10 +272,19 @@ fn encode(account: &Account) -> Result<Zeroizing<Vec<u8>>, StoreError> {
         .map_err(err)
 }
 
-fn decode(bytes: &[u8]) -> Result<Account, StoreError> {
+fn decode_row(bytes: &[u8]) -> Result<AccountRow, StoreError> {
     serde_json::from_slice::<AccountRow>(bytes)
-        .map_err(|e| err(format!("an account row does not read: {e}")))?
-        .into_account()
+        .map_err(|e| err(format!("an account row does not read: {e}")))
+}
+
+/// The owner of an account's TOTP key in the `secrets` table, and its field.
+fn totp_owner(account_id: &str) -> crate::secrets::Owner {
+    crate::secrets::Owner::new(crate::secrets::OwnerKind::Account, account_id)
+}
+const TOTP_FIELD: &str = "totp";
+
+fn secret_err(e: crate::secrets::SecretError) -> StoreError {
+    err(e.to_string())
 }
 
 fn json(value: &impl Serialize) -> Result<Vec<u8>, StoreError> {
@@ -299,6 +323,7 @@ impl Store {
         let store = Store {
             db,
             path: path.clone(),
+            vault: std::sync::OnceLock::new(),
         };
         let found = store.schema().map_err(|e| other(e.0))?;
         match found.as_deref() {
@@ -317,6 +342,114 @@ impl Store {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// A store with a fixed test key (tests of the crate): reopening it reads its entries.
+    #[cfg(test)]
+    pub(crate) fn open_for_tests(data: &Path) -> Store {
+        let store = Store::open(data).unwrap();
+        let key = crate::secrets::crypto::Kek::from_bytes(Zeroizing::new([7u8; 32]));
+        let keyring = crate::secrets::keys::Keyring::new(vec![key]).unwrap();
+        store.set_vault(Arc::new(crate::secrets::Vault::new(keyring, "default")));
+        store
+    }
+
+    /// Gives the store the secret keys (once, after they load at start).
+    pub fn set_vault(&self, vault: Arc<crate::secrets::Vault>) {
+        let _ = self.vault.set(vault);
+    }
+
+    fn vault(&self) -> Result<&Arc<crate::secrets::Vault>, StoreError> {
+        self.vault.get().ok_or_else(|| {
+            err("the secret keys are not loaded, so an account's TOTP key cannot be read or written")
+        })
+    }
+
+    /// Decodes an account row read in a transaction that also has the `secrets` table open.
+    fn account_of(
+        &self,
+        bytes: &[u8],
+        secrets: &impl redb::ReadableTable<&'static str, &'static [u8]>,
+    ) -> Result<Account, StoreError> {
+        decode_row(bytes)?.into_account(|id| {
+            let owner = totp_owner(id);
+            let entry = crate::secrets::table::get_in(secrets, &owner, TOTP_FIELD)
+                .map_err(secret_err)?
+                .ok_or_else(|| err(format!("account {id}: its TOTP key is missing")))?;
+            let value = self.vault()?.open(&entry).map_err(secret_err)?;
+            Ok(Zeroizing::new(value.expose().to_vec()))
+        })
+    }
+
+    /// Writes (or removes) an account's TOTP key in the write transaction of its row: a new
+    /// version only when the key changed.
+    fn write_totp(
+        &self,
+        write: &redb::WriteTransaction,
+        account: &Account,
+    ) -> Result<(), StoreError> {
+        let owner = totp_owner(&account.id);
+        let (mut secrets, mut meta) =
+            crate::secrets::table::open_tables(write).map_err(secret_err)?;
+        let Some(totp) = &account.totp else {
+            crate::secrets::table::remove_in(&mut secrets, &owner, TOTP_FIELD)
+                .map_err(secret_err)?;
+            return Ok(());
+        };
+        let vault = self.vault()?;
+        if let Some(entry) =
+            crate::secrets::table::get_in(&secrets, &owner, TOTP_FIELD).map_err(secret_err)?
+            && vault
+                .open(&entry)
+                .is_ok_and(|v| v.expose() == totp.key.as_slice())
+        {
+            return Ok(());
+        }
+        let keyring = vault.keyring();
+        let value = crate::secrets::Secret::new(totp.key.to_vec());
+        let by = account.principal_id();
+        let at = security_types::unix_now_ms();
+        crate::secrets::table::put_in(
+            &mut secrets,
+            &mut meta,
+            &owner,
+            TOTP_FIELD,
+            keyring.active().id(),
+            crate::secrets::MAX_WRAPS_PER_KEK,
+            |version| vault.seal_entry(&keyring, &owner, TOTP_FIELD, version, &value, &by, at),
+        )
+        .map_err(secret_err)?;
+        Ok(())
+    }
+
+    /// Moves TOTP keys still kept in their account rows (stores of TSK-142) into the `secrets`
+    /// table, in one transaction. How many moved.
+    pub fn migrate_totp_keys(&self) -> Result<usize, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let moved = {
+            let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
+            let mut legacy = Vec::new();
+            for row in accounts.iter().map_err(err)? {
+                let (id, value) = row.map_err(err)?;
+                let row = decode_row(value.value())?;
+                if row.totp.as_ref().is_some_and(|t| t.key.is_some()) {
+                    legacy.push((id.value().to_owned(), row));
+                }
+            }
+            let moved = legacy.len();
+            for (id, row) in legacy {
+                // A legacy row holds its key: it decodes without the `secrets` table.
+                let account =
+                    row.into_account(|_| Err(err("a legacy TOTP row without its key")))?;
+                self.write_totp(&write, &account)?;
+                accounts
+                    .insert(id.as_str(), encode(&account)?.as_slice())
+                    .map_err(err)?;
+            }
+            moved
+        };
+        write.commit().map_err(err)?;
+        Ok(moved)
     }
 
     pub(crate) fn db(&self) -> &Database {
@@ -616,9 +749,12 @@ impl Store {
             .map_err(err)?
         {
             let (_, v) = row.map_err(err)?;
-            let account = decode(v.value())?;
+            // The row alone: no TOTP key is read for the policy.
+            let account = decode_row(v.value())?;
             if account.disabled {
-                parts.disabled.insert(account.principal_id());
+                parts
+                    .disabled
+                    .insert(ambidex_axum::accounts::principal_id(&account.id));
             }
         }
         for row in read.open_table(USERS).map_err(err)?.iter().map_err(err)? {
@@ -635,6 +771,9 @@ impl Store {
     pub fn create_account(&self, account: &Account) -> Result<(), CreateError> {
         let bytes = encode(account)?;
         let write = self.db.begin_write().map_err(err)?;
+        if account.totp.is_some() {
+            self.write_totp(&write, account)?;
+        }
         {
             let mut names = write.open_table(USERNAMES).map_err(err)?;
             let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
@@ -657,10 +796,13 @@ impl Store {
     pub fn account(&self, id: &str) -> Result<Option<Account>, StoreError> {
         let read = self.db.begin_read().map_err(err)?;
         let accounts = read.open_table(ACCOUNTS).map_err(err)?;
+        let secrets = read
+            .open_table(crate::secrets::table::SECRETS)
+            .map_err(err)?;
         accounts
             .get(id)
             .map_err(err)?
-            .map(|v| decode(v.value()))
+            .map(|v| self.account_of(v.value(), &secrets))
             .transpose()
     }
 
@@ -683,10 +825,13 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<Account>, StoreError> {
         let read = self.db.begin_read().map_err(err)?;
         let accounts = read.open_table(ACCOUNTS).map_err(err)?;
+        let secrets = read
+            .open_table(crate::secrets::table::SECRETS)
+            .map_err(err)?;
         let mut out = Vec::new();
         for row in accounts.iter().map_err(err)? {
             let (_, value) = row.map_err(err)?;
-            out.push(decode(value.value())?);
+            out.push(self.account_of(value.value(), &secrets)?);
         }
         Ok(out)
     }
@@ -699,7 +844,7 @@ impl Store {
             let removed = accounts
                 .remove(id)
                 .map_err(err)?
-                .map(|v| decode(v.value()))
+                .map(|v| decode_row(v.value()))
                 .transpose()?;
             if let Some(account) = &removed {
                 write
@@ -707,6 +852,10 @@ impl Store {
                     .map_err(err)?
                     .remove(account.username.as_str())
                     .map_err(err)?;
+                let (mut secrets, _) =
+                    crate::secrets::table::open_tables(&write).map_err(secret_err)?;
+                crate::secrets::table::remove_in(&mut secrets, &totp_owner(id), TOTP_FIELD)
+                    .map_err(secret_err)?;
             }
             removed.is_some()
         };
@@ -724,14 +873,25 @@ impl Store {
         let write = self.db.begin_write().map_err(err)?;
         let out = {
             let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
-            let current = accounts.get(id).map_err(err)?.map(|v| decode(v.value()));
+            let current = {
+                let (secrets, _) =
+                    crate::secrets::table::open_tables(&write).map_err(secret_err)?;
+                accounts
+                    .get(id)
+                    .map_err(err)?
+                    .map(|v| self.account_of(v.value(), &secrets))
+            };
             match current {
                 None => None,
                 Some(account) => {
                     let mut account = account?;
                     let username = account.username.clone();
+                    let had_totp = account.totp.is_some();
                     let out = change(&mut account);
                     account.username = username;
+                    if had_totp || account.totp.is_some() {
+                        self.write_totp(&write, &account)?;
+                    }
                     let bytes = encode(&account)?;
                     accounts.insert(id, bytes.as_slice()).map_err(err)?;
                     Some(out)
@@ -813,6 +973,77 @@ impl Store {
         let read = self.db.begin_read().map_err(err)?;
         let links = read.open_table(SETUP_LINKS).map_err(err)?;
         Ok(links.len().map_err(err)? as usize)
+    }
+}
+
+fn copy_table<K, V>(
+    read: &redb::ReadTransaction,
+    write: &redb::WriteTransaction,
+    table: TableDefinition<K, V>,
+) -> Result<(), StoreError>
+where
+    K: redb::Key + 'static,
+    V: redb::Value + 'static,
+    for<'a> K::SelfType<'a>: std::borrow::Borrow<K::SelfType<'a>>,
+    for<'a> V::SelfType<'a>: std::borrow::Borrow<V::SelfType<'a>>,
+{
+    let from = match read.open_table(table) {
+        Ok(from) => from,
+        Err(redb::TableError::TableDoesNotExist(_)) => return Ok(()),
+        Err(e) => return Err(err(e)),
+    };
+    let mut to = write.open_table(table).map_err(err)?;
+    for row in from.iter().map_err(err)? {
+        let (k, v) = row.map_err(err)?;
+        to.insert(k.value(), v.value()).map_err(err)?;
+    }
+    Ok(())
+}
+
+impl Store {
+    /// The tables a snapshot copies: every table the store has (a test checks that none is
+    /// missing).
+    pub const TABLES: [&'static str; 10] = [
+        "meta",
+        "accounts",
+        "usernames",
+        "setup_links",
+        "users",
+        "roles",
+        "assignments",
+        "group_roles",
+        "groups",
+        "secrets",
+    ];
+
+    /// Writes a consistent copy of the store to a new file `to` (DOC-25 §3.4.6): a new redb file
+    /// filled from one read transaction, mode 0600. Refuses a table this build does not know,
+    /// so nothing is left out silently.
+    pub fn snapshot_to(&self, to: &Path) -> Result<(), StoreError> {
+        use redb::TableHandle as _;
+        let read = self.db.begin_read().map_err(err)?;
+        for table in read.list_tables().map_err(err)? {
+            if !Store::TABLES.contains(&table.name()) {
+                return Err(err(format!(
+                    "the store has a table {:?} a snapshot does not know",
+                    table.name()
+                )));
+            }
+        }
+        let copy = redb::Builder::new().create(to).map_err(err)?;
+        restrict(to, true).map_err(err)?;
+        let write = copy.begin_write().map_err(err)?;
+        copy_table(&read, &write, META)?;
+        copy_table(&read, &write, ACCOUNTS)?;
+        copy_table(&read, &write, USERNAMES)?;
+        copy_table(&read, &write, SETUP_LINKS)?;
+        copy_table(&read, &write, USERS)?;
+        copy_table(&read, &write, ROLES)?;
+        copy_table(&read, &write, ASSIGNMENTS)?;
+        copy_table(&read, &write, GROUP_ROLES)?;
+        copy_table(&read, &write, GROUPS)?;
+        copy_table(&read, &write, crate::secrets::table::SECRETS)?;
+        write.commit().map_err(err)
     }
 }
 
@@ -988,6 +1219,133 @@ impl AccountStore for McAccountStore {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_totp_key_is_a_stored_secret_not_part_of_the_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_for_tests(dir.path());
+        store.create_account(&account("01A", "mia")).unwrap();
+        let row = {
+            let read = store.db.begin_read().unwrap();
+            let accounts = read.open_table(ACCOUNTS).unwrap();
+            String::from_utf8(accounts.get("01A").unwrap().unwrap().value().to_vec()).unwrap()
+        };
+        assert!(!row.contains("\"key\""), "{row}");
+        let owner = totp_owner("01A");
+        let entry = store.secret_entry(&owner, TOTP_FIELD).unwrap().unwrap();
+        assert_eq!((entry.version, entry.size), (1, 3));
+        assert_eq!(
+            store
+                .account("01A")
+                .unwrap()
+                .unwrap()
+                .totp
+                .unwrap()
+                .key
+                .to_vec(),
+            [1, 2, 0xff]
+        );
+        // A sign-in moves last_step: the key does not get a new version.
+        store
+            .update_account("01A", |a| a.totp.as_mut().unwrap().last_step = 99)
+            .unwrap();
+        assert_eq!(
+            store
+                .secret_entry(&owner, TOTP_FIELD)
+                .unwrap()
+                .unwrap()
+                .version,
+            1
+        );
+        // A new key does.
+        store
+            .update_account("01A", |a| {
+                a.totp.as_mut().unwrap().key = Zeroizing::new(vec![9])
+            })
+            .unwrap();
+        assert_eq!(
+            store
+                .secret_entry(&owner, TOTP_FIELD)
+                .unwrap()
+                .unwrap()
+                .version,
+            2
+        );
+        // Removing TOTP, or the account, removes the entry.
+        store.update_account("01A", |a| a.totp = None).unwrap();
+        assert!(store.secret_entry(&owner, TOTP_FIELD).unwrap().is_none());
+        store
+            .update_account("01A", |a| {
+                a.totp = Some(TotpRecord {
+                    key: Zeroizing::new(vec![4]),
+                    last_step: 0,
+                    enrolled_ms: 0,
+                })
+            })
+            .unwrap();
+        assert!(store.delete_account("01A").unwrap());
+        assert!(store.secret_entry(&owner, TOTP_FIELD).unwrap().is_none());
+        // Without the keys an account with TOTP cannot be read.
+        store.create_account(&account("01B", "noor")).unwrap();
+        drop(store);
+        let bare = Store::open(dir.path()).unwrap();
+        let e = bare.account("01B").unwrap_err();
+        assert!(e.0.contains("secret keys are not loaded"), "{e}");
+        assert!(bare.account_by_username("nobody").unwrap().is_none());
+    }
+
+    #[test]
+    fn keys_of_rows_written_before_the_move_are_migrated() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_for_tests(dir.path());
+        // A row as TSK-142 wrote it: the key in hex inside the row.
+        let mut legacy = AccountRow::from_account(&account("01A", "mia"));
+        legacy.totp.as_mut().unwrap().key = Some(hex(&[1, 2, 0xff]));
+        {
+            let write = store.db.begin_write().unwrap();
+            write
+                .open_table(ACCOUNTS)
+                .unwrap()
+                .insert("01A", serde_json::to_vec(&legacy).unwrap().as_slice())
+                .unwrap();
+            write
+                .open_table(USERNAMES)
+                .unwrap()
+                .insert("mia", "01A")
+                .unwrap();
+            write.commit().unwrap();
+        }
+        assert_eq!(
+            store
+                .account("01A")
+                .unwrap()
+                .unwrap()
+                .totp
+                .unwrap()
+                .key
+                .to_vec(),
+            [1, 2, 0xff]
+        );
+        assert_eq!(store.migrate_totp_keys().unwrap(), 1);
+        assert_eq!(store.migrate_totp_keys().unwrap(), 0);
+        assert!(
+            store
+                .secret_entry(&totp_owner("01A"), TOTP_FIELD)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            store
+                .account("01A")
+                .unwrap()
+                .unwrap()
+                .totp
+                .unwrap()
+                .key
+                .to_vec(),
+            [1, 2, 0xff]
+        );
+    }
+
     fn account(id: &str, username: &str) -> Account {
         Account {
             id: id.into(),
@@ -1012,7 +1370,7 @@ mod tests {
     #[test]
     fn accounts_round_trip_and_names_stay_unique() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::open(dir.path()).unwrap();
+        let store = Store::open_for_tests(dir.path());
         let a = account("01A", "alice");
         store.create_account(&a).unwrap();
         assert_eq!(store.account("01A").unwrap(), Some(a.clone()));
@@ -1045,7 +1403,7 @@ mod tests {
     #[test]
     fn the_file_is_private_reopens_and_is_locked_while_open() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::open(dir.path()).unwrap();
+        let store = Store::open_for_tests(dir.path());
         store.create_account(&account("01A", "alice")).unwrap();
         #[cfg(unix)]
         {
@@ -1054,7 +1412,7 @@ mod tests {
             assert_eq!(mode & 0o777, 0o600);
         }
         drop(store);
-        let store = Store::open(dir.path()).unwrap();
+        let store = Store::open_for_tests(dir.path());
         assert!(store.account("01A").unwrap().is_some());
         // A second process (here: a second open) is refused while it is open.
         assert!(matches!(Store::open(dir.path()), Err(OpenError::Locked(_))));
@@ -1065,7 +1423,7 @@ mod tests {
         use crate::authz::policy::Policy;
         use security_types::{Scope, ScopeEntry};
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::open(dir.path()).unwrap();
+        let store = Store::open_for_tests(dir.path());
         // OIDC users: made at the first sign-in, kept disabled, updated after.
         let u = store
             .record_oidc_user(
@@ -1164,7 +1522,7 @@ mod tests {
         assert!(!store.delete_role("deployer").unwrap());
         assert!(store.delete_group("team").unwrap());
         drop(store);
-        let store = Store::open(dir.path()).unwrap();
+        let store = Store::open_for_tests(dir.path());
         let parts = store.policy_parts().unwrap();
         assert!(parts.custom_roles.is_empty() && parts.direct.is_empty());
         assert!(parts.local_groups.is_empty());
@@ -1174,7 +1532,7 @@ mod tests {
     fn an_unknown_schema_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         {
-            let store = Store::open(dir.path()).unwrap();
+            let store = Store::open_for_tests(dir.path());
             let write = store.db.begin_write().unwrap();
             write
                 .open_table(META)
@@ -1191,7 +1549,7 @@ mod tests {
     #[tokio::test]
     async fn the_account_store_contract() {
         let dir = tempfile::tempdir().unwrap();
-        let store = McAccountStore(Arc::new(Store::open(dir.path()).unwrap()));
+        let store = McAccountStore(Arc::new(Store::open_for_tests(dir.path())));
         store.create(account("01A", "alice")).await.unwrap();
         assert!(store.by_username("alice").await.unwrap().is_some());
         assert!(store.by_username("bob").await.unwrap().is_none());

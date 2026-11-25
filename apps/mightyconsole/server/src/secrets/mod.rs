@@ -271,25 +271,43 @@ impl Vault {
             });
         }
         let keyring = self.keyring();
-        let kek = keyring.active();
-        let entry = store.put_secret(owner, field, kek.id(), MAX_WRAPS_PER_KEK, |version| {
-            let sealed = crypto::seal(
-                kek,
-                &binding(&self.tenant, owner, field, version),
-                value.expose(),
-            )
-            .map_err(|e| SecretError::Store(e.to_string()))?;
-            Ok(SecretEntry::new(
-                owner,
-                field,
-                version,
-                sealed,
-                set_by,
-                set_at,
-                value.len(),
-            ))
-        })?;
+        let entry = store.put_secret(
+            owner,
+            field,
+            keyring.active().id(),
+            MAX_WRAPS_PER_KEK,
+            |version| self.seal_entry(&keyring, owner, field, version, value, set_by, set_at),
+        )?;
         Ok(entry.status())
+    }
+
+    /// An entry for `value`, sealed under the active key of `keyring` for `version`.
+    #[allow(clippy::too_many_arguments, reason = "the entry's every part")]
+    pub(crate) fn seal_entry(
+        &self,
+        keyring: &Keyring,
+        owner: &Owner,
+        field: &str,
+        version: u64,
+        value: &Secret,
+        set_by: &str,
+        set_at: u64,
+    ) -> Result<SecretEntry, SecretError> {
+        let sealed = crypto::seal(
+            keyring.active(),
+            &binding(&self.tenant, owner, field, version),
+            value.expose(),
+        )
+        .map_err(|e| SecretError::Store(e.to_string()))?;
+        Ok(SecretEntry::new(
+            owner,
+            field,
+            version,
+            sealed,
+            set_by,
+            set_at,
+            value.len(),
+        ))
     }
 
     /// A secret's value, `None` when it is not set.

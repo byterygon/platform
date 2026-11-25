@@ -50,6 +50,13 @@ fn the_procedures_of_the_spec() {
     let expected = [
         // The management procedures (DOC-25 §3.3.7, TSK-138).
         (
+            "admin.backup.snapshot",
+            Mutation,
+            "admin.secrets.manage",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "admin.groups.addMembers",
             Mutation,
             "admin.roles.write",

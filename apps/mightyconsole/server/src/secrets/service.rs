@@ -88,6 +88,16 @@ impl SecretService {
         }
     }
 
+    /// The data directory.
+    pub fn data(&self) -> &std::path::Path {
+        &self.data
+    }
+
+    /// The durable audit log (`None` when a test replaced it).
+    pub fn audit_log(&self) -> Option<&Arc<audit_jsonl::SegmentedSink>> {
+        self.audit.as_ref()
+    }
+
     /// The re-wrap job's progress.
     pub fn progress(&self) -> RewrapProgress {
         lock(&self.progress).clone()

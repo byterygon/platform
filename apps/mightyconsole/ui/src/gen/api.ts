@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:6c444a12f446bcaff29e521d9742157a0842ba35d6f781c16adccaa35b45681c";
+export const SCHEMA_HASH = "sha256:ecf61d52212b8d1e9943408afba4283216e6ca4ac5d41edc6aabda69869084f6";
 
 // ---- Types
 
@@ -3575,6 +3575,19 @@ export type SetupLinkOutput = { userId: string, url: string, expiresMs: number, 
 export type SignalDirection = "received" | "sent";
 
 /**
+ * What `admin.backup.snapshot` answers.
+ */
+export type SnapshotOutput = { 
+/**
+ * The file, relative to the data directory (`backups/backup-<utc>.tar`).
+ */
+file: string, bytes: number, 
+/**
+ * The last audit record in it.
+ */
+auditSeq: number | null, };
+
+/**
  * The connection's SSH side, for the Host page's subtitle.
  */
 export type SshFacts = { 
@@ -4427,6 +4440,7 @@ export interface ProcedureDef<
 
 /** Every procedure by full name. */
 export interface Procedures {
+  readonly "admin.backup.snapshot": ProcedureDef<"mutation", Empty, SnapshotOutput, ToolError>;
   readonly "admin.groups.addMembers": ProcedureDef<"mutation", GroupMembersInput, Empty, ToolError>;
   readonly "admin.groups.create": ProcedureDef<"mutation", GroupCreateInput, Empty, ToolError>;
   readonly "admin.groups.delete": ProcedureDef<"mutation", GroupNameInput, Empty, ToolError>;
@@ -4637,6 +4651,9 @@ export interface Procedures {
 /** The procedures nested by name segment, as the client exposes them. */
 export interface Api {
   readonly admin: {
+    readonly backup: {
+      readonly snapshot: Procedures["admin.backup.snapshot"];
+    };
     readonly groups: {
       readonly addMembers: Procedures["admin.groups.addMembers"];
       readonly create: Procedures["admin.groups.create"];
@@ -4952,6 +4969,18 @@ export interface Api {
 /** The procedure table to pass to the runtime's `createClient`. */
 export const procedures: Api = {
   admin: {
+    backup: {
+      snapshot: {
+        name: "admin.backup.snapshot",
+        kind: "mutation",
+        perm: "admin.secrets.manage",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     groups: {
       addMembers: {
         name: "admin.groups.addMembers",

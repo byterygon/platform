@@ -47,6 +47,14 @@ fn main() -> ExitCode {
         },
         Command::KeysGenerate { out } => keys_generate(&out),
         Command::SecretsStatus { config } => secrets_status(&config),
+        Command::Restore {
+            config,
+            archive,
+            check_secrets,
+        } => match runtime() {
+            Some(runtime) => runtime.block_on(restore(config, archive, check_secrets)),
+            None => ExitCode::FAILURE,
+        },
     }
 }
 
@@ -63,6 +71,90 @@ fn keys_generate(out: &std::path::Path) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// `restore --data DIR [--check-secrets] FILE.tar` (DOC-25 §3.4.6): unpack into a new directory,
+/// check the store and the audit chain; with --check-secrets, decrypt every entry with the
+/// configured keys and name the failures (owner and field, never a value).
+async fn restore(
+    config: ServeConfig,
+    archive: std::path::PathBuf,
+    check_secrets: bool,
+) -> ExitCode {
+    let data = config.data.clone().expect("parse requires --data");
+    let unpacked = {
+        let (archive, data) = (archive.clone(), data.clone());
+        tokio::task::spawn_blocking(move || mightyconsole_server::backup::restore(&archive, &data))
+            .await
+    };
+    let restored = match unpacked {
+        Ok(Ok(restored)) => restored,
+        Ok(Err(e)) => {
+            eprintln!("mightyconsole-server: restore: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("mightyconsole-server: restore: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!(
+        "restored {} file(s) into {}: the store opens, the audit log is intact ({} records{})",
+        restored.files,
+        data.display(),
+        restored.audit_records,
+        restored
+            .marker
+            .backup_seq
+            .map(|s| format!(", up to seq {s}"))
+            .unwrap_or_default()
+    );
+    if check_secrets {
+        let keyring = match mightyconsole_server::secrets::keys::load_existing(
+            &data,
+            &config.secrets,
+        )
+        .await
+        {
+            Ok(Some(keyring)) => keyring,
+            Ok(None) => {
+                eprintln!(
+                    "mightyconsole-server: restore --check-secrets: no key is configured \
+                         ([[secrets.keys]]) and DATA/keys holds none: provide the keys first"
+                );
+                return ExitCode::FAILURE;
+            }
+            Err(e) => {
+                eprintln!("mightyconsole-server: restore --check-secrets: the keys: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let vault = mightyconsole_server::secrets::Vault::new(keyring, &config.auth.tenant);
+        match mightyconsole_server::backup::check_secrets(&data, &vault) {
+            Ok(failures) if failures.is_empty() => {
+                println!("every stored secret decrypts with the configured keys");
+            }
+            Ok(failures) => {
+                for (owner, field, why) in &failures {
+                    eprintln!("secret {field} of {owner}: {why}");
+                }
+                eprintln!(
+                    "mightyconsole-server: restore: {} secret(s) do not decrypt",
+                    failures.len()
+                );
+                return ExitCode::FAILURE;
+            }
+            Err(e) => {
+                eprintln!("mightyconsole-server: restore --check-secrets: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    println!(
+        "provide the keys, then start the server with --data {}",
+        data.display()
+    );
+    ExitCode::SUCCESS
 }
 
 /// `secrets status` (DOC-25 §3.4.5): the stored secrets by key, with the server stopped.
@@ -460,17 +552,35 @@ async fn reset_admin(config: ServeConfig, print: bool) -> ExitCode {
     };
     let file = match opened {
         Ok(Ok(store)) => {
-            // Stopped: the audit log first, as at a start: a reset that cannot be recorded does
-            // not happen.
+            // Stopped: the secret keys (the administrator's TOTP key is a stored secret, and the
+            // audit checkpoint is keyed from them), loaded as they are: none is made here.
+            let keyring =
+                match mightyconsole_server::secrets::keys::load_existing(&data, &config.secrets)
+                    .await
+                {
+                    Ok(keyring) => keyring,
+                    Err(e) => {
+                        eprintln!("mightyconsole-server: reset-admin: the secret keys: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            let checkpoint = std::sync::Arc::new(
+                keyring
+                    .as_ref()
+                    .map(mightyconsole_server::secrets::checkpoint_keys)
+                    .unwrap_or_default(),
+            );
+            if let Some(keyring) = keyring {
+                store.set_vault(std::sync::Arc::new(
+                    mightyconsole_server::secrets::Vault::new(keyring, &config.auth.tenant),
+                ));
+            }
+            // Then the audit log, as at a start: a reset that cannot be recorded does not happen.
             let tenant = mightyconsole_server::audit_tenant(&config);
             let (settings, log_data) = (config.audit, data.clone());
             let opened = tokio::task::spawn_blocking(move || {
                 mightyconsole_server::audit::open_log(
-                    &log_data,
-                    &settings,
-                    &tenant,
-                    None,
-                    Default::default(),
+                    &log_data, &settings, &tenant, None, checkpoint,
                 )
             })
             .await;

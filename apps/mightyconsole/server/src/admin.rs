@@ -285,7 +285,7 @@ mod tests {
     #[tokio::test]
     async fn a_first_start_makes_the_administrator_once() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::open(dir.path()).unwrap());
+        let store = Arc::new(Store::open_for_tests(dir.path()));
         let h = hasher();
         let file = ensure(&store, dir.path(), &h, 1).await.unwrap().unwrap();
         assert_eq!(file, dir.path().join("admin-password"));
@@ -317,7 +317,7 @@ mod tests {
     #[tokio::test]
     async fn a_reset_sets_a_new_password_and_lifts_everything() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::open(dir.path()).unwrap());
+        let store = Arc::new(Store::open_for_tests(dir.path()));
         let h = hasher();
         ensure(&store, dir.path(), &h, 1).await.unwrap();
         let first = fs::read_to_string(password_file(dir.path())).unwrap();
@@ -353,7 +353,7 @@ mod tests {
     #[tokio::test]
     async fn a_request_is_performed_by_the_watcher_and_deleted() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::open(dir.path()).unwrap());
+        let store = Arc::new(Store::open_for_tests(dir.path()));
         ensure(&store, dir.path(), &hasher(), 1).await.unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let watcher = watch_requests(

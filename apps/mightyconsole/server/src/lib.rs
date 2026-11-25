@@ -31,6 +31,7 @@ pub mod admin_api;
 pub mod api;
 pub mod audit;
 pub mod authz;
+pub mod backup;
 pub mod cli;
 pub mod config;
 pub mod core;
@@ -142,6 +143,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(secrets::api::AdminSecretsApi(state.secrets.clone()))
         .expect("admin.secrets API registers");
+    router
+        .mount(secrets::api::AdminBackupApi(state.secrets.clone()))
+        .expect("admin.backup API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -666,6 +670,22 @@ impl Server {
             }
             Arc::new(secrets::Vault::new(loaded.keyring, &config.auth.tenant))
         };
+        // Accounts' TOTP keys are entries of the secret store (DOC-25 §3.2.6); a store of
+        // TSK-142 still keeps them in the account rows, moved here once.
+        store.set_vault(Arc::clone(&vault));
+        {
+            let store = Arc::clone(&store);
+            let moved = tokio::task::spawn_blocking(move || store.migrate_totp_keys())
+                .await
+                .map_err(|e| StartError::Store(format!("moving TOTP keys panicked: {e}")))?
+                .map_err(|e| StartError::Store(format!("moving TOTP keys: {e}")))?;
+            if moved > 0 {
+                log.line(&format!(
+                    "mightyconsole-server: moved {moved} account TOTP key(s) into the encrypted \
+                     secret store"
+                ));
+            }
+        }
         // The audit log: a server that cannot record does not start (DOC-25 §3.6.2).
         let tenant = audit_tenant(&config);
         let mut retention_sink: Option<Arc<audit_jsonl::SegmentedSink>> = None;
@@ -729,6 +749,18 @@ impl Server {
             config.audit.stderr,
             Arc::clone(&log),
         );
+        // The first start after a restore (DOC-25 §3.4.6): server.restore names the backup's
+        // last audit record.
+        match backup::take_restore_marker(&data) {
+            Ok(Some(marker)) => events.record(&Event::ServerRestore {
+                backup_seq: marker
+                    .backup_seq
+                    .map_or_else(|| "-".to_owned(), |s| s.to_string()),
+                backup_hash: marker.backup_hash.unwrap_or_else(|| "-".to_owned()),
+            }),
+            Ok(None) => {}
+            Err(e) => return Err(StartError::Store(format!("after a restore: {e}"))),
+        }
         // The secret store's service: the re-wrap job (resuming a rotation a restart cut short,
         // DOC-25 §3.4.5) and the reload of the keys.
         let secret_service = Arc::new(secrets::service::SecretService::new(
