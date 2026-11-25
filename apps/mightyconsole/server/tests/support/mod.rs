@@ -88,6 +88,7 @@ pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
         auth: Default::default(),
         audit: Default::default(),
         secrets: Default::default(),
+        policy: Default::default(),
     }
 }
 

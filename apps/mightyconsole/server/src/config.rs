@@ -30,6 +30,9 @@
 //! role = "admin"
 //! scope = ["profile:01J…/ns:team-a-*"] # optional; left out = everywhere
 //!
+//! [policy]
+//! allow_personal_profiles = true  # false: only shared profiles, so roles bind everyone
+//!
 //! [audit]
 //! reads = "sensitive"   # or "all"
 //! stderr = false        # also write one line per recorded call to stderr
@@ -97,6 +100,30 @@ pub struct FileConfig {
     pub audit: AuditSection,
     #[serde(default)]
     pub secrets: SecretsSection,
+    #[serde(default)]
+    pub policy: PolicySection,
+}
+
+/// `[policy]` (DOC-25 §3.6.1).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PolicySection {
+    /// Whether people may make personal profiles (default true, DOC-25 Open question 14).
+    pub allow_personal_profiles: Option<bool>,
+}
+
+/// `[policy]`, resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PolicySettings {
+    pub allow_personal_profiles: bool,
+}
+
+impl Default for PolicySettings {
+    fn default() -> Self {
+        PolicySettings {
+            allow_personal_profiles: true,
+        }
+    }
 }
 
 /// `[secrets]` (DOC-25 §3.4.4, §3.6.1).

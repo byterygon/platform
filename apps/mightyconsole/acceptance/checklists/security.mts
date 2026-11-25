@@ -138,6 +138,23 @@ export default {
       ],
     },
     {
+      id: "secrets-shared",
+      text: "(TSK-139) A viewer connects with a shared profile whose password they never saw.",
+      checks: [
+        cargo("a_viewer_uses_a_shared_profile_whose_password_they_never_see", { label: "a viewer sees and may use a shared profile, its secrets' status but never their values; a member without the tool's read sees nothing" }),
+        cargo("a_personal_profile_is_its_owners_alone_and_its_secret_is_never_answered", { label: "a personal profile is its owner's alone; no answer holds a value; the value is not in store.redb in clear" }),
+        manual("the viewer's connection runs with the stored password: connect by profile reference (TSK-139, the next batch)"),
+      ],
+    },
+    {
+      id: "secrets-target",
+      text: "(TSK-139) Changing a shared profile's host without re-entering the password removes it.",
+      checks: [
+        cargo("a_viewer_uses_a_shared_profile_whose_password_they_never_see", { label: "a changed host removes the password (removedSecrets), the registry's token stays; set again in the same call it is kept" }),
+        cargo("a_changed_target_unbinds_the_secrets_of_its_group_only", { label: "each tool's target fields and the secrets they guard" }),
+      ],
+    },
+    {
       id: "audit-events",
       text: "(TSK-137) A sign-in, a refused call, a write, a destroy with its confirmation, a Secret reveal, a file download, a connect and a role change each leave the entries of 3.5.1, with digests and no values.",
       checks: [

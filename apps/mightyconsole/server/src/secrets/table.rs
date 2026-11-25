@@ -346,6 +346,23 @@ pub(crate) fn put_in(
     Ok(entry)
 }
 
+/// The fields of `owner`'s entries, in a transaction the caller holds.
+pub(crate) fn fields_in(
+    table: &impl redb::ReadableTable<&'static str, &'static [u8]>,
+    owner: &Owner,
+) -> Result<Vec<String>, SecretError> {
+    let prefix = owner_prefix(owner);
+    let mut out = Vec::new();
+    for row in table.range(prefix.as_str()..).map_err(store_err)? {
+        let (key, _) = row.map_err(store_err)?;
+        match key.value().strip_prefix(&prefix) {
+            Some(field) => out.push(field.to_owned()),
+            None => break,
+        }
+    }
+    Ok(out)
+}
+
 /// Removes one entry in a transaction the caller holds.
 pub(crate) fn remove_in(
     table: &mut redb::Table<'_, &'static str, &'static [u8]>,

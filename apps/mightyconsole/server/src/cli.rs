@@ -524,6 +524,9 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
     };
     let auth: AuthSettings = config::auth_settings(file.auth, &file_path)?;
     let secrets = config::secrets_settings(file.secrets, &file_path)?;
+    let policy = config::PolicySettings {
+        allow_personal_profiles: file.policy.allow_personal_profiles.unwrap_or(true),
+    };
     let mut audit = config::audit_settings(file.audit)?;
     audit.new_chain = flags.audit_new_chain;
     Ok(ServeConfig {
@@ -539,6 +542,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         auth,
         audit,
         secrets,
+        policy,
     })
 }
 

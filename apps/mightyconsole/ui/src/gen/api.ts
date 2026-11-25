@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:ecf61d52212b8d1e9943408afba4283216e6ca4ac5d41edc6aabda69869084f6";
+export const SCHEMA_HASH = "sha256:de01ce6f3e37d5f6b7d5ed77a4308f5cd48112646d1a5888d88d43ba730ac8fb";
 
 // ---- Types
 
@@ -147,7 +147,7 @@ bytesPerSec: number,
 /**
  * `true` on the last event of the stream.
  */
-done: boolean, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
+done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
 
 /**
  * Output of `app.info`.
@@ -1415,6 +1415,11 @@ ids: Array<string>,
  */
 force: boolean, };
 
+/**
+ * A browser record to import (DOC-21 §4.2, migrated to its tool's newest version).
+ */
+export type ImportRecord = { tool: string, version: number, name: string, color?: string | null, fields: unknown, extras?: unknown, };
+
 export type InspectInput = { connId?: string | null, schema: InspectSchema, messageType?: string | null, };
 
 /**
@@ -2488,6 +2493,11 @@ export type NodeStatsInput = { connId: string, assistantId: string,
 runs?: number | null, };
 
 /**
+ * Who a profile belongs to, on the wire.
+ */
+export type OwnerWire = { "kind": "personal", user?: string | null, } | { "kind": "shared" };
+
+/**
  * Which part of a message a codec reads or writes.
  */
 export type Part = "key" | "value";
@@ -2680,6 +2690,98 @@ published: Array<string>, };
  * An inclusive range of offsets or sequences, as decimal strings.
  */
 export type PositionRange = { from?: string | null, to?: string | null, };
+
+export type ProfileCreateInput = { tool: string, name: string, color?: string | null, owner: OwnerWire, fields: unknown, extras?: unknown, 
+/**
+ * Secret values by field (redacted). An empty value is left out.
+ */
+secrets?: { [key in string]: string } | null, };
+
+export type ProfileDeleteInput = { id: string, 
+/**
+ * The profile's name: what the person types to confirm.
+ */
+name: string, };
+
+export type ProfileDuplicateInput = { id: string, 
+/**
+ * The copy's name.
+ */
+name: string, };
+
+export type ProfileDuplicateOutput = { profile: ProfileView, 
+/**
+ * Whether the secrets came along (the caller may edit the source and the copy has its owner).
+ */
+secretsCopied: boolean, };
+
+export type ProfileIdInput = { id: string, };
+
+export type ProfileImportInput = { 
+/**
+ * The record's id in the browser.
+ */
+sourceId: string, record: ImportRecord, 
+/**
+ * Its secrets by server field path (redacted).
+ */
+secrets?: { [key in string]: string } | null, owner: OwnerWire, };
+
+export type ProfileImportOutput = { profile: ProfileView, 
+/**
+ * `false` when an earlier import of the same record made it.
+ */
+created: boolean, };
+
+export type ProfileUpdateInput = { id: string, 
+/**
+ * The etag of the record this edit starts from.
+ */
+etag: string, name?: string | null, 
+/**
+ * A palette name; `""` clears it.
+ */
+color?: string | null, fields?: unknown, extras?: unknown, 
+/**
+ * Secrets set in the same change (redacted), which keeps them when a target field changes.
+ */
+secrets?: { [key in string]: string } | null, };
+
+export type ProfileUpdateOutput = { profile: ProfileView, 
+/**
+ * Secrets removed because a target field changed and they were not set again (DOC-25
+ * §3.4.8).
+ */
+removedSecrets: Array<string>, };
+
+/**
+ * A stored profile as the caller may see it (DOC-21 §4.2 without `secrets`).
+ */
+export type ProfileView = { id: string, tool: string, version: number, name: string, color?: string, 
+/**
+ * All fields; only the target fields when `access` is `metadata`.
+ */
+fields: unknown, 
+/**
+ * Empty when `access` is `metadata`.
+ */
+extras: unknown, owner: OwnerWire, etag: string, createdAt: string, updatedAt: string, createdBy: string, updatedBy: string, 
+/**
+ * `owner`, `edit`, `use` or `metadata`.
+ */
+access: string, 
+/**
+ * The secrets set (none listed for `metadata`).
+ */
+secrets: Array<SecretRow>, };
+
+export type ProfilesListInput = { 
+/**
+ * One tool's profiles; all when left out.
+ */
+tool?: string | null, };
+
+export type ProfilesOutput = { profiles: Array<ProfileView>, };
 
 /**
  * `messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar
@@ -3517,6 +3619,38 @@ export type SearchAttributesOutput = { attributes: Array<SearchAttribute>,
  */
 fallback?: string, };
 
+export type SecretFieldInput = { owner: SecretOwnerWire, field: string, };
+
+export type SecretOwnerInput = { owner: SecretOwnerWire, };
+
+/**
+ * What a secret belongs to on the wire.
+ */
+export type SecretOwnerWire = { 
+/**
+ * `profile` (routes come with DOC-23).
+ */
+kind: string, id: string, };
+
+export type SecretRemoveOutput = { removed: boolean, };
+
+/**
+ * A secret's status in a profile: never its value.
+ */
+export type SecretRow = { field: string, set: boolean, version: number, setBy: string, 
+/**
+ * Unix ms.
+ */
+setAt: number, };
+
+export type SecretSetInput = { owner: SecretOwnerWire, field: string, 
+/**
+ * The value (redacted; never answered).
+ */
+value: string, };
+
+export type SecretsOutput = { secrets: Array<SecretRow>, };
+
 /**
  * What `admin.secrets.status` answers.
  */
@@ -3993,6 +4127,14 @@ export type TotpRemoveInput = {
  */
 current: string, };
 
+export type TransferInput = { profileIds: Array<string>, 
+/**
+ * The new owner's principal id.
+ */
+toUserId: string, };
+
+export type TransferOutput = { transferred: number, };
+
 /**
  * Why a listing stopped early.
  */
@@ -4447,6 +4589,7 @@ export interface Procedures {
   readonly "admin.groups.list": ProcedureDef<"query", Empty, GroupsListOutput, ToolError>;
   readonly "admin.groups.removeMembers": ProcedureDef<"mutation", GroupMembersInput, Empty, ToolError>;
   readonly "admin.groups.set": ProcedureDef<"mutation", GroupsSetInput, GroupsListOutput, ToolError>;
+  readonly "admin.profiles.transfer": ProcedureDef<"mutation", TransferInput, TransferOutput, ToolError>;
   readonly "admin.roles.create": ProcedureDef<"mutation", RoleInput, RoleInfo, ToolError>;
   readonly "admin.roles.delete": ProcedureDef<"mutation", RoleIdInput, Empty, ToolError>;
   readonly "admin.roles.get": ProcedureDef<"query", RoleIdInput, RoleInfo, ToolError>;
@@ -4600,6 +4743,16 @@ export interface Procedures {
   readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
   readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
   readonly "nats.services.stats": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceStats>, ToolError>;
+  readonly "profiles.create": ProcedureDef<"mutation", ProfileCreateInput, ProfileView, ToolError>;
+  readonly "profiles.delete": ProcedureDef<"mutation", ProfileDeleteInput, Empty, ToolError>;
+  readonly "profiles.duplicate": ProcedureDef<"mutation", ProfileDuplicateInput, ProfileDuplicateOutput, ToolError>;
+  readonly "profiles.get": ProcedureDef<"query", ProfileIdInput, ProfileView, ToolError>;
+  readonly "profiles.import": ProcedureDef<"mutation", ProfileImportInput, ProfileImportOutput, ToolError>;
+  readonly "profiles.list": ProcedureDef<"query", ProfilesListInput, ProfilesOutput, ToolError>;
+  readonly "profiles.update": ProcedureDef<"mutation", ProfileUpdateInput, ProfileUpdateOutput, ToolError>;
+  readonly "secrets.remove": ProcedureDef<"mutation", SecretFieldInput, SecretRemoveOutput, ToolError>;
+  readonly "secrets.set": ProcedureDef<"mutation", SecretSetInput, SecretRow, ToolError>;
+  readonly "secrets.status": ProcedureDef<"query", SecretOwnerInput, SecretsOutput, ToolError>;
   readonly "temporal.activities.cancel": ProcedureDef<"mutation", ActivityReasonInput, Empty, ToolError>;
   readonly "temporal.activities.count": ProcedureDef<"query", ActivitiesCountInput, ActivitiesCountOutput, ToolError>;
   readonly "temporal.activities.describe": ProcedureDef<"query", ActivityRef, ActivityDetail, ToolError>;
@@ -4661,6 +4814,9 @@ export interface Api {
       readonly list: Procedures["admin.groups.list"];
       readonly removeMembers: Procedures["admin.groups.removeMembers"];
       readonly set: Procedures["admin.groups.set"];
+    };
+    readonly profiles: {
+      readonly transfer: Procedures["admin.profiles.transfer"];
     };
     readonly roles: {
       readonly create: Procedures["admin.roles.create"];
@@ -4900,6 +5056,20 @@ export interface Api {
       readonly stats: Procedures["nats.services.stats"];
     };
   };
+  readonly profiles: {
+    readonly create: Procedures["profiles.create"];
+    readonly delete: Procedures["profiles.delete"];
+    readonly duplicate: Procedures["profiles.duplicate"];
+    readonly get: Procedures["profiles.get"];
+    readonly import: Procedures["profiles.import"];
+    readonly list: Procedures["profiles.list"];
+    readonly update: Procedures["profiles.update"];
+  };
+  readonly secrets: {
+    readonly remove: Procedures["secrets.remove"];
+    readonly set: Procedures["secrets.set"];
+    readonly status: Procedures["secrets.status"];
+  };
   readonly temporal: {
     readonly activities: {
       readonly cancel: Procedures["temporal.activities.cancel"];
@@ -5036,6 +5206,18 @@ export const procedures: Api = {
         name: "admin.groups.set",
         kind: "mutation",
         perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    profiles: {
+      transfer: {
+        name: "admin.profiles.transfer",
+        kind: "mutation",
+        perm: "admin.users.write",
         risk: "Write",
         agent: "hidden",
         deprecated: false,
@@ -6656,6 +6838,110 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+  },
+  profiles: {
+    create: {
+      name: "profiles.create",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    delete: {
+      name: "profiles.delete",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Destructive",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    duplicate: {
+      name: "profiles.duplicate",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    get: {
+      name: "profiles.get",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    import: {
+      name: "profiles.import",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "profiles.list",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    update: {
+      name: "profiles.update",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+  },
+  secrets: {
+    remove: {
+      name: "secrets.remove",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    set: {
+      name: "secrets.set",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    status: {
+      name: "secrets.status",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
   },
   temporal: {
