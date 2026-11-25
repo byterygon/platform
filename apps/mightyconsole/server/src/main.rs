@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     if args.first().map(String::as_str) == Some(mightyconsole_server::core::jq::WORKER_ARG) {
         return ExitCode::from(mightyconsole_server::core::jq::worker_main(&args[1..]));
     }
-    let command = match parse(args, &Env::from_process()) {
+    let command = match parse(args.clone(), &Env::from_process()) {
         Ok(command) => command,
         Err(message) => {
             eprintln!("mightyconsole-server: {message}\n\n{USAGE}");
@@ -34,7 +34,7 @@ fn main() -> ExitCode {
         }
         Command::AuditVerify(target) => audit_verify(&target),
         Command::Serve(config) => match runtime() {
-            Some(runtime) => runtime.block_on(serve(config)),
+            Some(runtime) => runtime.block_on(serve(config, args)),
             None => ExitCode::FAILURE,
         },
         Command::ResetAdmin { config, print } => match runtime() {
@@ -101,6 +101,60 @@ fn secrets_status(config: &ServeConfig) -> ExitCode {
     }
 }
 
+/// The checkpoint line of `audit verify` (DOC-25 §3.5.5): checked when the data directory's
+/// keys load without a prompt (the generated key, key files, a passphrase file or variable, a
+/// command), otherwise "not checked" and why. `Err` is a break.
+fn checkpoint(
+    target: &AuditTarget,
+    files: &[std::path::PathBuf],
+    checked: &audit_jsonl::Checked,
+) -> Result<String, String> {
+    use audit_jsonl::checkpoint::Verdict;
+    const UNANCHORED: &str = "so a log cut at its end cannot be told from a shorter one";
+    let AuditTarget::Dir(data) = target else {
+        return Ok(format!(
+            "checkpoint: not checked (files given, not a data directory: {UNANCHORED})"
+        ));
+    };
+    let dir = mightyconsole_server::audit::audit_dir(data);
+    let Some(runtime) = runtime() else {
+        return Ok("checkpoint: not checked (no runtime)".into());
+    };
+    let config = mightyconsole_server::cli::serve_config_for(data, &Env::from_process());
+    let keyring = match config {
+        Err(e) => return Ok(format!("checkpoint: not checked (the configuration: {e})")),
+        Ok(config) => runtime.block_on(mightyconsole_server::secrets::keys::load_existing(
+            data,
+            &config.secrets,
+        )),
+    };
+    let keyring = match keyring {
+        Ok(Some(keyring)) => keyring,
+        Ok(None) => {
+            return Ok(format!(
+                "checkpoint: not checked (no secret key in this data directory: {UNANCHORED})"
+            ));
+        }
+        Err(e) => return Ok(format!("checkpoint: not checked (the keys: {e})")),
+    };
+    let keys = mightyconsole_server::secrets::checkpoint_keys(&keyring);
+    match audit_jsonl::check::check_checkpoint(&dir, files, checked, &keys) {
+        Ok(Verdict::Intact { seq }) => Ok(format!(
+            "checkpoint: intact (the log reaches seq {seq}, which the checkpoint names)"
+        )),
+        Ok(Verdict::Absent) => Ok(format!("checkpoint: none yet ({UNANCHORED})")),
+        Ok(Verdict::NotChecked { kek_id }) => Ok(format!(
+            "checkpoint: not checked (made with key {kek_id}, which is not configured)"
+        )),
+        Ok(other) => Err(format!("checkpoint: {other:?}")),
+        Err(audit_jsonl::CheckError::Broken(b)) => Err(b.to_string()),
+        Err(audit_jsonl::CheckError::Io { path, error }) => Ok(format!(
+            "checkpoint: not checked ({}: {error})",
+            path.display()
+        )),
+    }
+}
+
 /// `audit verify` (DOC-25 §3.5.5): the chain across the files, the first break with its file,
 /// line, `seq` and kind. Exit 0 when intact, 1 when broken, 2 on a read error.
 fn audit_verify(target: &AuditTarget) -> ExitCode {
@@ -158,10 +212,16 @@ fn audit_verify(target: &AuditTarget) -> ExitCode {
                     checked.unfinished.join(", ")
                 );
             }
-            println!(
-                "checkpoint: not checked (the newest records are not anchored outside the log yet, so a log cut at its end cannot be told from a shorter one)"
-            );
-            ExitCode::SUCCESS
+            match checkpoint(target, &files, &checked) {
+                Ok(line) => {
+                    println!("{line}");
+                    ExitCode::SUCCESS
+                }
+                Err(broken) => {
+                    eprintln!("audit log BROKEN: {broken}");
+                    ExitCode::from(1)
+                }
+            }
         }
         Err(audit_jsonl::CheckError::Broken(broken)) => {
             eprintln!("audit log BROKEN: {broken}");
@@ -210,7 +270,8 @@ async fn config_check(config: ServeConfig, online: bool) -> ExitCode {
     }
 }
 
-async fn serve(config: ServeConfig) -> ExitCode {
+/// `serve`. `args` are the command line, read again at `SIGHUP` for `[secrets]`.
+async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
     // No core files with decrypted secrets in them (DOC-25 §3.4.3).
     if let Err(e) = mightyconsole_server::secrets::disable_core_dumps() {
         eprintln!("mightyconsole-server: WARNING: {e}");
@@ -284,7 +345,7 @@ async fn serve(config: ServeConfig) -> ExitCode {
     }
     eprintln!("mightyconsole-server: open {origin}/");
 
-    wait_for_signal().await;
+    run_until_stopped(&server, &args).await;
     eprintln!("mightyconsole-server: stopping");
     match server.shutdown().await {
         Ok(()) => ExitCode::SUCCESS,
@@ -292,6 +353,66 @@ async fn serve(config: ServeConfig) -> ExitCode {
             eprintln!("mightyconsole-server: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Waits for SIGINT or SIGTERM; on Unix, SIGHUP reloads the secret store's keys meanwhile
+/// (DOC-25 §3.4.5): the configuration is read again, `[secrets]` only is applied.
+#[cfg(unix)]
+async fn run_until_stopped(server: &Server, args: &[String]) {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut hup = match signal(SignalKind::hangup()) {
+        Ok(hup) => hup,
+        Err(e) => {
+            eprintln!("mightyconsole-server: cannot listen for SIGHUP (key reload): {e}");
+            wait_for_signal().await;
+            return;
+        }
+    };
+    let stop = wait_for_signal();
+    tokio::pin!(stop);
+    loop {
+        tokio::select! {
+            () = &mut stop => return,
+            _ = hup.recv() => reload_secrets(server, args).await,
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn run_until_stopped(_server: &Server, _args: &[String]) {
+    wait_for_signal().await;
+}
+
+/// SIGHUP: the keys of `[secrets]` from the configuration as it is now.
+#[cfg(unix)]
+async fn reload_secrets(server: &Server, args: &[String]) {
+    let settings = match parse(args.to_vec(), &Env::from_process()) {
+        Ok(Command::Serve(config)) => config.secrets,
+        Ok(_) => return,
+        Err(e) => {
+            eprintln!(
+                "mightyconsole-server: WARNING: the secret keys were not reloaded: the \
+                 configuration: {e}"
+            );
+            return;
+        }
+    };
+    match server.reload_secrets(&settings).await {
+        Ok(warnings) => {
+            for warning in warnings {
+                eprintln!("mightyconsole-server: WARNING: {warning}");
+            }
+            eprintln!(
+                "mightyconsole-server: reloaded the secret keys: active {}, loaded {}",
+                server.vault().keyring().active().id(),
+                server.vault().keyring().ids().join(", ")
+            );
+        }
+        Err(e) => eprintln!(
+            "mightyconsole-server: WARNING: the secret keys were not reloaded (the keys in \
+             force stay): {e}"
+        ),
     }
 }
 
@@ -344,7 +465,13 @@ async fn reset_admin(config: ServeConfig, print: bool) -> ExitCode {
             let tenant = mightyconsole_server::audit_tenant(&config);
             let (settings, log_data) = (config.audit, data.clone());
             let opened = tokio::task::spawn_blocking(move || {
-                mightyconsole_server::audit::open_log(&log_data, &settings, &tenant, None)
+                mightyconsole_server::audit::open_log(
+                    &log_data,
+                    &settings,
+                    &tenant,
+                    None,
+                    Default::default(),
+                )
             })
             .await;
             let sink = match opened {

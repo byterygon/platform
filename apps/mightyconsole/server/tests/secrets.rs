@@ -239,3 +239,239 @@ async fn keys_generate_writes_a_private_key_file_once() {
     assert!(!log.contains("generated the secret key"), "{log}");
     assert!(generated_keys(dir.path()).is_empty());
 }
+
+/// Starts the server, then stops it with SIGTERM (a clean stop) and waits for it.
+#[cfg(unix)]
+async fn start_and_stop_cleanly(data: &Path) {
+    let mut child = command(&["serve", "--listen", "127.0.0.1:0"], data)
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+    let listening = tokio::time::timeout(Duration::from_secs(120), async {
+        while let Some(line) = lines.next_line().await.unwrap() {
+            if line.contains("listening on") {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+    assert!(listening);
+    tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
+    let pid = child.id().unwrap().to_string();
+    let killed = Command::new("kill")
+        .args(["-TERM", &pid])
+        .status()
+        .await
+        .unwrap();
+    assert!(killed.success());
+    let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(status.success(), "{status}");
+}
+
+async fn audit_verify(data: &Path) -> (Option<i32>, String) {
+    let out = command(&["audit", "verify"], data).output().await.unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    (out.status.code(), text)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_log_cut_at_its_end_is_found_by_the_checkpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    start_and_stop_cleanly(dir.path()).await;
+    let (code, text) = audit_verify(dir.path()).await;
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("checkpoint: intact"), "{text}");
+    let cp: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("audit/checkpoint.json")).unwrap(),
+    )
+    .unwrap();
+    // server.start and server.stop: the clean stop checkpointed the last one.
+    assert_eq!(cp["seq"], 1, "{cp}");
+
+    // Cut the last record (server.stop): the chain alone still verifies.
+    let log = mightyconsole_server::audit::log_path(dir.path());
+    let text = std::fs::read_to_string(&log).unwrap();
+    let mut lines: Vec<&str> = text.lines().collect();
+    lines.pop();
+    std::fs::write(&log, format!("{}\n", lines.join("\n"))).unwrap();
+    let (code, text) = audit_verify(dir.path()).await;
+    assert_eq!(code, Some(1), "{text}");
+    assert!(text.contains("truncated tail"), "{text}");
+    let err = refused_start(dir.path()).await;
+    assert!(err.contains("truncated tail"), "{err}");
+
+    // `audit verify` of files (no data directory) cannot check it.
+    let out = Command::new(BIN)
+        .args(["audit", "verify"])
+        .arg(&log)
+        .output()
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("checkpoint: not checked (files given"),
+        "{text}"
+    );
+}
+
+/// A running server whose stderr lines arrive on a channel.
+#[cfg(unix)]
+struct Running {
+    child: tokio::process::Child,
+    lines: tokio::sync::mpsc::UnboundedReceiver<String>,
+}
+
+#[cfg(unix)]
+impl Running {
+    async fn start(data: &Path) -> Running {
+        let mut child = command(&["serve", "--listen", "127.0.0.1:0"], data)
+            .stderr(Stdio::piped())
+            .stdout(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+        tokio::spawn(async move {
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = tx.send(line);
+            }
+        });
+        let mut running = Running { child, lines: rx };
+        running.wait_for("listening on").await;
+        running
+    }
+
+    async fn wait_for(&mut self, needle: &str) -> String {
+        let mut seen = String::new();
+        let found = tokio::time::timeout(Duration::from_secs(60), async {
+            while let Some(line) = self.lines.recv().await {
+                seen.push_str(&line);
+                seen.push('\n');
+                if line.contains(needle) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false);
+        assert!(found, "no line with {needle:?}:\n{seen}");
+        seen
+    }
+
+    async fn signal(&self, name: &str) {
+        let pid = self.child.id().unwrap().to_string();
+        let status = Command::new("kill")
+            .args([name, &pid])
+            .status()
+            .await
+            .unwrap();
+        assert!(status.success());
+    }
+
+    async fn stop(mut self) {
+        self.signal("-TERM").await;
+        let status = tokio::time::timeout(Duration::from_secs(30), self.child.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(status.success(), "{status}");
+    }
+}
+
+/// `[[secrets.keys]]` of these files, with `audit.stderr` on (a reload changes the keys only).
+#[cfg(unix)]
+fn key_config(paths: &[&Path]) -> String {
+    let keys: String = paths
+        .iter()
+        .map(|p| format!("[[secrets.keys]]\nfile = {:?}\n", p.display().to_string()))
+        .collect();
+    format!("[audit]\nstderr = true\n\n{keys}")
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn sighup_rotates_to_a_new_key_and_the_old_one_can_then_go() {
+    let dir = tempfile::tempdir().unwrap();
+    let (old, new) = (Kek::generate().unwrap(), Kek::generate().unwrap());
+    let (old_id, new_id) = (old.id().to_owned(), new.id().to_owned());
+    let (old_path, new_path) = (dir.path().join("old.key"), dir.path().join("new.key"));
+    write_private(&old_path, &key_file_text(&old), 0o600);
+    write_private(&new_path, &key_file_text(&new), 0o600);
+    {
+        let store = Store::open(dir.path()).unwrap();
+        let vault = Vault::new(Keyring::new(vec![old]).unwrap(), "default");
+        for i in 0..3 {
+            vault
+                .set(
+                    &store,
+                    &Owner::profile(format!("p{i}")),
+                    "password",
+                    &Secret::new(format!("v{i}")),
+                    "test",
+                    1,
+                )
+                .unwrap();
+        }
+    }
+    write_config(dir.path(), &key_config(&[&old_path]));
+    let mut server = Running::start(dir.path()).await;
+
+    // A reload whose keys do not open the stored entries keeps the keys in force.
+    write_config(dir.path(), &key_config(&[&new_path]));
+    server.signal("-HUP").await;
+    let seen = server.wait_for("were not reloaded").await;
+    assert!(
+        seen.contains(&format!("3 secret entries under key {old_id}")),
+        "{seen}"
+    );
+
+    // The new key first, the old one after it.
+    write_config(dir.path(), &key_config(&[&new_path, &old_path]));
+    server.signal("-HUP").await;
+    let seen = server.wait_for("reloaded the secret keys").await;
+    assert!(seen.contains(&format!("active {new_id}")), "{seen}");
+    // audit.stderr shows when the re-wrap job ends (it may end before the reload's own line).
+    if !seen.contains("secrets.rewrap end") {
+        server.wait_for("secrets.rewrap end").await;
+    }
+    server.stop().await;
+
+    let audit = std::fs::read_to_string(mightyconsole_server::audit::log_path(dir.path())).unwrap();
+    let rewraps: Vec<&str> = audit
+        .lines()
+        .filter(|l| l.contains("secrets.rewrap"))
+        .collect();
+    assert_eq!(rewraps.len(), 2, "{audit}");
+    assert!(rewraps[0].contains("\"phase\":\"start\"") && rewraps[0].contains(&old_id));
+    assert!(rewraps[1].contains("\"phase\":\"end\"") && rewraps[1].contains("\"count\":\"3\""));
+    {
+        let store = Store::open(dir.path()).unwrap();
+        let by_key = mightyconsole_server::secrets::entries_by_key(&store).unwrap();
+        assert_eq!(
+            by_key.into_iter().collect::<Vec<_>>(),
+            [(new_id.clone(), 3)]
+        );
+    }
+    // Every entry is under the new key: the old key can be removed.
+    write_config(dir.path(), &key_config(&[&new_path]));
+    let server = Running::start(dir.path()).await;
+    server.stop().await;
+    let (code, text) = audit_verify(dir.path()).await;
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("checkpoint: intact"), "{text}");
+}

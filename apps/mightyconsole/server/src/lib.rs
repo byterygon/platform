@@ -139,6 +139,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(admin_api::AdminSessionsApi(m))
         .expect("admin.sessions API registers");
+    router
+        .mount(secrets::api::AdminSecretsApi(state.secrets.clone()))
+        .expect("admin.secrets API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -161,6 +164,7 @@ pub fn codegen_router() -> Router {
         accounts: None,
         confirmations: Arc::new(Confirmations::new(Arc::new(SystemClock))),
         management: None,
+        secrets: None,
     });
     let router = Router::new(RoleAuthorizer::new(
         "codegen",
@@ -568,11 +572,13 @@ pub struct Server {
     events: EventLog,
     event_task: JoinHandle<()>,
     retention_task: Option<JoinHandle<()>>,
+    /// The durable log (not a test's sink), checkpointed at a clean stop.
+    durable_log: Option<Arc<audit_jsonl::SegmentedSink>>,
     /// The JWKS refresh and the session sweep, with sign-in; the `reset-admin` watcher.
     auth_tasks: Vec<JoinHandle<()>>,
     store: Arc<store::Store>,
-    /// The secret store's keys.
-    vault: Arc<secrets::Vault>,
+    /// The secret store: its keys, the re-wrap job, the reload.
+    secrets: Arc<secrets::service::SecretService>,
     /// Roles, assignments and groups in force.
     policy: PolicyHandle,
     tls: ServerTls,
@@ -626,69 +632,8 @@ impl Server {
             core::jq::set_worker_program(worker);
         }
         let log: Arc<dyn LineWriter> = Arc::new(Stderr);
-        // The audit log first: a server that cannot record does not start (DOC-25 §3.6.2).
-        let tenant = audit_tenant(&config);
-        let mut retention_sink: Option<Arc<audit_jsonl::SegmentedSink>> = None;
-        let sink: Arc<dyn AuditSink> = match options.audit_sink {
-            Some(sink) => sink,
-            None => {
-                let data = config.data.clone().ok_or_else(|| {
-                    StartError::Audit(
-                        "no data directory for the audit log: give --data or set \
-                         MIGHTYCONSOLE_DATA"
-                            .into(),
-                    )
-                })?;
-                let (settings, tenant) = (config.audit, tenant.clone());
-                let warn_to = Arc::clone(&log);
-                let warn: audit_jsonl::segments::Warn = Arc::new(move |message: &str| {
-                    warn_to.line(&format!("mightyconsole-server: WARNING: {message}"));
-                });
-                let (durable, moved_to) = tokio::task::spawn_blocking(move || {
-                    audit::open_log(&data, &settings, &tenant, Some(warn))
-                })
-                .await
-                .map_err(|e| StartError::Audit(format!("opening the log panicked: {e}")))?
-                .map_err(|e| StartError::Audit(e.to_string()))?;
-                if let Some(moved_to) = moved_to {
-                    log.line(&format!(
-                        "mightyconsole-server: the audit log was moved to {}/{moved_to} and a new chain started",
-                        audit::audit_dir(config.data.as_deref().unwrap_or(Path::new("."))).display()
-                    ));
-                }
-                let durable = Arc::new(durable);
-                retention_sink = Some(Arc::clone(&durable));
-                durable
-            }
-        };
-        // Retention once a day, the first time at start (DOC-25 §3.5.6); the sink also applies it
-        // after every rotation and when the log is over its size.
-        let retention_task = retention_sink.map(|sink| {
-            let log = Arc::clone(&log);
-            tokio::spawn(async move {
-                let mut tick = tokio::time::interval(RETENTION_EVERY);
-                loop {
-                    tick.tick().await;
-                    let sink = Arc::clone(&sink);
-                    match tokio::task::spawn_blocking(move || sink.enforce_retention()).await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(e)) => log.line(&format!(
-                            "mightyconsole-server: WARNING: audit retention: {}",
-                            e.0
-                        )),
-                        Err(_) => {}
-                    }
-                }
-            })
-        });
-        let (events, event_task) = EventLog::spawn(
-            Arc::clone(&sink),
-            &tenant,
-            config.audit.stderr,
-            Arc::clone(&log),
-        );
-        // The store, and the default administrator on a first start (DOC-25 §3.2.7): the log
-        // names the file, never the password.
+        // The store and the secret store's keys before the audit log, whose checkpoint is keyed
+        // from them (DOC-25 §3.5.4).
         let data = config.data.clone().ok_or_else(|| {
             StartError::Store(
                 "no data directory for the store: give --data or set MIGHTYCONSOLE_DATA".into(),
@@ -721,6 +666,78 @@ impl Server {
             }
             Arc::new(secrets::Vault::new(loaded.keyring, &config.auth.tenant))
         };
+        // The audit log: a server that cannot record does not start (DOC-25 §3.6.2).
+        let tenant = audit_tenant(&config);
+        let mut retention_sink: Option<Arc<audit_jsonl::SegmentedSink>> = None;
+        let sink: Arc<dyn AuditSink> = match options.audit_sink {
+            Some(sink) => sink,
+            None => {
+                let data = config.data.clone().ok_or_else(|| {
+                    StartError::Audit(
+                        "no data directory for the audit log: give --data or set \
+                         MIGHTYCONSOLE_DATA"
+                            .into(),
+                    )
+                })?;
+                let (settings, tenant) = (config.audit, tenant.clone());
+                let warn_to = Arc::clone(&log);
+                let warn: audit_jsonl::segments::Warn = Arc::new(move |message: &str| {
+                    warn_to.line(&format!("mightyconsole-server: WARNING: {message}"));
+                });
+                let checkpoint = Arc::new(secrets::checkpoint_keys(&vault.keyring()));
+                let (durable, moved_to) = tokio::task::spawn_blocking(move || {
+                    audit::open_log(&data, &settings, &tenant, Some(warn), checkpoint)
+                })
+                .await
+                .map_err(|e| StartError::Audit(format!("opening the log panicked: {e}")))?
+                .map_err(|e| StartError::Audit(e.to_string()))?;
+                if let Some(moved_to) = moved_to {
+                    log.line(&format!(
+                        "mightyconsole-server: the audit log was moved to {}/{moved_to} and a new chain started",
+                        audit::audit_dir(config.data.as_deref().unwrap_or(Path::new("."))).display()
+                    ));
+                }
+                let durable = Arc::new(durable);
+                retention_sink = Some(Arc::clone(&durable));
+                durable
+            }
+        };
+        let durable_log = retention_sink.clone();
+        // Retention once a day, the first time at start (DOC-25 §3.5.6); the sink also applies it
+        // after every rotation and when the log is over its size.
+        let retention_task = retention_sink.map(|sink| {
+            let log = Arc::clone(&log);
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(RETENTION_EVERY);
+                loop {
+                    tick.tick().await;
+                    let sink = Arc::clone(&sink);
+                    match tokio::task::spawn_blocking(move || sink.enforce_retention()).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => log.line(&format!(
+                            "mightyconsole-server: WARNING: audit retention: {}",
+                            e.0
+                        )),
+                        Err(_) => {}
+                    }
+                }
+            })
+        });
+        let (events, event_task) = EventLog::spawn(
+            Arc::clone(&sink),
+            &tenant,
+            config.audit.stderr,
+            Arc::clone(&log),
+        );
+        // The secret store's service: the re-wrap job (resuming a rotation a restart cut short,
+        // DOC-25 §3.4.5) and the reload of the keys.
+        let secret_service = Arc::new(secrets::service::SecretService::new(
+            Arc::clone(&store),
+            Arc::clone(&vault),
+            data.clone(),
+            events.clone(),
+            durable_log.clone(),
+        ));
         let hasher = PasswordHasher::new();
         let made = if config.auth.default_admin {
             admin::ensure(&store, &data, &hasher, options.clock.now_unix_ms())
@@ -842,6 +859,7 @@ impl Server {
                 Arc::clone(&login_sessions),
                 Some(accounts.clone()),
             ))),
+            secrets: Some(Arc::clone(&secret_service)),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
@@ -932,15 +950,19 @@ impl Server {
             .to_owned(),
             exposed: config.is_exposed(),
         });
+        // Last, once nothing can fail: a task left running by a refused start would hold the
+        // store open.
+        auth_tasks.push(secret_service.spawn_rewrap());
         Ok(Server {
             hub,
             sessions,
             events,
             event_task,
             retention_task,
+            durable_log,
             auth_tasks,
             store,
-            vault,
+            secrets: secret_service,
             policy,
             tls,
             local_addr,
@@ -978,7 +1000,22 @@ impl Server {
 
     /// The secret store's keys and entries.
     pub fn vault(&self) -> &Arc<secrets::Vault> {
-        &self.vault
+        &self.secrets.vault
+    }
+
+    /// The secret store's service (the re-wrap job's progress).
+    pub fn secrets(&self) -> &Arc<secrets::service::SecretService> {
+        &self.secrets
+    }
+
+    /// Re-reads the secret store's keys (`SIGHUP`, DOC-25 §3.4.5): switches the active key and
+    /// starts the re-wrap job, or keeps the keys in force when the new ones do not load or do
+    /// not open every stored entry. Returns the warnings to print.
+    pub async fn reload_secrets(
+        &self,
+        settings: &secrets::keys::SecretsSettings,
+    ) -> Result<Vec<String>, secrets::keys::KeyError> {
+        self.secrets.reload(settings).await
     }
 
     /// The login sessions.
@@ -1019,6 +1056,10 @@ impl Server {
         self.events.record(&Event::ServerStop);
         self.events.flush().await;
         self.event_task.abort();
+        // The checkpoint at a clean stop (DOC-25 §3.5.4).
+        if let Some(log) = self.durable_log.take() {
+            let _ = tokio::task::spawn_blocking(move || log.checkpoint()).await;
+        }
         for task in self.auth_tasks.drain(..) {
             task.abort();
         }

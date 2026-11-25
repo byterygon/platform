@@ -33,9 +33,13 @@ use security_types::{
 
 use crate::AuditLogError;
 use crate::check::{
-    CheckError, NEW_CHAIN_ACTION, RETENTION_ACTION, SegmentInfo, check_files, segment_files,
-    segment_name,
+    CheckError, NEW_CHAIN_ACTION, RETENTION_ACTION, SegmentInfo, check_checkpoint, check_files,
+    segment_files, segment_name,
 };
+use crate::checkpoint::{self, CheckpointKeys, Verdict};
+
+/// The checkpoint is written at most this often while entries are written (DOC-25 §3.5.4).
+pub const CHECKPOINT_EVERY_MS: u64 = 10_000;
 
 const DAY_MS: u64 = 86_400_000;
 
@@ -77,6 +81,8 @@ pub struct SegmentOptions {
     pub tenant: TenantId,
     pub clock: Arc<dyn Clock>,
     pub warn: Option<Warn>,
+    /// The keys of the checkpoint ([`crate::checkpoint`]); empty writes none and checks none.
+    pub checkpoint: Arc<CheckpointKeys>,
 }
 
 /// A snapshot for `audit.status` (DOC-25 §3.5.7).
@@ -108,6 +114,9 @@ struct State {
     failed: Option<String>,
     warned: bool,
     full_reported: bool,
+    /// When the checkpoint was last written (Unix ms) and the `seq` it names.
+    checkpoint_ms: u64,
+    checkpoint_seq: Option<u64>,
 }
 
 struct Inner {
@@ -116,6 +125,7 @@ struct Inner {
     tenant: TenantId,
     clock: Arc<dyn Clock>,
     warn: Option<Warn>,
+    checkpoint: Mutex<Arc<CheckpointKeys>>,
     state: Mutex<State>,
 }
 
@@ -180,6 +190,21 @@ impl SegmentedSink {
             CheckError::Io { path, error } => AuditLogError::Io { path, error },
             CheckError::Broken(b) => AuditLogError::Broken(b),
         })?;
+        // The checkpoint, when there are keys: a tail cut before it refuses the log.
+        let verdict = if options.checkpoint.is_empty() {
+            Verdict::Absent
+        } else {
+            check_checkpoint(dir, &files, &checked, &options.checkpoint).map_err(|e| match e {
+                CheckError::Io { path, error } => AuditLogError::Io { path, error },
+                CheckError::Broken(b) => AuditLogError::Broken(b),
+            })?
+        };
+        if let (Verdict::NotChecked { kek_id }, Some(warn)) = (&verdict, &options.warn) {
+            warn(&format!(
+                "the audit checkpoint was made with key {kek_id}, which is not loaded: the end of \
+                 the log is not checked this time (the next checkpoint uses the active key)"
+            ));
+        }
         let (chain, active_path, mut closed) = match (&checked.head_record, files.last()) {
             (Some(last), Some(path)) => (
                 AuditChain::resume_after(last).map_err(|error| AuditLogError::Chain {
@@ -217,6 +242,11 @@ impl SegmentedSink {
             failed: None,
             warned: false,
             full_reported: false,
+            checkpoint_ms: 0,
+            checkpoint_seq: match verdict {
+                Verdict::Intact { seq } => Some(seq),
+                _ => None,
+            },
         };
         Ok(SegmentedSink {
             inner: Arc::new(Inner {
@@ -225,6 +255,7 @@ impl SegmentedSink {
                 tenant: options.tenant,
                 clock: options.clock,
                 warn: options.warn,
+                checkpoint: Mutex::new(options.checkpoint),
                 state: Mutex::new(state),
             }),
         })
@@ -320,6 +351,64 @@ impl SegmentedSink {
         }
     }
 
+    /// Replaces the checkpoint's keys (a key rotation) and writes a checkpoint with the new
+    /// writing key.
+    pub fn set_checkpoint_keys(&self, keys: Arc<CheckpointKeys>) {
+        *self
+            .inner
+            .checkpoint
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = keys;
+        let mut state = lock(&self.inner.state);
+        state.checkpoint_seq = None;
+        self.write_checkpoint(&mut state);
+    }
+
+    /// Writes the checkpoint now (a clean stop). A failure is reported through the warning
+    /// callback and returned.
+    pub fn checkpoint(&self) -> Result<(), AuditError> {
+        let mut state = lock(&self.inner.state);
+        if self.write_checkpoint(&mut state) {
+            Ok(())
+        } else {
+            Err(AuditError(
+                "the audit checkpoint could not be written".into(),
+            ))
+        }
+    }
+
+    /// Writes the checkpoint of the head when it moved; `false` when the write failed.
+    fn write_checkpoint(&self, state: &mut State) -> bool {
+        let keys = Arc::clone(
+            &self
+                .inner
+                .checkpoint
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
+        if keys.is_empty() {
+            return true;
+        }
+        let Some((seq, hash)) = head(state) else {
+            return true;
+        };
+        if state.checkpoint_seq == Some(seq) {
+            return true;
+        }
+        let now = self.inner.clock.now_unix_ms();
+        match checkpoint::write(&self.inner.dir, &keys, seq, hash, now) {
+            Ok(()) => {
+                state.checkpoint_ms = now;
+                state.checkpoint_seq = Some(seq);
+                true
+            }
+            Err(e) => {
+                self.warn(&format!("the audit checkpoint could not be written: {e}"));
+                false
+            }
+        }
+    }
+
     /// Applies the retention and size policy now. The owner calls it once a day.
     pub fn enforce_retention(&self) -> Result<(), AuditError> {
         let mut state = lock(&self.inner.state);
@@ -371,7 +460,17 @@ impl SegmentedSink {
         } else {
             state.warned = false;
         }
-        self.write_record(&mut state, entry)
+        self.write_record(&mut state, entry)?;
+        if self
+            .inner
+            .clock
+            .now_unix_ms()
+            .saturating_sub(state.checkpoint_ms)
+            >= CHECKPOINT_EVERY_MS
+        {
+            self.write_checkpoint(&mut state);
+        }
+        Ok(())
     }
 
     /// Writes the record, fsyncs, updates the active segment. A failure ends all later writes.
@@ -417,6 +516,7 @@ impl SegmentedSink {
         if let Err(e) = state.active.file.sync_all() {
             return Err(fail(state, "closing a segment failed", e));
         }
+        self.write_checkpoint(state);
         let file = match create_segment(&path) {
             Ok(file) => file,
             Err(e) => return Err(fail(state, "starting a segment failed", e)),
@@ -514,6 +614,13 @@ fn empty_info(path: &Path) -> SegmentInfo {
         last_time_ms: 0,
         bytes: 0,
     }
+}
+
+/// The chain's last record, `seq` and hash.
+fn head(state: &State) -> Option<(u64, Digest)> {
+    std::iter::once(&state.active.info)
+        .chain(state.closed.iter().rev())
+        .find_map(|s| s.last_seq.zip(s.last_hash))
 }
 
 fn total_bytes(state: &State) -> u64 {

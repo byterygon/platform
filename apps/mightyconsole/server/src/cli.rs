@@ -181,6 +181,15 @@ pub fn default_data_dir() -> Option<PathBuf> {
     env.data_env.or(env.data_default)
 }
 
+/// The configuration a command that reads `data` uses: the file named by `$MIGHTYCONSOLE_CONFIG`,
+/// else `DATA/config.toml` when it exists, else the defaults.
+pub fn serve_config_for(data: &Path, env: &Env) -> Result<ServeConfig, String> {
+    parse_serve(
+        ["--data".to_owned(), data.display().to_string()].into_iter(),
+        env,
+    )
+}
+
 /// Parses the arguments after the program name.
 pub fn parse(args: impl IntoIterator<Item = String>, env: &Env) -> Result<Command, String> {
     let mut args = args.into_iter().peekable();

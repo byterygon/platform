@@ -137,6 +137,12 @@ accept or trust the certificate. To avoid the warning, give your own certificate
   `mightyconsole-server keys generate --out FILE` makes a new key file. A passphrase or a command
   (Vault, a KMS, an HSM) can provide the key instead: `mightyconsole-server --help`, SECRETS.
   The server does not start when a key does not load or a stored secret's key is missing.
+  **To rotate the key**, add the new key as the first `[[secrets.keys]]`, keep the old one after
+  it, and send the server `SIGHUP` (`kill -HUP <pid>`, `docker kill -s HUP mightyconsole`; on
+  Windows, restart it): it switches to the new key without stopping and moves every stored
+  secret to it in the background (`mightyconsole-server secrets status` with the server stopped,
+  or `admin.secrets.status`, shows the progress). When no secret is left under the old key,
+  remove it from the configuration.
 - Live connections are held in the server's memory for the browser tab that opened them and are
   released when the tab closes, on Disconnect, or after 10 minutes without use.
 

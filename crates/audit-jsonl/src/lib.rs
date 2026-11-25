@@ -15,6 +15,7 @@
 //! before this crate existed (DBee's) verify unchanged.
 
 pub mod check;
+pub mod checkpoint;
 pub mod segments;
 
 pub use check::{

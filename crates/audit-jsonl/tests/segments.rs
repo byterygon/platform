@@ -75,6 +75,7 @@ fn options(clock: &Arc<TestClock>, policy: SegmentPolicy) -> SegmentOptions {
         tenant: TenantId::new("t"),
         clock: Arc::clone(clock) as Arc<dyn Clock>,
         warn: None,
+        checkpoint: Default::default(),
     }
 }
 
@@ -507,4 +508,141 @@ async fn unfinished_admissions_are_listed_across_files() {
     }
     let checked = check_files(&files(dir.path())).unwrap();
     assert_eq!(checked.unfinished, ["c-1"]);
+}
+
+fn keys(id: &str, byte: u8) -> Arc<audit_jsonl::checkpoint::CheckpointKeys> {
+    use audit_jsonl::checkpoint::{CheckpointKey, CheckpointKeys};
+    Arc::new(CheckpointKeys::new(vec![CheckpointKey::new(
+        id,
+        zeroize::Zeroizing::new([byte; 32]),
+    )]))
+}
+
+fn keyed(clock: &Arc<TestClock>, id: &str, byte: u8) -> SegmentOptions {
+    SegmentOptions {
+        checkpoint: keys(id, byte),
+        ..options(clock, SegmentPolicy::default())
+    }
+}
+
+#[tokio::test]
+async fn the_checkpoint_follows_the_head_at_most_every_10_s_and_at_a_clean_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let sink = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1)).unwrap();
+    sink.append(entry(0, T0)).await.unwrap();
+    let read = || audit_jsonl::checkpoint::read(dir.path()).unwrap().unwrap();
+    assert_eq!((read().seq, read().kek_id.as_str()), (0, "k1"));
+    // Within 10 s: no new checkpoint.
+    clock.set(T0 + 5_000);
+    sink.append(entry(1, T0 + 5_000)).await.unwrap();
+    assert_eq!(read().seq, 0);
+    clock.set(T0 + 10_000);
+    sink.append(entry(2, T0 + 10_000)).await.unwrap();
+    assert_eq!(read().seq, 2);
+    sink.append(entry(3, T0 + 10_001)).await.unwrap();
+    sink.checkpoint().unwrap();
+    let cp = read();
+    assert_eq!(cp.seq, 3);
+    assert_eq!(cp.hash, records(dir.path())[3].hash);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = fs::metadata(dir.path().join("checkpoint.json"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    drop(sink);
+    // Reopened with the key: intact.
+    SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1)).unwrap();
+}
+
+#[tokio::test]
+async fn a_tail_cut_before_the_checkpoint_refuses_the_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let sink = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1)).unwrap();
+    for i in 0..4 {
+        sink.append(entry(i, T0)).await.unwrap();
+    }
+    sink.checkpoint().unwrap();
+    drop(sink);
+    // Without the key, the cut is not seen (check_files checks the chain only).
+    let path = files(dir.path()).pop().unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    let kept: Vec<&str> = text.lines().take(2).collect();
+    fs::write(&path, format!("{}\n", kept.join("\n"))).unwrap();
+    assert!(check_files(&files(dir.path())).is_ok());
+    let err = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1))
+        .err()
+        .unwrap();
+    let audit_jsonl::AuditLogError::Broken(b) = err else {
+        panic!("{err:?}");
+    };
+    assert_eq!(b.kind, BreakKind::TruncatedTail);
+    assert!(b.message.contains("ends at seq 1"), "{}", b.message);
+    assert!(b.to_string().contains("truncated tail"), "{b}");
+}
+
+#[tokio::test]
+async fn a_forged_checkpoint_refuses_the_log_and_another_key_only_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let sink = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1)).unwrap();
+    sink.append(entry(0, T0)).await.unwrap();
+    sink.append(entry(1, T0)).await.unwrap();
+    sink.checkpoint().unwrap();
+    drop(sink);
+    let path = dir.path().join("checkpoint.json");
+    let honest = fs::read_to_string(&path).unwrap();
+    // Someone without the key moves the checkpoint back to hide a cut.
+    fs::write(&path, honest.replace("\"seq\":1", "\"seq\":0")).unwrap();
+    let err = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1))
+        .err()
+        .unwrap();
+    assert!(err.to_string().contains("MAC does not verify"), "{err}");
+    fs::write(&path, &honest).unwrap();
+    // Under a key not given: a warning, and the log opens.
+    let warned = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let sink_warned = Arc::clone(&warned);
+    let options = SegmentOptions {
+        warn: Some(Arc::new(move |m: &str| {
+            sink_warned.lock().unwrap().push(m.to_owned())
+        })),
+        ..keyed(&clock, "k2", 2)
+    };
+    let sink = SegmentedSink::open(dir.path(), options).unwrap();
+    assert!(warned.lock().unwrap()[0].contains("key k1, which is not loaded"));
+    // The next checkpoint is under the active key.
+    sink.append(entry(2, T0)).await.unwrap();
+    sink.checkpoint().unwrap();
+    assert_eq!(
+        audit_jsonl::checkpoint::read(dir.path())
+            .unwrap()
+            .unwrap()
+            .kek_id,
+        "k2"
+    );
+}
+
+#[tokio::test]
+async fn a_rotation_writes_the_checkpoint_and_new_keys_take_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let options = SegmentOptions {
+        policy: small(2_000),
+        ..keyed(&clock, "k1", 1)
+    };
+    let sink = SegmentedSink::open(dir.path(), options).unwrap();
+    for i in 0..12 {
+        sink.append(entry(i, T0)).await.unwrap();
+    }
+    assert!(files(dir.path()).len() > 1);
+    let cp = audit_jsonl::checkpoint::read(dir.path()).unwrap().unwrap();
+    assert!(cp.seq > 0, "a rotation moved the checkpoint");
+    sink.set_checkpoint_keys(keys("k2", 2));
+    let cp = audit_jsonl::checkpoint::read(dir.path()).unwrap().unwrap();
+    assert_eq!((cp.seq, cp.kek_id.as_str()), (11, "k2"));
 }

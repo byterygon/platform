@@ -11,8 +11,10 @@
 //! `Debug`, `Display`, `Clone` nor `Serialize`. Errors ([`SecretError`]) name owners, fields
 //! and key ids, never values.
 
+pub mod api;
 pub mod crypto;
 pub mod keys;
+pub mod service;
 pub mod table;
 
 use std::collections::BTreeMap;
@@ -192,7 +194,12 @@ pub fn size_limit(field: &str) -> usize {
     }
 }
 
-fn binding<'a>(tenant: &'a str, owner: &'a Owner, field: &'a str, version: u64) -> Binding<'a> {
+pub(crate) fn binding<'a>(
+    tenant: &'a str,
+    owner: &'a Owner,
+    field: &'a str,
+    version: u64,
+) -> Binding<'a> {
     Binding {
         tenant,
         owner_kind: owner.kind.as_str(),
@@ -424,6 +431,27 @@ pub fn status_report(
         ));
     }
     Ok(lines)
+}
+
+/// The audit checkpoint's info string for HKDF (DOC-25 §3.5.4).
+pub const CHECKPOINT_INFO: &[u8] = b"mightyconsole.audit.checkpoint.v1";
+
+/// The checkpoint keys of the audit log (DOC-25 §3.5.4): for each loaded KEK, active first,
+/// HKDF-SHA-256 with the KEK as input key material, no salt and the info
+/// [`CHECKPOINT_INFO`], named by the KEK's id.
+pub fn checkpoint_keys(keyring: &Keyring) -> audit_jsonl::checkpoint::CheckpointKeys {
+    use audit_jsonl::checkpoint::{CheckpointKey, CheckpointKeys};
+    let keys = keyring
+        .keks()
+        .map(|kek| {
+            let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, kek.expose());
+            let mut okm = Zeroizing::new([0u8; 32]);
+            hk.expand(CHECKPOINT_INFO, &mut *okm)
+                .expect("32 bytes is a valid HKDF-SHA-256 output length");
+            CheckpointKey::new(kek.id(), okm)
+        })
+        .collect();
+    CheckpointKeys::new(keys)
 }
 
 /// Turns core dumps off (`RLIMIT_CORE` 0, §3.4.3), so a crash does not write decrypted values to

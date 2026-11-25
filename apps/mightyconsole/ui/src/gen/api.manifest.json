@@ -4876,6 +4876,39 @@
       ],
       "type": "object"
     },
+    "KeyRow": {
+      "description": "One key, as `admin.secrets.status` shows it.",
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "entries": {
+          "description": "Entries whose data key is wrapped under it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "loaded": {
+          "description": "`false` for a key that stored entries name but the server has not loaded (only seen\nafter a refused reload).",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "`file`, `generated`, `passphrase` or `command`; empty for a key not loaded.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "active",
+        "loaded",
+        "entries"
+      ],
+      "type": "object"
+    },
     "LanggraphConnIdInput": {
       "properties": {
         "connId": {
@@ -10349,6 +10382,49 @@
       ],
       "type": "object"
     },
+    "RewrapProgress": {
+      "description": "Where the re-wrap job is.",
+      "properties": {
+        "done": {
+          "description": "Entries moved by the job's current or last run.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "description": "Why the last run stopped early, without values.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "running": {
+          "description": "The job is moving entries now.",
+          "type": "boolean"
+        },
+        "to": {
+          "description": "The key entries are moved to (the active key when the job last ran).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "description": "Entries the current or last run set out to move.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "running",
+        "to",
+        "done",
+        "total",
+        "error"
+      ],
+      "type": "object"
+    },
     "RoleGrant": {
       "description": "A role in force for a user, and how it reached them.",
       "properties": {
@@ -11909,6 +11985,33 @@
       },
       "required": [
         "attributes"
+      ],
+      "type": "object"
+    },
+    "SecretsStatusOutput": {
+      "description": "What `admin.secrets.status` answers.",
+      "properties": {
+        "entries": {
+          "description": "Stored secret entries.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "keys": {
+          "description": "The keys, active first, then any key stored entries name but the server has not loaded.",
+          "items": {
+            "$ref": "#/$defs/KeyRow"
+          },
+          "type": "array"
+        },
+        "rewrap": {
+          "$ref": "#/$defs/RewrapProgress"
+        }
+      },
+      "required": [
+        "keys",
+        "entries",
+        "rewrap"
       ],
       "type": "object"
     },
@@ -14960,6 +15063,27 @@
       "perm": "admin.roles.write",
       "redact": [],
       "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.secrets.status",
+      "output": {
+        "$ref": "#/$defs/SecretsStatusOutput"
+      },
+      "perm": "admin.secrets.manage",
+      "redact": [],
+      "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -19161,5 +19285,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:6de6f524980becf48145685994aeb64b65c4047c0007b52b85af9f8980d0baa7"
+  "schema_hash": "sha256:6c444a12f446bcaff29e521d9742157a0842ba35d6f781c16adccaa35b45681c"
 }

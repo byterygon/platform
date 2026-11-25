@@ -40,6 +40,8 @@ pub enum BreakKind {
     /// The log starts after `seq` 0 and no `audit.retention` entry accounts for what came before:
     /// the head was cut.
     HeadCut,
+    /// The log ends before its checkpoint (DOC-25 §3.5.4): records at its end were deleted.
+    TruncatedTail,
 }
 
 impl BreakKind {
@@ -51,6 +53,7 @@ impl BreakKind {
             BreakKind::Reordered => "reordered",
             BreakKind::Gap => "gap",
             BreakKind::HeadCut => "head cut",
+            BreakKind::TruncatedTail => "truncated tail",
         }
     }
 }
@@ -394,6 +397,100 @@ fn find_hashes(
         }
     }
     Ok(None)
+}
+
+/// The hash of the record `seq` in `files`, `None` when no file has it.
+pub fn hash_at(files: &[PathBuf], seq: u64) -> Result<Option<Digest>, CheckError> {
+    for path in files {
+        let file = File::open(path).map_err(|error| CheckError::Io {
+            path: path.clone(),
+            error,
+        })?;
+        for line in io::BufReader::new(file).lines() {
+            let line = line.map_err(|error| CheckError::Io {
+                path: path.clone(),
+                error,
+            })?;
+            if let Ok(record) = serde_json::from_str::<AuditRecord>(&line)
+                && record.seq == seq
+            {
+                return Ok(Some(record.hash));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Checks the checkpoint in `dir` against an intact chain (`checked`, from [`check_files`] of
+/// `files`). A tail cut before the checkpoint, a forged checkpoint or a record rewritten at its
+/// `seq` is a [`Break`]; a checkpoint under a key not given is [`crate::checkpoint::Verdict::NotChecked`].
+pub fn check_checkpoint(
+    dir: &Path,
+    files: &[PathBuf],
+    checked: &Checked,
+    keys: &crate::checkpoint::CheckpointKeys,
+) -> Result<crate::checkpoint::Verdict, CheckError> {
+    use crate::checkpoint::{self, Verdict};
+    let path = dir.join(checkpoint::CHECKPOINT_FILE);
+    let unreadable = |error: io::Error| CheckError::Io {
+        path: path.clone(),
+        error,
+    };
+    let Some(cp) = checkpoint::read(dir).map_err(unreadable)? else {
+        return Ok(Verdict::Absent);
+    };
+    let head_seq = checked.head.map(|(seq, _)| seq);
+    let hash = match checked.head {
+        Some((seq, hash)) if seq == cp.seq => Some(hash),
+        Some((seq, _)) if seq > cp.seq => hash_at(files, cp.seq)?,
+        _ => None,
+    };
+    let verdict = checkpoint::verify(&cp, keys, head_seq, hash);
+    // The break is reported at the log's last line.
+    let (last, last_line) = checked
+        .segments
+        .iter()
+        .rev()
+        .find(|s| s.records > 0)
+        .map(|s| (s.path.clone(), s.records as usize))
+        .unwrap_or_else(|| (path.clone(), 1));
+    let broken = |kind, message: String| {
+        CheckError::Broken(Box::new(Break {
+            file: last.clone(),
+            line: last_line,
+            seq: Some(cp.seq),
+            kind,
+            message,
+        }))
+    };
+    match verdict {
+        Verdict::TruncatedTail {
+            checkpoint_seq,
+            head_seq,
+        } => Err(broken(
+            BreakKind::TruncatedTail,
+            match head_seq {
+                Some(head) => format!(
+                    "the log ends at seq {head} but its checkpoint names seq {checkpoint_seq}: records at the end were deleted"
+                ),
+                None => format!(
+                    "the log is empty but its checkpoint names seq {checkpoint_seq}: records were deleted"
+                ),
+            },
+        )),
+        Verdict::Rewritten { seq } => Err(broken(
+            BreakKind::Edited,
+            format!("the record at seq {seq} has another hash than the checkpoint names"),
+        )),
+        Verdict::Forged => Err(broken(
+            BreakKind::Edited,
+            format!(
+                "{}: its MAC does not verify (the file was changed)",
+                path.display()
+            ),
+        )),
+        other => Ok(other),
+    }
 }
 
 /// The segment files of `dir` (`audit-<seq>.jsonl`), oldest first. A missing directory has none.
