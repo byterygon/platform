@@ -1461,7 +1461,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
           ) : null}
           <StatusBarItem>
             <Icon icon={Server} />
-            <span>{state.server === "online" ? (state.info?.publicOrigin ?? location.host) : state.server === "connecting" ? "Connecting…" : "Server lost"}</span>
+            <span>{state.server === "online" ? (state.info?.publicOrigin ?? location.host) : state.server === "connecting" ? "Connecting…" : state.server === "signedOut" ? "Signed out" : "Server lost"}</span>
           </StatusBarItem>
           <StatusBarButton className="h-control-sm" title="Density (Settings → Appearance)" onClick={() => dispatch({ type: "settings", settings: { density: state.settings.density === "compact" ? "comfortable" : "compact" } })}>
             <Icon icon={Options} />

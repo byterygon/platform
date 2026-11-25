@@ -47,6 +47,7 @@ describe("the words", () => {
     expect(nameOf(me)).toBe("Uy Son");
     expect(nameOf({ displayName: null, username: "uy.son", user: "x" })).toBe("uy.son");
     expect(nameOf({ displayName: " ", username: null, user: "human:oidc:abc" })).toBe("human:oidc:abc");
+    expect(nameOf({ displayName: null, username: null, email: "alice@lab.test", user: "human:oidc:abc" })).toBe("alice@lab.test");
     expect(initialsOf("Uy Son")).toBe("US");
     expect(initialsOf("minh.le@corp.example")).toBe("ML");
     expect(initialsOf("admin")).toBe("AD");
@@ -269,6 +270,7 @@ describe("a session that ends while the app is open", () => {
     expect(document.body.contains(field)).toBe(true);
     expect(field.value).toBe("orders-draft");
     expect(byText("Lost the connection to mightyconsole-server, retrying…")).toBeNull();
+    expect(document.querySelector('[aria-label="Status"]')?.textContent).toContain("Signed out");
     expect(await axeViolations(dialog)).toEqual([]);
   });
 

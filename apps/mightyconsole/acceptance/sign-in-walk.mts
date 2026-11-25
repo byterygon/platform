@@ -145,8 +145,10 @@ async function main(server: string, evidence: string): Promise<number> {
     await page.evaluate(`document.querySelector('[data-testid="account-button"]').click()`);
     check(await cdp.waitUntil(page, `document.querySelector('[data-testid="account-summary"]') !== null`, 10_000), "the account menu opens");
     const summary = await page.evaluate<string>(`document.querySelector('[data-testid="account-summary"]').textContent`);
-    check(/member/.test(summary) && /Signed in with Lab Dex/.test(summary), `the menu shows the role and how the person signed in (${summary.slice(0, 120)})`);
+    check(/member/.test(summary) && /Signed in with the identity provider/.test(summary), `the menu shows the role and how the person signed in (${summary.slice(0, 120)})`);
     await page.screenshot(join(shots, "sign-in-03-account-menu.png"));
+    await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await cdp.sleep(500);
 
     // The session ends from elsewhere (here: a sign-out POST of the same session): the app's
     // WebSocket gets Goaway, the page keeps the shell and shows the dialog instead of a blank page.
@@ -156,6 +158,7 @@ async function main(server: string, evidence: string): Promise<number> {
     const ended = await cdp.waitUntil(page, `[...document.querySelectorAll('[role=alertdialog]')].some((d) => (d.textContent || "").includes("Your session ended"))`, 30_000);
     check(ended, "the session ending shows the sign-in-again dialog");
     check(await page.evaluate<boolean>(`document.querySelector('[aria-label="Title area"]') !== null && !document.body.innerText.includes("Lost the connection")`), "the shell stays under the dialog, not a blank page or the server-lost overlay");
+    await cdp.sleep(800);
     await page.screenshot(join(shots, "sign-in-04-session-ended.png"));
 
     // A reload is signed out; the UI's own sign-out then works from a fresh sign-in.

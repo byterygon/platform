@@ -45,8 +45,8 @@ export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSession
       <DropdownMenuContent align="end" aria-label="Account" className="w-panel-xs">
         <DropdownMenuGroup className="flex flex-col gap-stack-sm p-inset-xs" aria-label="Who you are" data-testid="account-summary">
           <div className="flex flex-col">
-            <span className="text-body-1-strong">{name}</span>
-            {me.email ? <span className="text-caption-1 text-fg-muted">{me.email}</span> : me.username && me.username !== name ? <span className="text-caption-1 text-fg-muted">{me.username}</span> : null}
+            <span className="break-all text-body-1-strong">{name}</span>
+            {me.email && me.email !== name ? <span className="break-all text-caption-1 text-fg-muted">{me.email}</span> : me.username && me.username !== name ? <span className="text-caption-1 text-fg-muted">{me.username}</span> : null}
           </div>
           <div className="flex flex-col gap-stack-xs">
             {me.roles.length === 0 ? <span className="text-caption-1 text-fg-muted">No role yet</span> : null}

@@ -101,9 +101,9 @@ export function minutesLeft(ms: number): string {
   return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
-/** The name to show: the display name, else the user name, else the id. */
-export function nameOf(me: Pick<Me, "displayName" | "username" | "user">): string {
-  return me.displayName?.trim() || me.username || me.user;
+/** The name to show: the display name, else the user name, else the e-mail (an OIDC user without a name claim), else the id. */
+export function nameOf(me: Pick<Me, "displayName" | "username" | "user"> & { email?: string | null }): string {
+  return me.displayName?.trim() || me.username || me.email || me.user;
 }
 
 /** Up to two initials for the account button. */
