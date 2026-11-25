@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:de01ce6f3e37d5f6b7d5ed77a4308f5cd48112646d1a5888d88d43ba730ac8fb";
+export const SCHEMA_HASH = "sha256:6abc6e4f8f1eb7616ca8921838b93c3fa0ca5370ecd6d4bed4effea2abc65c24";
 
 // ---- Types
 
@@ -861,7 +861,15 @@ export type DockerAuth = "privateKey" | "password" | "agent";
 
 export type DockerConnIdInput = { connId: string, };
 
-export type DockerConnectInput = { profile: ConnectDockerProfile, };
+export type DockerConnectInput = { 
+/**
+ * The stored profile to connect with (DOC-25 §3.4.7).
+ */
+profileId?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+ */
+profile?: ConnectDockerProfile | null, };
 
 export type DockerConnectOutput = { connId: string, host: HostInfo, };
 
@@ -896,7 +904,15 @@ export type DownloadHistorySummary = { bytes: number, events: number, };
 
 export type EchoConnIdInput = { connId: string, };
 
-export type EchoConnectInput = { profile: ConnectEchoProfile, };
+export type EchoConnectInput = { 
+/**
+ * The stored profile to connect with (DOC-25 §3.4.7).
+ */
+profileId?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+ */
+profile?: ConnectEchoProfile | null, };
 
 export type EchoConnectOutput = { connId: string, greeting: string, 
 /**
@@ -1489,7 +1505,15 @@ entries: number, };
 
 export type LanggraphConnIdInput = { connId: string, };
 
-export type LanggraphConnectInput = { profile: ConnectLanggraphProfile, };
+export type LanggraphConnectInput = { 
+/**
+ * The stored profile to connect with (DOC-25 §3.4.7).
+ */
+profileId?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+ */
+profile?: ConnectLanggraphProfile | null, };
 
 export type LanggraphConnectOutput = { connId: string, info: LanggraphInfo, };
 
@@ -1841,7 +1865,15 @@ export type NatsCompression = "none" | "s2";
 
 export type NatsConnIdInput = { connId: string, };
 
-export type NatsConnectInput = { profile: ConnectNatsProfile, };
+export type NatsConnectInput = { 
+/**
+ * The stored profile to connect with (DOC-25 §3.4.7).
+ */
+profileId?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+ */
+profile?: ConnectNatsProfile | null, };
 
 export type NatsConnectOutput = { connId: string, server: NatsServerInfo, 
 /**
@@ -3834,7 +3866,15 @@ standaloneActivities: StandaloneActivitiesSupport, };
 
 export type TemporalConnIdInput = { connId: string, };
 
-export type TemporalConnectInput = { profile: ConnectTemporalProfile, };
+export type TemporalConnectInput = { 
+/**
+ * The stored profile to connect with (DOC-25 §3.4.7).
+ */
+profileId?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+ */
+profile?: ConnectTemporalProfile | null, };
 
 export type TemporalConnectOutput = { connId: string, serverVersion: string, 
 /**
@@ -3851,7 +3891,19 @@ export type TemporalInfoOutput = { serverVersion: string, clusterName?: string, 
  * "Test codec" in the profile sheet: the draft profile, and the namespace to sample (the
  * profile's when empty).
  */
-export type TemporalTestCodecInput = { profile: ConnectTemporalProfile, namespace?: string | null, };
+export type TemporalTestCodecInput = { 
+/**
+ * The profile form's draft (DOC-25 §3.4.7), as `temporal.test` takes it.
+ */
+draft?: TestDraft | null, 
+/**
+ * The stored profile the form edits, whose secrets fill those the draft leaves empty.
+ */
+basedOn?: string | null, 
+/**
+ * A profile the browser sends, until the UI moves to stored profiles; not with `draft`.
+ */
+profile?: ConnectTemporalProfile | null, namespace?: string | null, };
 
 /**
  * What the codec did with the inputs of the namespace's latest workflows.
@@ -3919,6 +3971,24 @@ export type TermWriteInput = { terminalId: string,
  * The bytes typed or pasted, base64; at most 64 KiB decoded.
  */
 data: string, };
+
+/**
+ * The profile form's draft, for `<tool>.test`.
+ */
+export type TestDraft = { 
+/**
+ * The profile's name as typed; "draft" when empty.
+ */
+name?: string | null, 
+/**
+ * The record's `fields` (DOC-21 §4.2), without secrets.
+ */
+fields: unknown, extras?: unknown, 
+/**
+ * The secrets typed in the form, by field path: used for this call only, never stored,
+ * logged or audited. `{}` when none was typed.
+ */
+secrets: { [key in string]: string }, };
 
 /**
  * A text match (spec §5.4, `TextMatch`).
@@ -4095,6 +4165,15 @@ id: string,
  * The version of the tool's main library, or of the server for built-in samples.
  */
 version: string, };
+
+/**
+ * Input of every `<tool>.test`.
+ */
+export type ToolTestInput = { draft: TestDraft, 
+/**
+ * The stored profile the form edits, whose secrets fill those the draft leaves empty.
+ */
+basedOn?: string | null, };
 
 /**
  * Input of `app.account.totp.confirm`.
@@ -4644,6 +4723,7 @@ export interface Procedures {
   readonly "docker.networks.inspect": ProcedureDef<"query", NetworkIdInput, InspectOutput, ToolError>;
   readonly "docker.networks.list": ProcedureDef<"query", NetworksListInput, Array<NetworkRow>, ToolError>;
   readonly "docker.networks.remove": ProcedureDef<"mutation", NetworksRemoveInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.test": ProcedureDef<"mutation", ToolTestInput, Empty, ToolError>;
   readonly "docker.volumes.inspect": ProcedureDef<"query", VolumeNameInput, InspectOutput, ToolError>;
   readonly "docker.volumes.list": ProcedureDef<"query", VolumesListInput, VolumesListOutput, ToolError>;
   readonly "docker.volumes.remove": ProcedureDef<"mutation", VolumesRemoveInput, Array<ContainerActionResult>, ToolError>;
@@ -4654,6 +4734,7 @@ export interface Procedures {
   readonly "echo.messages.tail": ProcedureDef<"stream", EchoTailInput, TailSummary, ToolError>;
   readonly "echo.ping": ProcedureDef<"query", EchoPingInput, EchoPingOutput, ToolError>;
   readonly "echo.shell": ProcedureDef<"stream", EchoShellInput, EchoShellSummary, ToolError>;
+  readonly "echo.test": ProcedureDef<"mutation", ToolTestInput, Empty, ToolError>;
   readonly "echo.ticks": ProcedureDef<"stream", EchoTicksInput, EchoTicksSummary, ToolError>;
   readonly "langgraph.assistants.get": ProcedureDef<"query", AssistantIdInput, Assistant, ToolError>;
   readonly "langgraph.assistants.graph": ProcedureDef<"query", AssistantGraphInput, AssistantGraph, ToolError>;
@@ -4674,6 +4755,7 @@ export interface Procedures {
   readonly "langgraph.store.namespaces": ProcedureDef<"query", StoreNamespacesInput, Array<Array<string>>, ToolError>;
   readonly "langgraph.store.put": ProcedureDef<"mutation", StorePutInput, Empty, ToolError>;
   readonly "langgraph.store.search": ProcedureDef<"query", StoreSearchInput, Array<StoreItem>, ToolError>;
+  readonly "langgraph.test": ProcedureDef<"mutation", ToolTestInput, Empty, ToolError>;
   readonly "langgraph.threads.create": ProcedureDef<"mutation", ThreadsCreateInput, Thread, ToolError>;
   readonly "langgraph.threads.delete": ProcedureDef<"mutation", ThreadIdInput, Empty, ToolError>;
   readonly "langgraph.threads.get": ProcedureDef<"query", ThreadIdInput, Thread, ToolError>;
@@ -4743,6 +4825,7 @@ export interface Procedures {
   readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
   readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
   readonly "nats.services.stats": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceStats>, ToolError>;
+  readonly "nats.test": ProcedureDef<"mutation", ToolTestInput, Empty, ToolError>;
   readonly "profiles.create": ProcedureDef<"mutation", ProfileCreateInput, ProfileView, ToolError>;
   readonly "profiles.delete": ProcedureDef<"mutation", ProfileDeleteInput, Empty, ToolError>;
   readonly "profiles.duplicate": ProcedureDef<"mutation", ProfileDuplicateInput, ProfileDuplicateOutput, ToolError>;
@@ -4780,6 +4863,7 @@ export interface Procedures {
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.update": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
+  readonly "temporal.test": ProcedureDef<"mutation", ToolTestInput, Empty, ToolError>;
   readonly "temporal.testCodec": ProcedureDef<"mutation", TemporalTestCodecInput, TemporalTestCodecOutput, ToolError>;
   readonly "temporal.workers.list": ProcedureDef<"query", WorkersListInput, WorkersListOutput, ToolError>;
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
@@ -4904,6 +4988,7 @@ export interface Api {
       readonly list: Procedures["docker.networks.list"];
       readonly remove: Procedures["docker.networks.remove"];
     };
+    readonly test: Procedures["docker.test"];
     readonly volumes: {
       readonly inspect: Procedures["docker.volumes.inspect"];
       readonly list: Procedures["docker.volumes.list"];
@@ -4920,6 +5005,7 @@ export interface Api {
     };
     readonly ping: Procedures["echo.ping"];
     readonly shell: Procedures["echo.shell"];
+    readonly test: Procedures["echo.test"];
     readonly ticks: Procedures["echo.ticks"];
   };
   readonly langgraph: {
@@ -4948,6 +5034,7 @@ export interface Api {
       readonly put: Procedures["langgraph.store.put"];
       readonly search: Procedures["langgraph.store.search"];
     };
+    readonly test: Procedures["langgraph.test"];
     readonly threads: {
       readonly create: Procedures["langgraph.threads.create"];
       readonly delete: Procedures["langgraph.threads.delete"];
@@ -5055,6 +5142,7 @@ export interface Api {
       readonly ping: Procedures["nats.services.ping"];
       readonly stats: Procedures["nats.services.stats"];
     };
+    readonly test: Procedures["nats.test"];
   };
   readonly profiles: {
     readonly create: Procedures["profiles.create"];
@@ -5108,6 +5196,7 @@ export interface Api {
     readonly taskQueues: {
       readonly describe: Procedures["temporal.taskQueues.describe"];
     };
+    readonly test: Procedures["temporal.test"];
     readonly testCodec: Procedures["temporal.testCodec"];
     readonly workers: {
       readonly list: Procedures["temporal.workers.list"];
@@ -5797,6 +5886,16 @@ export const procedures: Api = {
         timeoutMaxMs: 300000,
       },
     },
+    test: {
+      name: "docker.test",
+      kind: "mutation",
+      perm: "docker.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
     volumes: {
       inspect: {
         name: "docker.volumes.inspect",
@@ -5902,6 +6001,16 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 43200000,
+    },
+    test: {
+      name: "echo.test",
+      kind: "mutation",
+      perm: "echo.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     ticks: {
       name: "echo.ticks",
@@ -6110,6 +6219,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+    test: {
+      name: "langgraph.test",
+      kind: "mutation",
+      perm: "langgraph.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     threads: {
       create: {
@@ -6839,6 +6958,16 @@ export const procedures: Api = {
         timeoutMaxMs: 300000,
       },
     },
+    test: {
+      name: "nats.test",
+      kind: "mutation",
+      perm: "nats.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
   },
   profiles: {
     create: {
@@ -7224,6 +7353,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+    test: {
+      name: "temporal.test",
+      kind: "mutation",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     testCodec: {
       name: "temporal.testCodec",

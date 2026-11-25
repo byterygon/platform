@@ -43,6 +43,7 @@ use self::model::{
     ThreadState, items,
 };
 use self::stats::{NodeStats, NodeStatsInput};
+use crate::core::stored::ToolTestInput;
 use crate::core::tls::TlsOptions;
 use crate::core::{Empty, Handle, Hub, Progress, ToolError, ToolErrorKind, ToolResult};
 use crate::tools::temporal::large;
@@ -108,7 +109,14 @@ pub struct ConnectLanggraphProfile {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LanggraphConnectInput {
-    pub profile: ConnectLanggraphProfile,
+    /// The stored profile to connect with (DOC-25 §3.4.7).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile: Option<ConnectLanggraphProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -806,6 +814,21 @@ async fn run_status(client: &LangGraphClient, thread_id: Option<&str>, seen: &Se
 /// `langgraph.connect` and `langgraph.disconnect`.
 pub struct LanggraphApi(pub Arc<Hub>);
 
+/// `GET /info`, or `GET /ok` on a server without it.
+async fn server_info(client: &LangGraphClient) -> Result<LanggraphInfo, ToolError> {
+    match client.get("/info", &[], "server").await {
+        Ok(v) => Ok(LanggraphInfo::from_json(&v)),
+        Err(e) if e.kind == ToolErrorKind::NotFound => {
+            client.get("/ok", &[], "server").await?;
+            Ok(LanggraphInfo {
+                version: None,
+                flags: json!({}),
+            })
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[rpc::router(namespace = "langgraph")]
 impl LanggraphApi {
     /// Opens a connection: checks the server answers (`GET /info`, `GET /ok` as a fallback).
@@ -820,23 +843,30 @@ impl LanggraphApi {
         ctx: Ctx,
         input: LanggraphConnectInput,
     ) -> ToolResult<LanggraphConnectOutput> {
-        let client = LangGraphClient::new(&input.profile)?;
-        let info = match client.get("/info", &[], "server").await {
-            Ok(v) => LanggraphInfo::from_json(&v),
-            Err(e) if e.kind == ToolErrorKind::NotFound => {
-                client.get("/ok", &[], "server").await?;
-                LanggraphInfo {
-                    version: None,
-                    flags: json!({}),
-                }
-            }
-            Err(e) => return Err(e.into()),
-        };
-        let handle = self.0.insert(&ctx.session().id, TOOL, Arc::new(client));
+        let (profile, target) = self
+            .0
+            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
+            .await?;
+        let client = LangGraphClient::new(&profile)?;
+        let info = server_info(&client).await?;
+        let handle = self
+            .0
+            .insert_for(&ctx.session().id, TOOL, Arc::new(client), target);
         Ok(LanggraphConnectOutput {
             conn_id: handle.conn_id,
             info,
         })
+    }
+
+    /// Test connection of the profile form: the draft's server answers; nothing is kept.
+    #[rpc::mutation(perm = "langgraph.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectLanggraphProfile>(&ctx, TOOL, input)
+            .await?;
+        server_info(&LangGraphClient::new(&profile)?).await?;
+        Ok(Empty {})
     }
 
     /// Releases the connection and ends its streams (the runs go on); idempotent.

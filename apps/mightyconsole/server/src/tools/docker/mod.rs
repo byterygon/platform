@@ -40,6 +40,7 @@ use std::time::Duration;
 use ambidex::{BinarySink, Ctx, rpc};
 use serde_json::Value;
 
+use crate::core::stored::ToolTestInput;
 use crate::core::{ConnectionState, Empty, Hub, ToolError, ToolResult};
 use engine::{Engine, Ping};
 use ssh::{Credentials, SshSession, SshTarget};
@@ -267,7 +268,10 @@ impl DockerApi {
         ctx: Ctx,
         input: DockerConnectInput,
     ) -> ToolResult<DockerConnectOutput> {
-        let profile = input.profile;
+        let (profile, acts_on) = self
+            .0
+            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
+            .await?;
         let target = target(&profile)?;
         let socket = socket_path(&profile)?;
         let auth = profile.auth.unwrap_or_default();
@@ -293,7 +297,9 @@ impl DockerApi {
             }
         };
         let session = ctx.session().id.clone();
-        let handle = self.0.insert(&session, TOOL, Arc::clone(&client));
+        let handle = self
+            .0
+            .insert_for(&session, TOOL, Arc::clone(&client), acts_on);
         watch(
             Arc::clone(&self.0),
             session,
@@ -305,6 +311,23 @@ impl DockerApi {
             conn_id: handle.conn_id,
             host,
         })
+    }
+
+    /// Test connection of the profile form: the draft's SSH session opens, the Docker socket
+    /// answers a ping, and both close. An unknown host key fails as `connect` does, with the key
+    /// to trust.
+    #[rpc::mutation(perm = "docker.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectDockerProfile>(&ctx, TOOL, input)
+            .await?;
+        let target = target(&profile)?;
+        let socket = socket_path(&profile)?;
+        let ssh = SshSession::connect(target).await?;
+        let (engine, _) = Engine::open(ssh, socket).await?;
+        engine.ssh.close().await;
+        Ok(Empty {})
     }
 
     /// Closes the SSH session and ends the handle's streams; idempotent.

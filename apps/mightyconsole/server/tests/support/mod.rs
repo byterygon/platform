@@ -672,6 +672,24 @@ impl Tab {
     }
 
     /// A call on a wire id of its own, answered with a result.
+    /// A personal profile of `tool` stored on the server (DOC-25 §3.4.2) with its secrets, by
+    /// field path; its id, for `<tool>.connect { profileId }`.
+    pub async fn store_profile(
+        &mut self,
+        tool: &str,
+        name: &str,
+        fields: Value,
+        secrets: Value,
+    ) -> String {
+        let out = self
+            .extra_call(
+                "profiles.create",
+                json!({ "tool": tool, "name": name, "owner": { "kind": "personal" }, "fields": fields, "secrets": secrets }),
+            )
+            .await;
+        out["id"].as_str().expect("the profile's id").to_owned()
+    }
+
     async fn extra_call(&mut self, procedure: &str, input: Value) -> Value {
         let wire = self.next_wire;
         self.next_wire = wire + 1;

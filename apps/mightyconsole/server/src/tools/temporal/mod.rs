@@ -39,6 +39,7 @@ use time::format_description::well_known::Rfc3339;
 
 use self::client::{TemporalClient, status_error};
 use self::proto::temporal::api::workflowservice::v1 as ws;
+use crate::core::stored::ToolTestInput;
 use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
 pub use self::actions_types::*;
@@ -314,14 +315,45 @@ impl TemporalApi {
         name = "testCodec",
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
+        redact = ["draft.secrets", "profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
     )]
     async fn test_codec(
         &self,
-        _ctx: Ctx,
+        ctx: Ctx,
         input: TemporalTestCodecInput,
     ) -> ToolResult<TemporalTestCodecOutput> {
-        Ok(codec_client::test(&input).await?)
+        let profile = match (input.profile, input.draft) {
+            (Some(profile), None) => profile,
+            (None, Some(draft)) => {
+                let test = ToolTestInput {
+                    draft,
+                    based_on: input.based_on,
+                };
+                self.0.test_profile(&ctx, TOOL, test).await?.0
+            }
+            _ => {
+                return Err(ToolError::invalid(
+                    TOOL,
+                    "draft",
+                    "send the profile form's draft (or a profile), not both",
+                )
+                .into());
+            }
+        };
+        Ok(codec_client::test(&profile, input.namespace.as_deref()).await?)
+    }
+
+    /// Test connection of the profile form: the draft connects and the server says who it is;
+    /// nothing is kept.
+    #[rpc::mutation(perm = "temporal.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectTemporalProfile>(&ctx, TOOL, input)
+            .await?;
+        let client = client::connect(&profile).await?;
+        server_info(&client).await?;
+        Ok(Empty {})
     }
 
     /// Opens the connection from the profile and asks the server who it is.
@@ -336,12 +368,15 @@ impl TemporalApi {
         ctx: Ctx,
         input: TemporalConnectInput,
     ) -> ToolResult<TemporalConnectOutput> {
-        let client = Arc::new(client::connect(&input.profile).await?);
+        let (profile, target) = self
+            .0
+            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
+            .await?;
+        let client = Arc::new(client::connect(&profile).await?);
         let info = server_info(&client).await?;
         // The codec endpoint serves the profile while this connection lives (TSK-103).
         if client.codec.is_some()
-            && let Some(id) = input
-                .profile
+            && let Some(id) = profile
                 .profile_id
                 .as_deref()
                 .map(str::trim)
@@ -349,7 +384,7 @@ impl TemporalApi {
         {
             codec::register(id, &client);
         }
-        let handle = self.0.insert(&ctx.session().id, TOOL, client);
+        let handle = self.0.insert_for(&ctx.session().id, TOOL, client, target);
         Ok(TemporalConnectOutput {
             conn_id: handle.conn_id,
             server_version: info.server_version,

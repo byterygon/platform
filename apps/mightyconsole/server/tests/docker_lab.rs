@@ -906,3 +906,66 @@ async fn lab_a_containers_files_read_through_its_archive() {
     assert!(tar.len() >= 1536 && tar.len() % 512 == 0, "{}", tar.len());
     assert_eq!(&tar[..4], b"www/");
 }
+
+/// TSK-139 (DOC-25 §3.4.7): a stored profile logs in with the key, passphrase or password the
+/// server keeps; Test connection fills an empty draft secret from the stored profile only while
+/// the draft keeps its target.
+#[tokio::test]
+async fn a_stored_profile_logs_in_with_its_secrets_and_a_draft_keeps_its_target() {
+    let (_t, mut tab) = setup().await;
+    let lab = lab();
+    let trusted = presented_key(&mut tab, 2).await;
+    let fields = |extra: Value| {
+        let mut f = json!({ "host": lab["host"], "port": lab["port"], "username": lab["user"], "hostKey": trusted });
+        for (k, v) in extra.as_object().unwrap() {
+            f[k] = v.clone();
+        }
+        f
+    };
+    let key = tab
+        .store_profile(
+            "docker",
+            "lab key",
+            fields(json!({ "auth": "privateKey" })),
+            json!({ "privateKey": read(lab["passphraseKeyFile"].as_str().unwrap()), "passphrase": lab["passphrase"] }),
+        )
+        .await;
+    tab.call(3, "docker.connect", json!({ "profileId": key }))
+        .await;
+    let conn = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+    tab.call(4, "docker.host.info", json!({ "connId": conn }))
+        .await;
+    tab.result(4).await;
+
+    let password_fields = fields(json!({ "auth": "password", "username": lab["passwordUser"] }));
+    let password = tab
+        .store_profile(
+            "docker",
+            "lab password",
+            password_fields.clone(),
+            json!({ "password": lab["password"] }),
+        )
+        .await;
+    tab.call(5, "docker.connect", json!({ "profileId": password }))
+        .await;
+    assert_eq!(tab.result(5).await["host"]["ssh"]["auth"], "password");
+    // The form's draft, nothing typed: the stored password logs in.
+    tab.call(
+        6,
+        "docker.test",
+        json!({ "draft": { "fields": password_fields, "secrets": {} }, "basedOn": password }),
+    )
+    .await;
+    tab.result(6).await;
+    // Another user name is another target: the stored password is not sent.
+    let mut other = password_fields.clone();
+    other["username"] = json!(lab["user"]);
+    tab.call(
+        7,
+        "docker.test",
+        json!({ "draft": { "fields": other, "secrets": {} }, "basedOn": password }),
+    )
+    .await;
+    let err = tab.error(7, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "password");
+}

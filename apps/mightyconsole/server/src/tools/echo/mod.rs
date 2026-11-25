@@ -20,6 +20,7 @@ use ts_rs::TS;
 use crate::core::messaging::tail::{self, Feed, PushBuffer, TailRequest, TailSummary};
 use crate::core::messaging::testing::{TestTopic, TopicReader};
 use crate::core::messaging::tool_error;
+use crate::core::stored::ToolTestInput;
 use crate::core::{Empty, Hub, TermInput, ToolError, ToolErrorKind, ToolResult};
 use base64::Engine as _;
 use message_codecs::filter::Filter;
@@ -62,7 +63,14 @@ pub struct ConnectEchoProfile {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EchoConnectInput {
-    pub profile: ConnectEchoProfile,
+    /// The stored profile to connect with (DOC-25 §3.4.7).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile: Option<ConnectEchoProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -146,6 +154,18 @@ struct EchoClient {
 
 pub struct EchoApi(pub Arc<Hub>);
 
+/// The stand-in credential check: the token `"wrong"` is refused.
+fn check_token(profile: &ConnectEchoProfile) -> Result<(), ToolError> {
+    if profile.token.as_deref() == Some("wrong") {
+        return Err(ToolError::new(
+            ToolErrorKind::Auth,
+            TOOL,
+            "the token was rejected",
+        ));
+    }
+    Ok(())
+}
+
 impl EchoApi {
     fn ended(code: Code) -> RpcError<ToolError> {
         RpcError::new(code, "the connection was closed")
@@ -157,22 +177,24 @@ impl EchoApi {
     /// Opens a connection from the profile.
     #[rpc::mutation(perm = "echo.read", risk = Risk::Read, redact = ["profile.token"], audit = "always")]
     async fn connect(&self, ctx: Ctx, input: EchoConnectInput) -> ToolResult<EchoConnectOutput> {
-        let profile = input.profile;
-        if profile.token.as_deref() == Some("wrong") {
-            return Err(ToolError::new(ToolErrorKind::Auth, TOOL, "the token was rejected").into());
-        }
+        let (profile, target) = self
+            .0
+            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
+            .await?;
+        check_token(&profile)?;
         let greeting = profile
             .greeting
             .filter(|g| !g.is_empty())
             .unwrap_or_else(|| format!("hello from {}", profile.name));
         let session = &ctx.session().id;
-        let handle = self.0.insert(
+        let handle = self.0.insert_for(
             session,
             TOOL,
             Arc::new(EchoClient {
                 greeting: greeting.clone(),
                 topic: Arc::new(TestTopic::new(TOPIC, TOPIC_PARTITIONS, self.0.clock())),
             }),
+            target,
         );
         let codecs = Codecs::new(CodecsConfig {
             local_schemas: profile.schemas.unwrap_or_default(),
@@ -186,6 +208,17 @@ impl EchoApi {
             greeting,
             schema_issues,
         })
+    }
+
+    /// Test connection of the profile form: the draft connects and nothing is kept.
+    #[rpc::mutation(perm = "echo.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectEchoProfile>(&ctx, TOOL, input)
+            .await?;
+        check_token(&profile)?;
+        Ok(Empty {})
     }
 
     /// Releases the connection and ends its streams; idempotent.

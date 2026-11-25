@@ -927,3 +927,38 @@ async fn lab_heavy_checkpoints_are_left_out_of_history_and_load_on_request() {
     let streamed: Value = serde_json::from_slice(&streamed).unwrap();
     assert_eq!(streamed, loaded["values"]);
 }
+
+/// TSK-139 (DOC-25 §3.4.7): a stored profile with an API key and extra headers (one secret,
+/// `headerValues`, DOC-25 Open question 23) connects, and its connection answers.
+#[tokio::test]
+async fn a_stored_profile_connects_with_its_secrets() {
+    let t = start().await;
+    let browser = t.browser().await;
+    let mut tab = t.tab(&browser).await;
+    tab.subscribe_events(1).await;
+    let id = tab
+        .store_profile(
+            "langgraph",
+            "lab",
+            json!({ "url": url(), "headers": ["X-Lab"] }),
+            json!({ "apiKey": "lab-key", "headerValues": "X-Lab: one" }),
+        )
+        .await;
+    tab.call(2, "langgraph.connect", json!({ "profileId": id }))
+        .await;
+    let conn = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+    call(
+        &mut tab,
+        3,
+        "langgraph.assistants.search",
+        json!({ "connId": conn, "graphId": "agent" }),
+    )
+    .await;
+    tab.call(
+        4,
+        "langgraph.test",
+        json!({ "draft": { "fields": { "url": url() }, "secrets": {} }, "basedOn": id }),
+    )
+    .await;
+    tab.result(4).await;
+}

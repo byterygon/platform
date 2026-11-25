@@ -413,17 +413,18 @@ pub async fn encode_input(
 /// namespace's 3 latest workflows (read from External Storage when they are stored there), and
 /// decodes them through the codec.
 pub async fn test(
-    input: &super::types::TemporalTestCodecInput,
+    profile: &super::types::ConnectTemporalProfile,
+    namespace: Option<&str>,
 ) -> Result<super::types::TemporalTestCodecOutput, ToolError> {
     use super::proto::temporal::api::common::v1::WorkflowExecution;
     use super::proto::temporal::api::history::v1::history_event::Attributes;
     use super::proto::temporal::api::workflowservice::v1 as ws;
 
-    let client = super::client::connect(&input.profile).await?;
+    let client = super::client::connect(profile).await?;
     let Some(codec) = client.payload_codec.as_deref() else {
         return Err(bad("codec.enabled", "turn the codec server on to test it"));
     };
-    let namespace = client.namespace_or_default(input.namespace.as_deref());
+    let namespace = client.namespace_or_default(namespace);
     let listed = client
         .service()
         .list_workflow_executions(client.request(

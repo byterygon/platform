@@ -22,13 +22,14 @@
 pub mod error;
 pub mod jq;
 pub mod messaging;
+pub mod stored;
 pub mod tls;
 pub mod types;
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use security_types::{Clock, TargetRef};
@@ -156,6 +157,9 @@ pub struct Hub {
     clock: Arc<dyn Clock>,
     idle_ms: u64,
     state: Mutex<State>,
+    /// The profile store the tools connect from ([`stored`]); unset in the codegen router. Weak:
+    /// the store holds the Hub.
+    profiles: OnceLock<std::sync::Weak<dyn stored::StoredProfiles>>,
 }
 
 /// A live handle as a tool sees it.
@@ -289,6 +293,7 @@ impl Hub {
             clock,
             idle_ms: idle.as_millis() as u64,
             state: Mutex::default(),
+            profiles: OnceLock::new(),
         }
     }
 
@@ -609,6 +614,39 @@ impl Hub {
         // Dropping the input senders ends the terminals' input; their tools see `None`.
         state.terminals.retain(|(s, _), _| s != session);
         state.forget_if_unused(session);
+        ids.len()
+    }
+
+    /// Releases every handle, of any session, opened with the stored profile `profile_id` (it
+    /// was deleted, or changed owner). Returns how many.
+    pub fn release_profile(&self, profile_id: &str, reason: &str) -> usize {
+        let mut state = self.lock();
+        let ids: Vec<String> = state
+            .handles
+            .iter()
+            .filter(|(_, e)| {
+                e.target.kind == security_types::PROFILE_TARGET
+                    && security_types::ProfileTarget::of(&e.target)
+                        .is_some_and(|t| t.profile == profile_id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            if let Some(entry) = state.handles.remove(id) {
+                entry.token.cancel();
+                let session = entry.session.clone();
+                state.publish(
+                    &session,
+                    AppEvent::ConnectionStatus {
+                        tool: entry.tool,
+                        conn_id: id.clone(),
+                        status: ConnectionState::Closed,
+                        message: Some(reason.to_owned()),
+                    },
+                );
+                state.forget_if_unused(&session);
+            }
+        }
         ids.len()
     }
 
