@@ -96,25 +96,36 @@ async function main(server: string, evidence: string): Promise<number> {
     const page = await cdp.openPage(browser.cdp);
     const cookies = async (url: string) => ((await page.send("Network.getCookies", { urls: [url] })) as { cookies: Cookie[] }).cookies;
 
-    // Signed out: the page shows the sign-in (built-in accounts and the IdP); its "Sign in with
-    // Lab Dex" goes to Dex's form.
-    await page.navigate(`${ORIGIN}/nats`);
-    const offered = await cdp.waitUntil(page, `[...document.querySelectorAll("a")].some((a) => a.textContent === "Sign in with Lab Dex")`, 30_000);
-    check(offered, "a signed-out page offers the sign-in form and Sign in with Lab Dex");
-    await page.evaluate(`[...document.querySelectorAll("a")].find((a) => a.textContent === "Sign in with Lab Dex").click()`);
+    // Signed out: the page shows the sign-in (built-in accounts and the IdP) and waits for a click;
+    // "Continue with Lab Dex" goes to Dex's form.
+    const clickIdp = `[...document.querySelectorAll("a")].find((a) => (a.textContent || "").includes("Continue with Lab Dex")).click()`;
+    const dexSignIn = async (next: string) => {
+      await page.navigate(`${ORIGIN}${next}`);
+      const offered = await cdp.waitUntil(page, `[...document.querySelectorAll("a")].some((a) => (a.textContent || "").includes("Continue with Lab Dex"))`, 30_000);
+      check(offered, "a signed-out page offers the sign-in form and Continue with Lab Dex");
+      await cdp.sleep(500);
+      check((await page.evaluate<string>("location.origin")) === ORIGIN, "the page waited for a click: it did not go to the identity provider by itself");
+      return offered;
+    };
+    await dexSignIn("/nats");
+    await page.screenshot(join(shots, "sign-in-00-signed-out-page.png"));
+    await page.evaluate(clickIdp);
     const atDex = await cdp.waitUntil(page, `location.host === "localhost:5556" && document.querySelector("input[name=login]")`, 30_000);
-    check(atDex, "a signed-out page goes to Dex's login form");
+    check(atDex, "a click on Continue with Lab Dex goes to Dex's login form");
     await page.screenshot(join(shots, "sign-in-01-dex-form.png"));
     const pending = (await cookies(ORIGIN)).find((c) => c.name === "__Host-mc_login");
     check(pending?.sameSite === "Lax" && pending.httpOnly && pending.secure && pending.path === "/", `the login cookie is __Host-, Lax, HttpOnly, Secure (${attributes(pending)})`);
 
+    const dexForm = async () => {
+      await page.evaluate(`(() => {
+        document.querySelector("input[name=login]").value = ${JSON.stringify(alice.email)};
+        document.querySelector("input[name=password]").value = ${JSON.stringify(alice.password)};
+        document.querySelector("form").requestSubmit();
+        return true;
+      })()`);
+    };
     // Sign in at Dex; the browser comes back to the callback and on to /nats.
-    await page.evaluate(`(() => {
-      document.querySelector("input[name=login]").value = ${JSON.stringify(alice.email)};
-      document.querySelector("input[name=password]").value = ${JSON.stringify(alice.password)};
-      document.querySelector("form").requestSubmit();
-      return true;
-    })()`);
+    await dexForm();
     const back = await cdp.waitUntil(page, `location.origin === ${JSON.stringify(ORIGIN)} && location.pathname === "/nats" && document.querySelector('meta[name="mightyconsole-auth"]')?.content === "signed-in"`, 30_000);
     check(back, "after Dex the browser lands on /nats, signed in (the Lax login cookie came back, the meta refresh carried the Strict session)");
     const jar = await cookies(ORIGIN);
@@ -127,13 +138,40 @@ async function main(server: string, evidence: string): Promise<number> {
     await page.screenshot(join(shots, "sign-in-02-signed-in.png"));
     check(!page.errors.some((e) => /WebSocket|Unauthenticated/.test(e)), `no WebSocket refusal (${page.errors.slice(0, 3).join("; ")})`);
 
-    // Sign out from the page (the UI's button is TSK-140): the cookie goes, a reload is signed out.
+    // The account menu (TSK-140): who is signed in, the roles app.me returns, the person in the status bar.
+    check(await cdp.waitUntil(page, `document.querySelector('[data-testid="account-button"]') !== null`, 20_000), "the title area has the account button");
+    const person = await page.evaluate<string>(`document.querySelector('[data-testid="status-person"]')?.textContent ?? ""`);
+    check(/alice|Alice/i.test(person), `the status bar names the person (${person})`);
+    await page.evaluate(`document.querySelector('[data-testid="account-button"]').click()`);
+    check(await cdp.waitUntil(page, `document.querySelector('[data-testid="account-summary"]') !== null`, 10_000), "the account menu opens");
+    const summary = await page.evaluate<string>(`document.querySelector('[data-testid="account-summary"]').textContent`);
+    check(/member/.test(summary) && /Signed in with Lab Dex/.test(summary), `the menu shows the role and how the person signed in (${summary.slice(0, 120)})`);
+    await page.screenshot(join(shots, "sign-in-03-account-menu.png"));
+
+    // The session ends from elsewhere (here: a sign-out POST of the same session): the app's
+    // WebSocket gets Goaway, the page keeps the shell and shows the dialog instead of a blank page.
     const status = await page.evaluate<number>(`fetch("/auth/logout", { method: "POST", redirect: "manual", headers: { "X-Mightyconsole-Csrf": document.querySelector('meta[name="mightyconsole-csrf"]').content } }).then((r) => r.type === "opaqueredirect" ? 303 : r.status)`);
     check(status === 303, `sign-out answers 303 (${status})`);
     check(!(await cookies(ORIGIN)).some((c) => c.name === "__Host-ambidex_session"), "sign-out removed the session cookie");
-    await page.navigate(`${ORIGIN}/`);
-    check(await cdp.waitUntil(page, `document.querySelector('meta[name="mightyconsole-auth"]')?.content === "signed-out" && [...document.querySelectorAll("a")].some((a) => a.textContent === "Sign in with Lab Dex")`, 30_000), "after sign-out the page shows the sign-in again");
-    await page.screenshot(join(shots, "sign-in-03-signed-out.png"));
+    const ended = await cdp.waitUntil(page, `[...document.querySelectorAll('[role=alertdialog]')].some((d) => (d.textContent || "").includes("Your session ended"))`, 30_000);
+    check(ended, "the session ending shows the sign-in-again dialog");
+    check(await page.evaluate<boolean>(`document.querySelector('[aria-label="Title area"]') !== null && !document.body.innerText.includes("Lost the connection")`), "the shell stays under the dialog, not a blank page or the server-lost overlay");
+    await page.screenshot(join(shots, "sign-in-04-session-ended.png"));
+
+    // A reload is signed out; the UI's own sign-out then works from a fresh sign-in.
+    await dexSignIn("/");
+    await page.screenshot(join(shots, "sign-in-05-signed-out-again.png"));
+    await page.evaluate(clickIdp);
+    await cdp.waitUntil(page, `location.host === "localhost:5556"`, 30_000);
+    // Dex may keep its own session and skip its form.
+    if (await cdp.waitUntil(page, `document.querySelector("input[name=login]") !== null`, 5_000)) await dexForm();
+    check(await cdp.waitUntil(page, `location.origin === ${JSON.stringify(ORIGIN)} && document.querySelector('[data-testid="account-button"]') !== null`, 30_000), "signing in again lands in the app");
+    await page.evaluate(`document.querySelector('[data-testid="account-button"]').click()`);
+    await cdp.waitUntil(page, `[...document.querySelectorAll('[role=menuitem]')].some((i) => i.textContent.includes("Sign out"))`, 10_000);
+    await page.evaluate(`[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes("Sign out")).click()`);
+    check(await cdp.waitUntil(page, `document.querySelector('meta[name="mightyconsole-auth"]')?.content === "signed-out" && [...document.querySelectorAll("a")].some((a) => (a.textContent || "").includes("Continue with Lab Dex"))`, 30_000), "Sign out in the account menu ends the session and shows the sign-in");
+    check(!(await cookies(ORIGIN)).some((c) => c.name === "__Host-ambidex_session"), "the menu's sign-out removed the session cookie");
+    await page.screenshot(join(shots, "sign-in-06-signed-out.png"));
   } catch (error) {
     failures.push(String((error as Error).message));
     console.error(`sign-in walk: ${(error as Error).message}`);

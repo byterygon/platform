@@ -689,6 +689,27 @@ fn redirect(status: StatusCode, location: &str) -> Response {
     response
 }
 
+/// The end of a sign-out: the browser's own request gets 303 to `location`; a script that sent
+/// `Accept: application/json` gets 200 `{"location": …}`, the same place, because `fetch` cannot
+/// read where a redirect to the IdP's logout goes.
+fn signed_out(json: bool, location: &str) -> Response {
+    if !json {
+        return redirect(StatusCode::SEE_OTHER, location);
+    }
+    let mut response = (
+        StatusCode::OK,
+        serde_json::json!({ "location": location }).to_string(),
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    web::auth_headers(headers);
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
 fn too_many() -> Response {
     let mut response = (StatusCode::TOO_MANY_REQUESTS, "too many sign-in attempts").into_response();
     web::auth_headers(response.headers_mut());
@@ -1172,6 +1193,11 @@ async fn logout<H: SignInHooks>(
     headers: HeaderMap,
 ) -> Response {
     let client = client_of(client.as_deref());
+    // A script (`fetch`) cannot read a redirect to another origin, so it asks for JSON.
+    let json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("application/json"));
     let forbidden = || {
         let mut response = StatusCode::FORBIDDEN.into_response();
         web::auth_headers(response.headers_mut());
@@ -1183,13 +1209,13 @@ async fn logout<H: SignInHooks>(
     let clear = web::clear_cookie(&inner.routes.session_cookie, SameSite::Strict);
     let home = inner.routes.home();
     let Some(cookie) = web::cookie(&headers, &inner.routes.session_cookie) else {
-        let mut response = redirect(StatusCode::SEE_OTHER, &home);
+        let mut response = signed_out(json, &home);
         response.headers_mut().insert(header::SET_COOKIE, clear);
         return response;
     };
     let Some(expected) = inner.sessions.csrf_token(cookie) else {
         // Already ended: nothing to sign out of.
-        let mut response = redirect(StatusCode::SEE_OTHER, &home);
+        let mut response = signed_out(json, &home);
         response.headers_mut().insert(header::SET_COOKIE, clear);
         return response;
     };
@@ -1198,7 +1224,7 @@ async fn logout<H: SignInHooks>(
         return forbidden();
     }
     let Some(ended) = inner.sessions.logout(cookie) else {
-        let mut response = redirect(StatusCode::SEE_OTHER, &home);
+        let mut response = signed_out(json, &home);
         response.headers_mut().insert(header::SET_COOKIE, clear);
         return response;
     };
@@ -1230,7 +1256,7 @@ async fn logout<H: SignInHooks>(
         }
         location = url.into();
     }
-    let mut response = redirect(StatusCode::SEE_OTHER, &location);
+    let mut response = signed_out(json, &location);
     response.headers_mut().insert(header::SET_COOKIE, clear);
     response
 }

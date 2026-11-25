@@ -1,11 +1,12 @@
-// The signed-out page (DOC-25 §3.2.5, §3.2.6), until the real sign-in screen (TSK-140). The server
-// writes `<meta name="mightyconsole-auth" content="signed-out">` when the browser has no session,
-// with the pre-session token of the built-in accounts (`mightyconsole-pre`), whether sign-up is
-// open (`mightyconsole-signup`) and the IdP's name when OIDC is configured (`mightyconsole-idp`).
-// The page then shows a plain form (no app: nothing else can load without a session): user name
-// and password, the TOTP code when the account has one, sign-up when it is open, a setup link's
-// new password, and "Sign in with <IdP>". Every POST carries the pre-session token in
-// `X-Mightyconsole-Csrf` (the server also checks its cookie and the Origin).
+// The signed-out page (DOC-25 §3.2.5, §3.2.6): what it must show, from the `<meta>` the server
+// writes and the URL; the page itself is `sign-in-page.tsx`. The server writes
+// `<meta name="mightyconsole-auth" content="signed-out">` when the browser has no session, with
+// the pre-session token of the built-in accounts (`mightyconsole-pre`), whether sign-up is open
+// (`mightyconsole-signup`) and the IdP's name when OIDC is configured (`mightyconsole-idp`). Every
+// POST carries the pre-session token in `X-Mightyconsole-Csrf` (the server also checks its cookie
+// and the Origin). The page never sends the person to the IdP by itself (TSK-135, question d): it
+// waits for a click, so an error stays on screen and a person who just signed out is not sent
+// straight back.
 import { readRouterConfig } from "./router";
 
 export const AUTH_META = "mightyconsole-auth";
@@ -14,15 +15,41 @@ export const PRE_META = "mightyconsole-pre";
 export const SIGNUP_META = "mightyconsole-signup";
 export const CSRF_HEADER = "X-Mightyconsole-Csrf";
 
-/** What a failed OIDC sign-in's code means (DOC-25 §3.2.2). */
-export const LOGIN_ERRORS: Readonly<Record<string, string>> = {
-  denied: "The identity provider did not sign you in.",
-  unreachable: "The identity provider cannot be reached. Try again in a moment.",
-  invalid: "The sign-in could not be checked. Try again.",
-  disabled: "Your account is disabled.",
-  expired: "The sign-in took too long. Try again.",
-  busy: "Too many people are signed in. Try again later.",
-};
+/** The query parameter of the sign-in tab that a running app opens to sign in again. */
+export const RETURN_PARAM = "mc_return";
+/** The channel the sign-in tab tells the app tab on that it is done. */
+export const RETURN_CHANNEL = "mightyconsole-signed-in";
+
+/** One failed OIDC sign-in, as the page says it (DOC-25 §3.2.2): what happened, what to do. */
+export interface LoginFailure {
+  readonly code: string;
+  readonly title: string;
+  readonly detail: string;
+  /** The label of the one primary action, when the person can try again. */
+  readonly retry: string | null;
+}
+
+/**
+ * What a failed OIDC sign-in's code means. The reason never reaches the browser (it is in the
+ * audit log), so each message says whose account is the problem and who can fix it.
+ */
+export function loginFailure(code: string, idp: string): LoginFailure {
+  switch (code) {
+    case "unreachable":
+      return { code, title: `Mightyconsole can't reach ${idp}`, detail: `The server got no answer from ${idp}. Your account is fine; the server keeps trying. If this goes on, ask whoever runs Mightyconsole to check its connection to ${idp}.`, retry: "Try again" };
+    case "denied":
+      return { code, title: `${idp} didn't sign you in`, detail: `It refused the sign-in. If you should have access, ask your identity administrator to let you use Mightyconsole in ${idp}.`, retry: "Try again" };
+    case "disabled":
+      return { code, title: "Your Mightyconsole account is turned off", detail: `An administrator turned it off here; ${idp} still knows you. Ask an administrator if you think this is a mistake.`, retry: null };
+    case "expired":
+      return { code, title: "The sign-in took too long", detail: "A sign-in must be finished within 10 minutes. Start again from this page, in this browser.", retry: "Start again" };
+    case "busy":
+      return { code, title: "Too many people are signed in", detail: "The server holds as many sessions as it allows. Try again in a few minutes, or ask an administrator to end idle sessions.", retry: "Try again" };
+    default:
+      // `invalid` and anything unknown: the page does not guess.
+      return { code: "invalid", title: "The sign-in couldn't be checked", detail: "Start again from this page, in this browser. If it fails again, tell an administrator the time below; the reason is in the audit log.", retry: "Start again" };
+  }
+}
 
 /** What the account routes' error codes mean. */
 export const ACCOUNT_ERRORS: Readonly<Record<string, string>> = {
@@ -47,13 +74,12 @@ export const PASSWORD_REASONS: Readonly<Record<string, string>> = {
   common: "This password is one of the most common ones. Choose another.",
 };
 
+/** What the signed-out page shows, or `signed-in` when the app may start. */
 export type SignInState =
   | { readonly kind: "signed-in" }
-  | { readonly kind: "redirect"; readonly to: string }
-  | { readonly kind: "failed"; readonly message: string; readonly retry: string; readonly idp: string }
   | {
-      readonly kind: "form";
-      /** The pre-session token. */
+      readonly kind: "page";
+      /** The pre-session token of the built-in accounts; empty when this server offers the IdP only. */
       readonly pre: string;
       readonly basePath: string;
       /** Where to go once signed in. */
@@ -63,15 +89,15 @@ export type SignInState =
       readonly idp: { readonly name: string; readonly href: string } | null;
       /** A setup link's token (from the fragment). */
       readonly setupToken: string | null;
-      /** A failed OIDC sign-in's message. */
-      readonly message: string | null;
+      /** A failed OIDC sign-in. */
+      readonly failure: LoginFailure | null;
     };
 
 function meta(doc: Document, name: string): string {
   return doc.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content ?? "";
 }
 
-/** Where a page load goes: on (signed in), the sign-in form, the IdP, or an IdP failure. */
+/** What a page load shows: the app, or the sign-in page with the failure of the last attempt. */
 export function signInState(doc: Document = document, location: Location | URL = window.location): SignInState {
   if (meta(doc, AUTH_META) !== "signed-out") return { kind: "signed-in" };
   const { basePath } = readRouterConfig(doc);
@@ -81,45 +107,19 @@ export function signInState(doc: Document = document, location: Location | URL =
   const search = params.toString();
   const setup = /^#setup=([0-9a-f]{64})$/.exec(location.hash);
   const next = `${location.pathname}${search ? `?${search}` : ""}${setup ? "" : location.hash}`;
-  const retry = `${basePath}/auth/login?next=${encodeURIComponent(next)}`;
+  const login = `${basePath}/auth/login?next=${encodeURIComponent(next)}`;
   const idpName = meta(doc, IDP_META);
-  const pre = meta(doc, PRE_META);
-  const message = error === null ? null : (LOGIN_ERRORS[error] ?? "The sign-in failed. Try again.");
-  if (pre === "") {
-    // No built-in accounts on this server's page: the IdP only (as before TSK-142).
-    if (error === null) return { kind: "redirect", to: retry };
-    return { kind: "failed", message: message!, retry, idp: idpName || "your identity provider" };
-  }
   return {
-    kind: "form",
-    pre,
+    kind: "page",
+    pre: meta(doc, PRE_META),
     basePath,
     next,
     signup: meta(doc, SIGNUP_META) === "open",
-    idp: idpName ? { name: idpName, href: retry } : null,
+    idp: idpName ? { name: idpName, href: login } : null,
     setupToken: setup ? setup[1]! : null,
-    message,
+    failure: error === null ? null : loginFailure(error, idpName || "your identity provider"),
   };
 }
-
-/** The failure, as plain text and a link (no app: nothing can be loaded without a session). */
-export function renderSignInFailure(root: HTMLElement, state: Extract<SignInState, { kind: "failed" }>): void {
-  const doc = root.ownerDocument;
-  const main = doc.createElement("main");
-  main.style.cssText = MAIN_STYLE;
-  const title = doc.createElement("h1");
-  title.textContent = "Sign-in failed";
-  const text = doc.createElement("p");
-  text.textContent = state.message;
-  const link = doc.createElement("a");
-  link.href = state.retry;
-  link.textContent = `Sign in with ${state.idp}`;
-  main.append(title, text, link);
-  root.replaceChildren(main);
-}
-
-const MAIN_STYLE = "max-width:26rem;margin:4rem auto;padding:0 1rem;font-family:system-ui,sans-serif;line-height:1.5";
-const FIELD_STYLE = "display:block;width:100%;box-sizing:border-box;margin:.25rem 0 .75rem;padding:.5rem;font:inherit";
 
 /** The answer of a POST to the account routes. */
 export interface AuthAnswer {
@@ -157,147 +157,4 @@ export function refusal(answer: AuthAnswer): string {
   }
   if (answer.status === 429) return ACCOUNT_ERRORS["too_many"]!;
   return ACCOUNT_ERRORS[error] ?? `The server refused (${answer.status}). Try again.`;
-}
-
-type Step = "sign-in" | "sign-up" | "code" | "setup";
-
-interface Field {
-  readonly name: string;
-  readonly label: string;
-  readonly type: "text" | "password";
-  readonly autocomplete: string;
-  readonly optional?: boolean;
-}
-
-const FIELDS: Readonly<Record<Step, readonly Field[]>> = {
-  "sign-in": [
-    { name: "username", label: "User name", type: "text", autocomplete: "username" },
-    { name: "password", label: "Password", type: "password", autocomplete: "current-password" },
-  ],
-  "sign-up": [
-    { name: "username", label: "User name", type: "text", autocomplete: "username" },
-    { name: "displayName", label: "Display name (optional)", type: "text", autocomplete: "name", optional: true },
-    { name: "password", label: "Password (at least 12 characters)", type: "password", autocomplete: "new-password" },
-  ],
-  code: [{ name: "code", label: "Code from your authenticator app, or a recovery code", type: "text", autocomplete: "one-time-code" }],
-  setup: [{ name: "password", label: "New password (at least 12 characters)", type: "password", autocomplete: "new-password" }],
-};
-
-const TITLES: Readonly<Record<Step, string>> = {
-  "sign-in": "Sign in to Mightyconsole",
-  "sign-up": "Create an account",
-  code: "Two-step sign-in",
-  setup: "Choose your password",
-};
-
-const BUTTONS: Readonly<Record<Step, string>> = {
-  "sign-in": "Sign in",
-  "sign-up": "Create account",
-  code: "Continue",
-  setup: "Set password and sign in",
-};
-
-/** The sign-in form. `go` leaves for the app (a full load, so the session cookie is sent). */
-export function renderSignInForm(
-  root: HTMLElement,
-  state: Extract<SignInState, { kind: "form" }>,
-  post: Post = postWith(state.pre),
-  go: (to: string) => void = (to) => window.location.assign(to),
-): void {
-  const doc = root.ownerDocument;
-  let message = state.message;
-  const show = (step: Step): void => {
-    const main = doc.createElement("main");
-    main.style.cssText = MAIN_STYLE;
-    const title = doc.createElement("h1");
-    title.textContent = TITLES[step];
-    main.append(title);
-    if (message !== null) {
-      const alert = doc.createElement("p");
-      alert.setAttribute("role", "alert");
-      alert.style.color = "#b10e1c";
-      alert.textContent = message;
-      main.append(alert);
-    }
-    const form = doc.createElement("form");
-    form.noValidate = true;
-    const inputs = new Map<string, HTMLInputElement>();
-    for (const field of FIELDS[step]) {
-      const label = doc.createElement("label");
-      label.textContent = field.label;
-      const input = doc.createElement("input");
-      input.name = field.name;
-      input.type = field.type;
-      input.setAttribute("autocomplete", field.autocomplete);
-      input.required = !field.optional;
-      input.style.cssText = FIELD_STYLE;
-      label.append(input);
-      form.append(label);
-      inputs.set(field.name, input);
-    }
-    const submit = doc.createElement("button");
-    submit.type = "submit";
-    submit.textContent = BUTTONS[step];
-    form.append(submit);
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      submit.disabled = true;
-      const value = (name: string) => inputs.get(name)?.value ?? "";
-      const base = state.basePath;
-      const request: Record<Step, () => Promise<AuthAnswer>> = {
-        "sign-in": () => post(`${base}/auth/password`, { username: value("username"), password: value("password"), next: state.next }),
-        "sign-up": () =>
-          post(`${base}/auth/signup`, {
-            username: value("username"),
-            password: value("password"),
-            next: state.next,
-            ...(value("displayName").trim() ? { displayName: value("displayName") } : {}),
-          }),
-        code: () => post(`${base}/auth/totp`, { code: value("code") }),
-        setup: () => post(`${base}/auth/setup`, { token: state.setupToken, password: value("password"), next: state.next }),
-      };
-      void request[step]()
-        .then((answer) => {
-          if (answer.status === 200 && answer.body["totp"] === true) {
-            message = null;
-            show("code");
-          } else if (answer.status === 200 && answer.body["ok"] === true) {
-            go(typeof answer.body["next"] === "string" ? (answer.body["next"] as string) : `${base}/`);
-          } else {
-            message = refusal(answer);
-            show(step === "code" && answer.body["error"] === "expired" ? "sign-in" : step);
-          }
-        })
-        .catch(() => {
-          message = "The server cannot be reached. Try again.";
-          show(step);
-        });
-    });
-    main.append(form);
-    const links = doc.createElement("p");
-    if (step === "sign-in" && state.signup) links.append(switcher("Create an account", "sign-up"));
-    if (step !== "sign-in") links.append(switcher("Back to sign-in", "sign-in"));
-    if (state.idp !== null && (step === "sign-in" || step === "sign-up")) {
-      const idp = doc.createElement("a");
-      idp.href = state.idp.href;
-      idp.textContent = `Sign in with ${state.idp.name}`;
-      idp.style.display = "block";
-      links.append(idp);
-    }
-    main.append(links);
-    root.replaceChildren(main);
-    inputs.values().next().value?.focus();
-  };
-  const switcher = (text: string, step: Step): HTMLElement => {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.textContent = text;
-    button.style.cssText = "display:block;margin:.5rem 0;background:none;border:0;padding:0;color:#0f6cbd;cursor:pointer;font:inherit";
-    button.addEventListener("click", () => {
-      message = null;
-      show(step);
-    });
-    return button;
-  };
-  show(state.setupToken !== null ? "setup" : "sign-in");
 }

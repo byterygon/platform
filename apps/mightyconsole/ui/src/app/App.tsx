@@ -22,13 +22,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { AppEvent, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 import { cn } from "@/lib/cn";
 import { layerSurface } from "@/lib/control";
-import { Add, ArrowImport, Eye, Info, Options, Pin, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
+import { Add, ArrowImport, Eye, Info, Options, Person, Pin, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
 import { loadProfiles, recordStatesOf } from "@/profiles/migrate";
 import { deleteProfile as deleteServerProfile, importRecord, listProfiles as listServerProfiles, saveProfile as saveServerProfile, updateRecord as updateServerRecord } from "@/profiles/server";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
+import { AccountMenu, SessionsDialog } from "./account-menu";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { HostKeyDialog } from "./dialogs/HostKeyDialog";
@@ -38,6 +39,9 @@ import { reloadSshHosts, sshHosts } from "@/profiles/ssh-hosts";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError, diagnosticLine } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
+import { ExpiryBar, SessionEndedDialog, useExpiry, useSession, useSignInAgain } from "./session-ui";
+import { IDP_META } from "./sign-in";
+import { mainRole, nameOf, signOut } from "./session";
 import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./shortcuts";
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { type Notice, NoticeContext } from "./page";
@@ -274,6 +278,13 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   const tabActions = useRef(new Map<string, () => TabActionHandlers>());
   const supervisor = useRef<Supervisor | null>(null);
   const [focusPane, setFocusPane] = useState(0);
+  // The person's session (DOC-25 §3.2.4): who they are, the warning before a limit, and the dialog
+  // for a session that ended while the app is open (the shell stays under it with its work).
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const session = useSession(client, state.server);
+  const { expiry, later: laterExpiry } = useExpiry(session.me, session.now);
+  const signInAgain = useSignInAgain(routerConfig.basePath, state.server === "signedOut", () => supervisor.current?.retryNow());
+  const idpName = typeof document === "undefined" ? null : document.querySelector<HTMLMetaElement>(`meta[name="${IDP_META}"]`)?.content || null;
 
   const note = useCallback(
     (error: unknown): DescribedError => {
@@ -476,7 +487,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     const sup = new Supervisor(client, {
       status: (status) => {
         dispatch({ type: "server", status });
-        if (status === "lost") dispatch({ type: "connsReset", status: "reconnecting", message: "the server connection was lost" });
+        if (status === "lost" || status === "signedOut") dispatch({ type: "connsReset", status: "reconnecting", message: status === "lost" ? "the server connection was lost" : "you were signed out" });
       },
       info: (info) => dispatch({ type: "info", info }),
       event: handleEvent,
@@ -978,6 +989,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   // --- Palette ----------------------------------------------------------------------------------
 
+  const signedIn = session.me !== null;
   const paletteGroups: CommandGroup[] = useMemo(() => {
     type Item = CommandGroup["items"][number];
     const goTo: Item[] = [];
@@ -1031,6 +1043,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       }
     }
     for (const t of tools) connections.push({ id: `add:${t.id}`, label: `Add ${t.label} connection`, onSelect: () => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.id } }) });
+    if (signedIn) {
+      app.push({ id: "account:sessions", label: "Sessions", keywords: ["account", "sign out"], onSelect: () => setSessionsOpen(true) });
+      app.push({ id: "account:signout", label: "Sign out", keywords: ["account", "log out"], onSelect: () => void signOut(routerConfig.basePath) });
+    }
     return [
       { label: "Go to", items: goTo },
       { label: "Actions", items: actions },
@@ -1038,7 +1054,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       { label: "App", items: app },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tools, nav, profiles, state.conns, state.tabs, state.activeTab, client, navCollapsed, width]);
+  }, [tools, nav, profiles, state.conns, state.tabs, state.activeTab, client, navCollapsed, width, signedIn]);
 
   // --- Dialog helpers ---------------------------------------------------------------------------
 
@@ -1194,6 +1210,17 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
           if (group !== null) dispatch({ type: "openGroup", tool: group });
           else if (value !== LINK_TAB) dispatch({ type: "activateTab", id: value });
         }} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
+        {expiry ? (
+          <ExpiryBar
+            expiry={expiry}
+            onStay={() => void session.refresh()}
+            onSignInAgain={() => {
+              // The time limit cannot be extended: end this session, keep the page and its work, and sign in again at the other tab.
+              void signOut(routerConfig.basePath, fetch, () => {}).then(signInAgain.open);
+            }}
+            onLater={laterExpiry}
+          />
+        ) : null}
         <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
           <SidebarTrigger />
           <span className="flex shrink-0 items-center gap-inline-md pe-inline-lg text-body-1-strong">
@@ -1245,6 +1272,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             </TooltipTrigger>
             <TooltipContent>Keyboard shortcuts ({bindingOf("shortcuts")})</TooltipContent>
           </Tooltip>
+          {session.me ? (
+            <AccountMenu me={session.me} idpName={idpName} startedMs={session.startedMs} settingsBinding={bindingOf("settings")} onSessions={() => setSessionsOpen(true)} onSettings={() => perform("settings")} onSignOut={() => void signOut(routerConfig.basePath)} />
+          ) : null}
         </header>
         <div className="relative flex min-h-0 flex-1">
           <ToolNav
@@ -1423,6 +1453,12 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             <span>{activeLive ? liveText(activeLive) : ""}</span>
           </StatusBarItem>
           <StatusBarSpacer />
+          {session.me ? (
+            <StatusBarItem>
+              <Icon icon={Person} />
+              <span data-testid="status-person">{[nameOf(session.me), mainRole(session.me.roles)].filter(Boolean).join(" · ")}</span>
+            </StatusBarItem>
+          ) : null}
           <StatusBarItem>
             <Icon icon={Server} />
             <span>{state.server === "online" ? (state.info?.publicOrigin ?? location.host) : state.server === "connecting" ? "Connecting…" : "Server lost"}</span>
@@ -1508,6 +1544,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       />
       <AboutDialog open={dialog.kind === "about"} onOpenChange={(open) => !open && closeDialog()} info={state.info} diagnostics={state.diagnostics} />
       <ShortcutsDialog open={dialog.kind === "shortcuts"} onOpenChange={(open) => !open && closeDialog()} />
+      {session.me ? <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} client={client} currentId={session.me.session} /> : null}
+      <SessionEndedDialog open={state.server === "signedOut"} me={session.me} replacedBy={session.replacedBy} waiting={signInAgain.waiting} onSignInAgain={signInAgain.open} />
       {state.server === "lost" || state.server === "versionMismatch" ? <ServerOverlay status={state.server} onRetry={() => supervisor.current?.retryNow()} /> : null}
       <span className="sr-only" aria-live="polite" data-focus-pane={focusPane} />
     </SidebarProvider>
