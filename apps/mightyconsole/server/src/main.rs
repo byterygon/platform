@@ -160,6 +160,8 @@ async fn config_check(config: ServeConfig, online: bool) -> ExitCode {
 async fn serve(config: ServeConfig) -> ExitCode {
     let exposed = config.is_exposed();
     let sign_in = config.auth.oidc.as_ref().map(|oidc| oidc.issuer.clone());
+    let accounts = config.auth.accounts;
+    let signup_open = config.auth.signup == ambidex_axum::accounts::Signup::Open;
     let redirect_uri = config.login_routes().redirect_uri();
     let generated_cert = matches!(config.tls, TlsSource::Generated { .. });
     let origin = format!("{}{}", config.public_origin, config.base_path);
@@ -196,27 +198,32 @@ async fn serve(config: ServeConfig) -> ExitCode {
             eprintln!("mightyconsole-server: no --ui directory; serving a placeholder page")
         }
     }
-    match &sign_in {
-        Some(issuer) => {
-            eprintln!(
-                "mightyconsole-server: sign-in through {issuer} (redirect URI {redirect_uri})"
-            );
-            eprintln!(
-                "mightyconsole-server: WARNING: roles are not built yet: every signed-in person \
-                 may do everything"
-            );
-            if exposed && generated_cert {
-                eprintln!(
-                    "mightyconsole-server: WARNING: the certificate is self-signed: give \
-                     --tls-cert and --tls-key"
-                );
-            }
+    if let Some(issuer) = &sign_in {
+        eprintln!("mightyconsole-server: sign-in through {issuer} (redirect URI {redirect_uri})");
+    }
+    eprintln!(
+        "mightyconsole-server: built-in accounts: {}; sign-up {}",
+        if accounts {
+            "on"
+        } else {
+            "off (the default administrator only)"
+        },
+        if accounts && signup_open {
+            "open"
+        } else {
+            "off"
         }
-        None if exposed => eprintln!(
-            "mightyconsole-server: WARNING: listening beyond loopback without [auth.oidc]: \
-             there is no login, anyone who reaches this port can use every connection you open."
-        ),
-        None => {}
+    );
+    eprintln!(
+        "mightyconsole-server: WARNING: roles are not built yet: every signed-in person may do \
+         everything"
+    );
+    // DOC-25 §3.6.2 point 3 (Open question 2): allowed, with a warning.
+    if exposed && generated_cert {
+        eprintln!(
+            "mightyconsole-server: WARNING: the certificate is self-signed: give --tls-cert and \
+             --tls-key"
+        );
     }
     eprintln!("mightyconsole-server: open {origin}/");
 

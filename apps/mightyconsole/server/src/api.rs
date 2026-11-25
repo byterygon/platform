@@ -1,4 +1,5 @@
-//! The shared procedures of spec §2.7: `app.info`, `app.events` and `term.*`. Each tool's own
+//! The shared procedures of spec §2.7: `app.info`, `app.events` and `term.*`; `app.me` and a
+//! built-in account's own `app.account.*` (DOC-25 §3.2.6). Each tool's own
 //! procedures (`<tool>.connect`, `<tool>.disconnect`, ...) are in [`crate::tools`].
 
 use std::sync::Arc;
@@ -27,6 +28,10 @@ pub struct ServerFacts {
 pub struct AppState {
     pub hub: Arc<Hub>,
     pub facts: ServerFacts,
+    /// The login sessions, for `app.me`.
+    pub sessions: Arc<ambidex_axum::LoginSessions>,
+    /// The built-in accounts, for `app.account.*` (`None` only in the codegen router).
+    pub accounts: Option<crate::sessions::McAccounts>,
 }
 
 /// A tool built into the server.
@@ -195,6 +200,249 @@ impl TermApi {
             .hub
             .terminal_input(&ctx.session().id, &input.terminal_id, signal)
             .await?;
+        Ok(Empty {})
+    }
+}
+
+/// Output of `app.me`: who is signed in on this connection, and what the session still needs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Me {
+    /// `human:account:<id>` or `human:oidc:<sub>`.
+    pub user: String,
+    /// The login session (`ls_…`), as the session lists show it.
+    pub session: String,
+    /// `password`, `totp` or `oidc`.
+    pub method: String,
+    /// A built-in account (it has a password, and may have TOTP).
+    pub account: bool,
+    /// The user name of a built-in account.
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+    /// The account has TOTP.
+    pub totp: bool,
+    /// Only `app.account.changePassword` and `app.me` work until the password is changed.
+    pub must_change_password: bool,
+    /// Only the TOTP enrolment and `app.me` work until it is done (`auth.require_totp`).
+    pub must_enrol_totp: bool,
+    /// When the session ends without activity, and at the latest (Unix ms).
+    pub idle_expires_ms: u64,
+    pub absolute_expires_ms: u64,
+}
+
+/// Input of `app.account.changePassword`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordInput {
+    pub current: String,
+    pub new: String,
+}
+
+/// Input of `app.account.totp.confirm`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpConfirmInput {
+    /// The six-digit code the authenticator shows.
+    pub code: String,
+}
+
+/// Input of `app.account.totp.remove`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpRemoveInput {
+    /// The current password.
+    pub current: String,
+}
+
+/// Output of `app.account.totp.begin`: shown once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpEnrolmentOutput {
+    /// The `otpauth://totp/…` URI an authenticator app reads.
+    pub uri: String,
+    /// Its QR code as an SVG image (no script), made on the server.
+    pub qr_svg: String,
+}
+
+/// Output of `app.account.totp.confirm`: the recovery codes, shown once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryCodes {
+    pub codes: Vec<String>,
+}
+
+const ACCOUNT: &str = "app";
+
+fn the_accounts(state: &AppState) -> Result<&crate::sessions::McAccounts, ToolError> {
+    state.accounts.as_ref().ok_or_else(|| {
+        ToolError::new(
+            crate::core::ToolErrorKind::Invalid,
+            ACCOUNT,
+            "built-in accounts are turned off on this server (auth.accounts = false)",
+        )
+    })
+}
+
+fn not_an_account() -> ToolError {
+    ToolError::new(
+        crate::core::ToolErrorKind::Invalid,
+        ACCOUNT,
+        "only a built-in account has a password and a second factor",
+    )
+}
+
+fn store_failed(e: impl std::fmt::Display) -> ToolError {
+    ToolError::new(crate::core::ToolErrorKind::Remote, ACCOUNT, e.to_string())
+}
+
+#[rpc::router(namespace = "app")]
+impl MeApi {
+    /// Who is signed in on this connection, and what the session still needs (a password change,
+    /// a TOTP enrolment). Always allowed; a call counts as activity for the idle timeout.
+    #[rpc::query(perm = "app.read", risk = Risk::Read)]
+    async fn me(&self, ctx: Ctx, _input: Empty) -> ToolResult<Me> {
+        let user = ctx.principal().id.clone();
+        let login = ambidex_axum::login_session_of(&ctx.session().id).to_owned();
+        let session = self.0.sessions.get(&login).ok_or_else(|| {
+            ToolError::new(
+                crate::core::ToolErrorKind::Auth,
+                ACCOUNT,
+                "the session has ended",
+            )
+        })?;
+        let account = match (
+            ambidex_axum::accounts::account_id_of(&user),
+            self.0.accounts.as_ref(),
+        ) {
+            (Some(id), Some(accounts)) => {
+                use ambidex_axum::accounts::AccountStore as _;
+                accounts.store().by_id(id).await.map_err(store_failed)?
+            }
+            _ => None,
+        };
+        Ok(Me {
+            user,
+            session: session.id,
+            method: session.method.as_str().to_owned(),
+            account: account.is_some(),
+            username: account.as_ref().map(|a| a.username.clone()),
+            display_name: account.as_ref().map(|a| a.display_name.clone()),
+            totp: account.as_ref().is_some_and(|a| a.totp.is_some()),
+            must_change_password: session.must_change_password,
+            must_enrol_totp: session.must_enrol_totp,
+            idle_expires_ms: session.idle_expires_ms,
+            absolute_expires_ms: session.absolute_expires_ms,
+        })
+    }
+}
+
+/// `app.me`.
+pub struct MeApi(pub Arc<AppState>);
+
+/// `app.account.*`: a built-in account's own password (DOC-25 §3.2.6).
+pub struct AccountApi(pub Arc<AppState>);
+
+#[rpc::router(namespace = "app.account")]
+impl AccountApi {
+    /// Changes the caller's password: needs the current one (a wrong one counts towards the
+    /// lockout), checks the policy, ends the account's other sessions and lifts this session's
+    /// `mustChangePassword`.
+    #[rpc::mutation(
+        name = "changePassword",
+        perm = "app.account",
+        risk = Risk::Write,
+        redact = ["current", "new"]
+    )]
+    async fn change_password(&self, ctx: Ctx, input: ChangePasswordInput) -> ToolResult<Empty> {
+        use ambidex_axum::accounts::ChangePasswordError as E;
+        let accounts = the_accounts(&self.0)?;
+        let login = ambidex_axum::login_session_of(&ctx.session().id).to_owned();
+        let result = accounts
+            .change_password(
+                &ctx.principal().id,
+                &login,
+                zeroize::Zeroizing::new(input.current),
+                zeroize::Zeroizing::new(input.new),
+                None,
+            )
+            .await;
+        match result {
+            Ok(()) => Ok(Empty {}),
+            Err(E::NotAnAccount) => Err(not_an_account().into()),
+            Err(E::WrongPassword) => {
+                Err(ToolError::invalid(ACCOUNT, "current", "the current password is wrong").into())
+            }
+            Err(E::Rejected(why)) => {
+                Err(ToolError::invalid(ACCOUNT, "new", why.to_string()).into())
+            }
+            Err(e) => Err(store_failed(e).into()),
+        }
+    }
+}
+
+/// `app.account.totp.*`: the caller's second factor (DOC-25 §3.2.6, Open question 8).
+pub struct TotpApi(pub Arc<AppState>);
+
+fn totp_error(e: ambidex_axum::accounts::TotpError) -> ToolError {
+    use ambidex_axum::accounts::TotpError as E;
+    match e {
+        E::NotAnAccount => not_an_account(),
+        E::NoEnrolment => ToolError::invalid(ACCOUNT, "code", "begin the set-up again"),
+        E::WrongCode => ToolError::invalid(ACCOUNT, "code", "the code does not match"),
+        E::WrongPassword => ToolError::invalid(ACCOUNT, "current", "the current password is wrong"),
+        E::Required => ToolError::new(
+            crate::core::ToolErrorKind::Forbidden,
+            ACCOUNT,
+            "two-step sign-in is required for this account on this server",
+        ),
+        e => store_failed(e),
+    }
+}
+
+#[rpc::router(namespace = "app.account.totp")]
+impl TotpApi {
+    /// Starts setting up TOTP: a new key, shown once as an `otpauth://` URI and its QR image,
+    /// kept for 10 minutes until `confirm`. Replaces nothing until then.
+    #[rpc::mutation(perm = "app.account", risk = Risk::Write)]
+    async fn begin(&self, ctx: Ctx, _input: Empty) -> ToolResult<TotpEnrolmentOutput> {
+        let accounts = the_accounts(&self.0)?;
+        let enrolment = accounts
+            .totp_begin(&ctx.principal().id)
+            .await
+            .map_err(totp_error)?;
+        Ok(TotpEnrolmentOutput {
+            uri: enrolment.uri.to_string(),
+            qr_svg: enrolment.qr_svg.to_string(),
+        })
+    }
+
+    /// Turns TOTP on with a code from the new key, and answers 10 recovery codes, shown once.
+    #[rpc::mutation(perm = "app.account", risk = Risk::Write, redact = ["code"])]
+    async fn confirm(&self, ctx: Ctx, input: TotpConfirmInput) -> ToolResult<RecoveryCodes> {
+        let accounts = the_accounts(&self.0)?;
+        let login = ambidex_axum::login_session_of(&ctx.session().id).to_owned();
+        let codes = accounts
+            .totp_confirm(&ctx.principal().id, &login, &input.code)
+            .await
+            .map_err(totp_error)?;
+        Ok(RecoveryCodes {
+            codes: codes.iter().map(|c| c.to_string()).collect(),
+        })
+    }
+
+    /// Removes the caller's TOTP and recovery codes; needs the current password. Refused when
+    /// `auth.require_totp` applies to the account.
+    #[rpc::mutation(perm = "app.account", risk = Risk::Write, redact = ["current"])]
+    async fn remove(&self, ctx: Ctx, input: TotpRemoveInput) -> ToolResult<Empty> {
+        let accounts = the_accounts(&self.0)?;
+        accounts
+            .totp_remove(
+                &ctx.principal().id,
+                zeroize::Zeroizing::new(input.current),
+                None,
+            )
+            .await
+            .map_err(totp_error)?;
         Ok(Empty {})
     }
 }

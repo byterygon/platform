@@ -272,6 +272,14 @@ pub enum Event {
     /// `auth.admin.reset` (DOC-25 §3.2.7): `via` is `stopped` (the command opened the store) or
     /// `request` (the running server performed it).
     AdminReset { via: String },
+    /// `auth.signup`: a built-in account made by sign-up, by that account.
+    Signup { user: String, ip: Option<IpAddr> },
+    /// `auth.lockout`, by `system:auth`: too many failures locked `user` until `until_ms`.
+    Lockout {
+        user: String,
+        ip: Option<IpAddr>,
+        until_ms: u64,
+    },
 }
 
 /// Clips `text` to the detail's value limit on a character boundary and replaces control
@@ -302,6 +310,8 @@ impl Event {
             Event::ServerStart { .. } => "server.start",
             Event::ServerStop => "server.stop",
             Event::AdminReset { .. } => "auth.admin.reset",
+            Event::Signup { .. } => "auth.signup",
+            Event::Lockout { .. } => "auth.lockout",
         }
     }
 
@@ -402,6 +412,22 @@ impl Event {
                     Outcome::Success,
                     vec![("via", clip(via))],
                 ),
+                Event::Signup { user, ip } => (
+                    human(user, "-"),
+                    AuditDecision::Allow,
+                    Outcome::Success,
+                    vec![("ip", ip_text(ip))],
+                ),
+                Event::Lockout { user, ip, until_ms } => (
+                    vec![system("system:auth")],
+                    AuditDecision::Allow,
+                    Outcome::Success,
+                    vec![
+                        ("user", clip(user)),
+                        ("ip", ip_text(ip)),
+                        ("until", until_ms.to_string()),
+                    ],
+                ),
             };
         let name = self.name();
         AuditEntry {
@@ -465,6 +491,11 @@ impl Event {
             } => format!("server.start {version} ({mode}, exposed {exposed})"),
             Event::ServerStop => "server.stop".to_owned(),
             Event::AdminReset { via } => format!("auth.admin.reset (via {via})"),
+            Event::Signup { user, ip } => format!("auth.signup {user} from {}", ip_text(ip)),
+            Event::Lockout { user, ip, until_ms } => format!(
+                "auth.lockout {user} (failures from {}) until {until_ms}",
+                ip_text(ip)
+            ),
         };
         format!("mightyconsole-server: {text}")
     }

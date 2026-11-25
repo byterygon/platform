@@ -1,7 +1,7 @@
 [package]
 name = "mightyconsole-server"
 version = "0.1.0"
-description = "Mightyconsole web server: axum + ambidex-axum at /rpc/ws on 127.0.0.1 over rustls TLS (a self-signed certificate made on first start), the local browser session, the tool contract (live handles per connection, terminals, stream progress) and the static UI."
+description = "Mightyconsole web server: axum + ambidex-axum at /rpc/ws on 127.0.0.1 over rustls TLS (a self-signed certificate made on first start), sign-in (built-in accounts and OIDC), the tool contract (live handles per connection, terminals, stream progress) and the static UI."
 license = "AGPL-3.0-only"
 edition.workspace = true
 rust-version.workspace = true

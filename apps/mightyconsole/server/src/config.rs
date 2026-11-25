@@ -16,6 +16,10 @@
 //!
 //! [auth]
 //! tenant = "default"
+//! accounts = true       # built-in accounts; false: the IdP is the only source of users
+//! signup = "open"       # or "off": only an administrator makes accounts
+//! require_totp = "none" # or "admins", "all"
+//! default_admin = true
 //! session_idle = "60m"
 //! session_absolute = "12h"
 //!
@@ -39,6 +43,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ambidex_axum::SessionLimits;
+use ambidex_axum::accounts::{RequireTotp, Signup};
 use ambidex_axum::oidc::{ClaimsSource, OidcConfig, SignatureAlgorithm, TokenAuth};
 use rustls::pki_types::CertificateDer;
 use rustls::pki_types::pem::PemObject as _;
@@ -151,6 +156,12 @@ pub struct AuthSection {
     pub max_sessions: Option<usize>,
     /// The default administrator (DOC-25 §3.2.7); default true.
     pub default_admin: Option<bool>,
+    /// Built-in accounts (DOC-25 §3.2.6); default true.
+    pub accounts: Option<bool>,
+    /// `"open"` (default) or `"off"`.
+    pub signup: Option<String>,
+    /// `"none"` (default), `"admins"` or `"all"`.
+    pub require_totp: Option<String>,
     pub oidc: Option<OidcSection>,
 }
 
@@ -179,6 +190,13 @@ pub struct AuthSettings {
     pub limits: SessionLimits,
     /// `auth.default_admin`: the account `admin` with a generated password (DOC-25 §3.2.7).
     pub default_admin: bool,
+    /// `auth.accounts`: built-in accounts. Off, only the default administrator signs in with a
+    /// password and nobody signs up (the IdP is the source of users).
+    pub accounts: bool,
+    /// `auth.signup`.
+    pub signup: Signup,
+    /// `auth.require_totp`.
+    pub require_totp: RequireTotp,
     /// `[auth.oidc]`, when configured.
     pub oidc: Option<OidcSettings>,
 }
@@ -189,6 +207,9 @@ impl Default for AuthSettings {
             tenant: "default".into(),
             limits: SessionLimits::default(),
             default_admin: true,
+            accounts: true,
+            signup: Signup::Open,
+            require_totp: RequireTotp::None,
             oidc: None,
         }
     }
@@ -369,6 +390,20 @@ pub fn auth_settings(section: AuthSection, file: &Path) -> Result<AuthSettings, 
     if let Some(default_admin) = section.default_admin {
         auth.default_admin = default_admin;
     }
+    if let Some(accounts) = section.accounts {
+        auth.accounts = accounts;
+    }
+    auth.signup = match section.signup.as_deref() {
+        None | Some("open") => Signup::Open,
+        Some("off") => Signup::Off,
+        Some(other) => return Err(format!("auth.signup {other:?}: open or off")),
+    };
+    auth.require_totp = match section.require_totp.as_deref() {
+        None | Some("none") => RequireTotp::None,
+        Some("admins") => RequireTotp::Admins,
+        Some("all") => RequireTotp::All,
+        Some(other) => return Err(format!("auth.require_totp {other:?}: none, admins or all")),
+    };
     if let Some(oidc) = section.oidc {
         let token_auth = match oidc.token_auth.as_deref() {
             None | Some("basic") => TokenAuth::Basic,

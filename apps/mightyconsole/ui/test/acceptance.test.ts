@@ -44,8 +44,9 @@ describe("acceptance checklists", () => {
       ["langgraph", "TSK-84", 9],
       ["packaging", "TSK-87", 2],
       // DOC-25 section 6, run with the idp profile; TSK-136 wired the login items, the other
-      // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items.
-      ["security", "TSK-141", 10],
+      // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items,
+      // TSK-142 the built-in accounts and the default administrator.
+      ["security", "TSK-141", 12],
     ]);
   });
 

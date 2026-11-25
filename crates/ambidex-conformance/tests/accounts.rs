@@ -951,3 +951,65 @@ fn removing_totp() {
         );
     });
 }
+
+/// A setup link opens the page with its token in the fragment, which no server or log sees; a
+/// malformed one opens the page without it.
+#[test]
+fn a_setup_link_opens_the_page_with_the_token_in_the_fragment() {
+    run(Signup::Open, async |s: &AccountServer| {
+        let mut v = s.visitor();
+        let token = "ab".repeat(32);
+        let answer = v.get(&format!("/auth/setup?token={token}")).await;
+        assert_eq!(answer.status, 303);
+        assert_eq!(answer.location(), Some(format!("/#setup={token}").as_str()));
+        assert_eq!(answer.headers["referrer-policy"], "no-referrer");
+        let bad = v.get("/auth/setup?token=%22%3E%3Cscript%3E").await;
+        assert_eq!(bad.location(), Some("/"));
+    });
+}
+
+/// Without an IdP, sign-out needs the exact Origin and the session's anti-CSRF token; it ends
+/// the session and goes to the base path.
+#[test]
+fn signing_out_without_an_idp() {
+    run(Signup::Open, async |s: &AccountServer| {
+        s.account("alice", Some(GOOD_PASSWORD), false).await;
+        let mut v = s.visitor();
+        v.sign_in("alice", GOOD_PASSWORD).await;
+        let cookie = v.session_cookie().unwrap().to_owned();
+        let csrf = s.sessions().csrf_token(&cookie).unwrap().to_string();
+        let refused = v
+            .raw_post(
+                "/auth/logout",
+                &[("origin", ORIGIN), (CSRF_HEADER, "nope")],
+                "",
+            )
+            .await;
+        assert_eq!(refused.status, 403);
+        let cross = v
+            .raw_post(
+                "/auth/logout",
+                &[("origin", "https://evil.test"), (CSRF_HEADER, &csrf)],
+                "",
+            )
+            .await;
+        assert_eq!(cross.status, 403);
+        assert!(s.sessions().peek(&cookie).is_some());
+        let out = v
+            .raw_post(
+                "/auth/logout",
+                &[("origin", ORIGIN), (CSRF_HEADER, &csrf)],
+                "",
+            )
+            .await;
+        assert_eq!((out.status, out.location()), (303, Some("/")));
+        assert!(s.sessions().peek(&cookie).is_none());
+        assert!(v.session_cookie().is_none(), "the cookie is cleared");
+        assert!(
+            s.hooks
+                .events()
+                .iter()
+                .any(|e| matches!(e, AuthEvent::SignedOut { .. }))
+        );
+    });
+}

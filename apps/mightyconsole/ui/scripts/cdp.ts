@@ -138,6 +138,31 @@ export async function openPage(cdp: Cdp): Promise<Page> {
   };
 }
 
+/** The password of the accounts the checks sign up with (it passes the policy, DOC-25 §3.2.6). */
+export const CHECK_PASSWORD = "browser check passphrase 1";
+
+/**
+ * Signs the browser in to the server at `origin` (everyone signs in, DOC-25 §3.1): when the page
+ * there is signed out, a new built-in account is made through the page's own sign-up (open by
+ * default; at most 5 per client address per hour) with its pre-session token, so the session
+ * cookie is set in this browser. Returns the account's user name, or `null` when the browser was
+ * signed in already.
+ */
+export async function signIn(page: Page, origin: string, basePath = ""): Promise<string | null> {
+  await page.navigate(`${origin}${basePath}/`);
+  const state = await page.evaluate<string>(`document.querySelector('meta[name="mightyconsole-auth"]')?.content ?? ""`);
+  if (state !== "signed-out") return null;
+  const username = `check-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const status = await page.evaluate<number>(`fetch(${JSON.stringify(`${basePath}/auth/signup`)}, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-Mightyconsole-Csrf": document.querySelector('meta[name="mightyconsole-pre"]').content },
+    body: JSON.stringify({ username: ${JSON.stringify(username)}, password: ${JSON.stringify(CHECK_PASSWORD)} }),
+  }).then((r) => r.status)`);
+  if (status !== 200) throw new Error(`signing up at ${origin}${basePath} answered ${status}`);
+  return username;
+}
+
 /** DOM helpers injected into the page: find by text, type into a React input, click, double-click. */
 export const HELPERS = `(() => {
   const text = (el) => (el.textContent || "").replace(/\\s+/g, " ").trim();

@@ -139,7 +139,7 @@ export function releaseNotes(notes: readonly Note[], fix = readFix(notes.length 
   lines.push(
     "## Known limits",
     "",
-    "- No login: keep the server on 127.0.0.1 (README.md).",
+    "- Everyone signs in: built-in accounts (sign-up open by default) and OIDC; the default administrator's password is in DATA/admin-password (README.md). Roles are not in this version: every signed-in person may do everything.",
     "- Not code-signed; no updater (install a new release by replacing the file or loading the new image).",
     "",
   );
@@ -285,8 +285,16 @@ export async function smoke(options: { binary: string; version?: string }): Prom
     const page = await get(port, "/");
     if (page.status !== 200) problems.push(`GET / answered ${page.status}`);
     if (!String(page.headers["content-security-policy"] ?? "").startsWith("default-src 'self'")) problems.push("the page has no CSP");
-    if (!String(page.headers["set-cookie"] ?? "").includes("__Host-ambidex_session=")) problems.push("the page sets no session cookie");
-    if (!page.body.includes('name="mightyconsole-csrf"')) problems.push("the page has no CSRF meta");
+    // Everyone signs in (DOC-25 §3.2.5, §3.2.6): the signed-out page and its pre-session token.
+    if (!String(page.headers["set-cookie"] ?? "").includes("__Host-mc_pre=")) problems.push("the page sets no pre-session cookie");
+    if (!page.body.includes('<meta name="mightyconsole-auth" content="signed-out">')) problems.push("the page is not the signed-out page");
+    if (!page.body.includes('name="mightyconsole-pre"')) problems.push("the page has no pre-session token");
+    // The default administrator (DOC-25 §3.2.7): its password in DATA/admin-password, the log names
+    // the file and never the password.
+    const passwordFile = join(data, "admin-password");
+    if (!existsSync(passwordFile)) problems.push("no DATA/admin-password after a first start");
+    else if (log.includes(readFileSync(passwordFile, "utf8").trim())) problems.push("the log holds the administrator's password");
+    if (!log.includes(`its password is in ${passwordFile}`)) problems.push("the log does not name DATA/admin-password");
     const script = /assets\/[^"]+\.js/.exec(page.body)?.[0];
     if (!script) problems.push("the page names no script");
     else if ((await get(port, `/${script}`)).status !== 200) problems.push(`${script} is not served`);

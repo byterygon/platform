@@ -5,9 +5,11 @@ SSH and LangGraph. `RELEASE-NOTES.md` says which tools this build has. Licence: 
 (`LICENSE`); the parts it contains are listed in `THIRD-PARTY-NOTICES.txt`. Source:
 https://github.com/byterygon/platform (`apps/mightyconsole`).
 
-> **Keep it on your own machine.** This version has **no login**. Anyone who can reach its port
-> can use every connection you open through it. Leave it on `127.0.0.1` (the default) and never
-> expose it on a shared network, a VPN or the internet.
+> **Everyone signs in.** The server has built-in accounts (anyone who reaches the sign-in page can
+> make one unless `[auth] signup = "off"`) and, when configured, sign-in through your identity
+> provider (OIDC). Roles are not in this version yet: **every signed-in person may do
+> everything**. Keep it on `127.0.0.1` (the default) unless you trust everyone who can reach the
+> port, and give it a real certificate (`--tls-cert`, `--tls-key`) before you expose it.
 
 ## Verify the download
 
@@ -58,14 +60,13 @@ docker run -d --name mightyconsole -p 127.0.0.1:7443:7443 \
 The published image carries a build provenance attestation:
 `gh attestation verify oci://ghcr.io/byterygon/mightyconsole:<version> --repo byterygon/platform`.
 
-Always publish the port on `127.0.0.1` as above. Inside the container the server listens on all
-of the container's addresses, so it prints its exposure warning; the `-p 127.0.0.1:…` mapping is
-what keeps it on your machine. Keep host port 7443: the page must be opened at the origin the
-server expects (`https://localhost:7443`). Other options go after the image name, starting with
-`serve --listen 0.0.0.0:7443`, for example
+Publish the port on `127.0.0.1` as above. Inside the container the server listens on all of the
+container's addresses, so it warns that its certificate is self-signed; the `-p 127.0.0.1:…`
+mapping is what keeps it on your machine. Keep host port 7443: the page must be opened at the
+origin the server expects (`https://localhost:7443`). Other options go after the image name,
+starting with `serve --listen 0.0.0.0:7443`, for example
 `… byterygon/mightyconsole:<version> serve --listen 0.0.0.0:7443 --tls-cert /data/cert.pem --tls-key /data/key.pem`.
-The image in the file and the one on ghcr.io are the same bytes. Never publish the port on a
-shared network: there is no login.
+The image in the file and the one on ghcr.io are the same bytes.
 
 ## Open it
 
@@ -79,6 +80,37 @@ accept or trust the certificate. To avoid the warning, give your own certificate
 ./mightyconsole-server --tls-cert localhost+2.pem --tls-key localhost+2-key.pem
 ```
 
+## Sign in
+
+- **The default administrator.** The first start makes the account `admin` with a generated
+  password, written to `admin-password` in the data directory (readable by you only). The server
+  prints where the file is, never the password. In a container the file is in the `/data` volume
+  (the image has no shell, so no `cat`):
+
+  ```sh
+  docker cp mightyconsole:/data/admin-password -
+  ```
+
+  Sign in as `admin` with it. You must choose a new password first; the file is then deleted.
+- **Your own account.** The sign-in page offers **Create an account** (`[auth] signup = "open"`,
+  the default). Passwords have at least 12 characters and cannot be one of the most common ones.
+  Five wrong passwords lock an account for 15 minutes.
+- **Two-step sign-in (TOTP)** is optional per account; `[auth] require_totp = "admins"` or `"all"`
+  asks for it at the next sign-in. Keep the recovery codes it shows you.
+- **Lost the administrator's password?** On the server's machine (access to the data directory is
+  the proof):
+
+  ```sh
+  ./mightyconsole-server reset-admin --print                       # or --data DIR
+  docker exec mightyconsole /mightyconsole-server reset-admin --print
+  ```
+
+  It writes a new password to `admin-password` (`--print` also shows it), unlocks and enables the
+  account, removes its TOTP and ends its sessions; the next sign-in must change the password. It
+  works with the server running or stopped.
+- Sign-in through your identity provider and the other settings: `mightyconsole-server --help`
+  (`[auth]` and `[auth.oidc]` in `DATA/config.toml`).
+
 ## Where things live
 
 - **Connection profiles, including their passwords and keys, live in your browser** (IndexedDB of
@@ -86,10 +118,11 @@ accept or trust the certificate. To avoid the warning, give your own certificate
   own: another port or host name starts empty, and clearing the site's data deletes them. Back
   them up with **Settings > Export all profiles** and restore them with **Import profiles**
   (secrets are left out of an export unless you tick the box).
-- **The server keeps only its certificate**, in its data directory: `$MIGHTYCONSOLE_DATA` if set,
-  else `~/.local/share/mightyconsole` (Linux), `~/Library/Application Support/mightyconsole`
-  (macOS), `%APPDATA%\mightyconsole` (Windows), or the `/data` volume in the container.
-  `--data DIR` chooses another one.
+- **The server keeps its certificate, the accounts (`store.redb`) and the audit log** in its data
+  directory: `$MIGHTYCONSOLE_DATA` if set, else `~/.local/share/mightyconsole` (Linux),
+  `~/Library/Application Support/mightyconsole` (macOS), `%APPDATA%\mightyconsole` (Windows), or
+  the `/data` volume in the container. `--data DIR` chooses another one. One server uses a data
+  directory at a time.
 - Live connections are held in the server's memory for the browser tab that opened them and are
   released when the tab closes, on Disconnect, or after 10 minutes without use.
 

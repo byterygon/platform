@@ -13,6 +13,8 @@
 //! - `/auth/totp { code }` completes with a six-digit code or a recovery code.
 //! - `/auth/setup { token, password, next? }`: redeems a setup link
 //!   ([`Accounts::create_setup_link`]): sets the password and signs in. Single use, 24 hours.
+//!   The link itself (`GET /auth/setup?token=…`) answers 303 to the base path with the token in
+//!   the fragment (`#setup=<token>`), which the page reads and no server or log ever sees.
 //!
 //! Every one needs the exact `Origin`, `Content-Type: application/json` and the pre-session
 //! token ([`Accounts::pre_session`]: a `__Host-` cookie, `SameSite=Strict`, whose value the
@@ -716,8 +718,21 @@ impl<S: AccountStore, H: AccountHooks> Accounts<S, H> {
             .route(&format!("{base}/auth/signup"), post(signup::<S, H>))
             .route(&format!("{base}/auth/password"), post(password::<S, H>))
             .route(&format!("{base}/auth/totp"), post(totp_code::<S, H>))
-            .route(&format!("{base}/auth/setup"), post(setup::<S, H>))
+            .route(
+                &format!("{base}/auth/setup"),
+                post(setup::<S, H>).get(setup_page::<S, H>),
+            )
             .layer(DefaultBodyLimit::max(MAX_BODY))
+            .with_state(Arc::clone(&self.inner))
+    }
+
+    /// `POST /auth/logout` for a server without OIDC (the OIDC routes have their own, which
+    /// also signs out at the IdP): the exact `Origin`, the session cookie and its anti-CSRF token
+    /// in the CSRF header; ends the session and answers 303 to the base path.
+    pub fn logout_routes(&self) -> Router {
+        let base = &self.inner.routes.base_path;
+        Router::new()
+            .route(&format!("{base}/auth/logout"), post(logout::<S, H>))
             .with_state(Arc::clone(&self.inner))
     }
 
@@ -1743,5 +1758,81 @@ async fn totp_code<S: AccountStore, H: AccountHooks>(
         header::SET_COOKIE,
         web::clear_cookie(&inner.routes.totp_cookie, SameSite::Strict),
     );
+    response
+}
+
+async fn logout<S: AccountStore, H: AccountHooks>(
+    State(inner): State<Arc<Inner<S, H>>>,
+    client: Option<axum::Extension<ClientAddr>>,
+    headers: HeaderMap,
+) -> Response {
+    let client = client_of(client.as_deref());
+    let routes = &inner.routes;
+    if web::single_header(&headers, header::ORIGIN) != Some(routes.public_origin.as_str()) {
+        return answer(StatusCode::FORBIDDEN, json!({ "error": "forbidden" }));
+    }
+    let home = if routes.base_path.is_empty() {
+        "/".to_owned()
+    } else {
+        routes.base_path.clone()
+    };
+    let done = || {
+        let mut response = StatusCode::SEE_OTHER.into_response();
+        let headers = response.headers_mut();
+        web::auth_headers(headers);
+        if let Ok(location) = HeaderValue::from_str(&home) {
+            headers.insert(header::LOCATION, location);
+        }
+        headers.insert(
+            header::SET_COOKIE,
+            web::clear_cookie(&routes.session_cookie, SameSite::Strict),
+        );
+        response
+    };
+    let Some(cookie) = web::cookie(&headers, &routes.session_cookie) else {
+        return done();
+    };
+    let Some(expected) = inner.sessions.csrf_token(cookie) else {
+        return done();
+    };
+    let given = web::single_header(&headers, routes.csrf_header.clone()).unwrap_or("");
+    if given.is_empty() || !constant_time_eq(given.as_bytes(), expected.as_bytes()) {
+        return answer(StatusCode::FORBIDDEN, json!({ "error": "forbidden" }));
+    }
+    if let Some(ended) = inner.sessions.logout(cookie) {
+        inner.hooks.record(AuthEvent::SignedOut {
+            user: ended.user,
+            session: ended.id,
+            client,
+        });
+    }
+    done()
+}
+
+#[derive(Deserialize)]
+struct SetupQuery {
+    token: Option<String>,
+}
+
+/// `GET /auth/setup?token=…`: to the page, with the token in the fragment.
+async fn setup_page<S: AccountStore, H: AccountHooks>(
+    State(inner): State<Arc<Inner<S, H>>>,
+    axum::extract::Query(query): axum::extract::Query<SetupQuery>,
+) -> Response {
+    let home = if inner.routes.base_path.is_empty() {
+        "/".to_owned()
+    } else {
+        inner.routes.base_path.clone()
+    };
+    let location = match query.token.as_deref().filter(|t| is_token(t)) {
+        Some(token) => format!("{home}#setup={token}"),
+        None => home,
+    };
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    let headers = response.headers_mut();
+    web::auth_headers(headers);
+    if let Ok(location) = HeaderValue::from_str(&location) {
+        headers.insert(header::LOCATION, location);
+    }
     response
 }

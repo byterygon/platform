@@ -45,6 +45,8 @@ done
 docker logs "$offline" 2>&1
 docker logs "$offline" 2>&1 | grep -q "UI built in" || fail "no built-in UI"
 docker logs "$offline" 2>&1 | grep -q "made a self-signed certificate at /data/tls" || fail "no certificate in /data"
+# The default administrator (DOC-25 §3.2.7): its password in the volume, the log names the file.
+docker logs "$offline" 2>&1 | grep -q "its password is in /data/admin-password" || fail "the log does not name /data/admin-password"
 docker rm -f "$offline" >/dev/null
 
 # Published on loopback, with the same volume: the certificate is reused, the page is served.
@@ -56,10 +58,20 @@ done
 docker logs "$served" 2>&1 | grep -q "made a self-signed certificate" && fail "the certificate was not reused"
 headers=$(curl -sk -D - -o /tmp/mightyconsole-page.$$ https://localhost:7443/)
 echo "$headers" | grep -qi "^content-security-policy: default-src 'self'" || fail "no CSP"
-echo "$headers" | grep -qi "^set-cookie: __Host-ambidex_session=" || fail "no session cookie"
-grep -q 'name="mightyconsole-csrf"' /tmp/mightyconsole-page.$$ || fail "no CSRF meta in the page"
+# Everyone signs in (DOC-25 §3.2.5, §3.2.6): the signed-out page with its pre-session token.
+echo "$headers" | grep -qi "^set-cookie: __Host-mc_pre=" || fail "no pre-session cookie"
+grep -q '<meta name="mightyconsole-auth" content="signed-out">' /tmp/mightyconsole-page.$$ || fail "not the signed-out page"
+grep -q 'name="mightyconsole-pre"' /tmp/mightyconsole-page.$$ || fail "no pre-session token in the page"
 asset=$(grep -o 'assets/[^"]*\.js' /tmp/mightyconsole-page.$$ | head -1)
 rm -f /tmp/mightyconsole-page.$$
 [ -n "$asset" ] || fail "the page names no script"
 [ "$(curl -sk -o /dev/null -w '%{http_code}' "https://localhost:7443/$asset")" = 200 ] || fail "$asset is not served"
+# The README's way in: read the password with docker cp (no shell in the image), and reset it
+# with docker exec while the server runs (reset-admin asks it through DATA/reset-admin.request).
+first=$(docker cp "$served:/data/admin-password" - | tar -xO)
+[ "${#first}" -ge 24 ] || fail "docker cp of /data/admin-password gave no password"
+docker logs "$served" 2>&1 | grep -qF "$first" && fail "the log holds the administrator's password"
+second=$(docker exec "$served" /mightyconsole-server reset-admin --print | tail -n 1)
+[ "${#second}" -eq 24 ] && [ "$second" != "$(printf %s "$first" | tr -d '\n')" ] || fail "reset-admin --print in the container gave no new password"
+[ "$(docker cp "$served:/data/admin-password" - | tar -xO | tr -d '\n')" = "$second" ] || fail "reset-admin did not write /data/admin-password"
 echo "image-check: $image ok"

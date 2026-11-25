@@ -922,6 +922,22 @@
       },
       "type": "object"
     },
+    "ChangePasswordInput": {
+      "description": "Input of `app.account.changePassword`.",
+      "properties": {
+        "current": {
+          "type": "string"
+        },
+        "new": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "current",
+        "new"
+      ],
+      "type": "object"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -4963,6 +4979,77 @@
         "regex"
       ],
       "type": "string"
+    },
+    "Me": {
+      "description": "Output of `app.me`: who is signed in on this connection, and what the session still needs.",
+      "properties": {
+        "absoluteExpiresMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "account": {
+          "description": "A built-in account (it has a password, and may have TOTP).",
+          "type": "boolean"
+        },
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idleExpiresMs": {
+          "description": "When the session ends without activity, and at the latest (Unix ms).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "method": {
+          "description": "`password`, `totp` or `oidc`.",
+          "type": "string"
+        },
+        "mustChangePassword": {
+          "description": "Only `app.account.changePassword` and `app.me` work until the password is changed.",
+          "type": "boolean"
+        },
+        "mustEnrolTotp": {
+          "description": "Only the TOTP enrolment and `app.me` work until it is done (`auth.require_totp`).",
+          "type": "boolean"
+        },
+        "session": {
+          "description": "The login session (`ls_…`), as the session lists show it.",
+          "type": "string"
+        },
+        "totp": {
+          "description": "The account has TOTP.",
+          "type": "boolean"
+        },
+        "user": {
+          "description": "`human:account:<id>` or `human:oidc:<sub>`.",
+          "type": "string"
+        },
+        "username": {
+          "description": "The user name of a built-in account.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "user",
+        "session",
+        "method",
+        "account",
+        "username",
+        "displayName",
+        "totp",
+        "mustChangePassword",
+        "mustEnrolTotp",
+        "idleExpiresMs",
+        "absoluteExpiresMs"
+      ],
+      "type": "object"
     },
     "MessageRecord": {
       "description": "One §5.1 row as JSON.",
@@ -9116,6 +9203,21 @@
       ],
       "type": "string"
     },
+    "RecoveryCodes": {
+      "description": "Output of `app.account.totp.confirm`: the recovery codes, shown once.",
+      "properties": {
+        "codes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "codes"
+      ],
+      "type": "object"
+    },
     "RegistryAuthKind": {
       "description": "How the server authenticates to the registry.",
       "enum": [
@@ -12453,6 +12555,50 @@
       ],
       "type": "object"
     },
+    "TotpConfirmInput": {
+      "description": "Input of `app.account.totp.confirm`.",
+      "properties": {
+        "code": {
+          "description": "The six-digit code the authenticator shows.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
+    "TotpEnrolmentOutput": {
+      "description": "Output of `app.account.totp.begin`: shown once.",
+      "properties": {
+        "qrSvg": {
+          "description": "Its QR code as an SVG image (no script), made on the server.",
+          "type": "string"
+        },
+        "uri": {
+          "description": "The `otpauth://totp/…` URI an authenticator app reads.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "qrSvg"
+      ],
+      "type": "object"
+    },
+    "TotpRemoveInput": {
+      "description": "Input of `app.account.totp.remove`.",
+      "properties": {
+        "current": {
+          "description": "The current password.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "current"
+      ],
+      "type": "object"
+    },
     "Truncated": {
       "description": "Why a listing stopped early.",
       "oneOf": [
@@ -13676,6 +13822,97 @@
     {
       "agent": "hidden",
       "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ChangePasswordInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.account.changePassword",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "app.account",
+      "redact": [
+        "current",
+        "new"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.account.totp.begin",
+      "output": {
+        "$ref": "#/$defs/TotpEnrolmentOutput"
+      },
+      "perm": "app.account",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TotpConfirmInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.account.totp.confirm",
+      "output": {
+        "$ref": "#/$defs/RecoveryCodes"
+      },
+      "perm": "app.account",
+      "redact": [
+        "code"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TotpRemoveInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.account.totp.remove",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "app.account",
+      "redact": [
+        "current"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
       "error": false,
       "input": {
         "$ref": "#/$defs/Empty"
@@ -13704,6 +13941,27 @@
       "name": "app.info",
       "output": {
         "$ref": "#/$defs/AppInfo"
+      },
+      "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "app.me",
+      "output": {
+        "$ref": "#/$defs/Me"
       },
       "perm": "app.read",
       "redact": [],
@@ -17444,5 +17702,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:8ba05636beb06f7ea4f85d0a04c58325456ead7539ca83182c1f9ffa9a1c523f"
+  "schema_hash": "sha256:9d23d845cd072628d243bae01f8bcd67d3c79faf5931f7e4d3eac4530549827f"
 }

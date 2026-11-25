@@ -96,8 +96,12 @@ async function main(server: string, evidence: string): Promise<number> {
     const page = await cdp.openPage(browser.cdp);
     const cookies = async (url: string) => ((await page.send("Network.getCookies", { urls: [url] })) as { cookies: Cookie[] }).cookies;
 
-    // Signed out: the page goes to the sign-in, which goes to Dex's form.
+    // Signed out: the page shows the sign-in (built-in accounts and the IdP); its "Sign in with
+    // Lab Dex" goes to Dex's form.
     await page.navigate(`${ORIGIN}/nats`);
+    const offered = await cdp.waitUntil(page, `[...document.querySelectorAll("a")].some((a) => a.textContent === "Sign in with Lab Dex")`, 30_000);
+    check(offered, "a signed-out page offers the sign-in form and Sign in with Lab Dex");
+    await page.evaluate(`[...document.querySelectorAll("a")].find((a) => a.textContent === "Sign in with Lab Dex").click()`);
     const atDex = await cdp.waitUntil(page, `location.host === "localhost:5556" && document.querySelector("input[name=login]")`, 30_000);
     check(atDex, "a signed-out page goes to Dex's login form");
     await page.screenshot(join(shots, "sign-in-01-dex-form.png"));
@@ -128,7 +132,7 @@ async function main(server: string, evidence: string): Promise<number> {
     check(status === 303, `sign-out answers 303 (${status})`);
     check(!(await cookies(ORIGIN)).some((c) => c.name === "__Host-ambidex_session"), "sign-out removed the session cookie");
     await page.navigate(`${ORIGIN}/`);
-    check(await cdp.waitUntil(page, `location.host === "localhost:5556"`, 30_000), "after sign-out the page goes to the sign-in again");
+    check(await cdp.waitUntil(page, `document.querySelector('meta[name="mightyconsole-auth"]')?.content === "signed-out" && [...document.querySelectorAll("a")].some((a) => a.textContent === "Sign in with Lab Dex")`, 30_000), "after sign-out the page shows the sign-in again");
     await page.screenshot(join(shots, "sign-in-03-signed-out.png"));
   } catch (error) {
     failures.push(String((error as Error).message));

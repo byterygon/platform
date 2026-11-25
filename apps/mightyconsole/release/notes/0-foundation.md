@@ -5,4 +5,6 @@
 - The Fluent 2 shell shared with DBee: a tool rail, connections per tool, tabs restored after a
   reload, a command bar, a status bar, the command palette, Settings and About.
 - Connection profiles in the browser (IndexedDB), with export and import as a file.
-- No login in this version: keep it on your own machine (see README).
+- Everyone signs in: built-in accounts (sign-up, optional TOTP) and OIDC; the default
+  administrator's password is in `DATA/admin-password` (see README). Roles come later: every
+  signed-in person may do everything.

@@ -7,9 +7,10 @@
 //!
 //! - [`tls`]: the user's certificate, or a self-signed one made on first start and reused.
 //! - [`config`]: the configuration file (DOC-25 §3.6.1) behind the flags.
-//! - [`sessions`]: OIDC sign-in when `[auth.oidc]` is configured (DOC-25 §3.2, through
-//!   `ambidex-axum`), else the local browser session of v0.1.
-//! - [`authz`]: the static Authorizer (the local user, or every signed-in person, may do
+//! - [`sessions`]: everyone signs in (DOC-25 §3.2, through `ambidex-axum`): built-in accounts,
+//!   and OIDC when `[auth.oidc]` is configured.
+//! - [`authz`]: the Authorizer until roles (every signed-in person, within the restrictions of a
+//!   session that must change its password or set up TOTP, may do
 //!   everything until roles land).
 //! - [`audit`]: the durable audit log (DOC-25 §3.5, `audit-jsonl`): the filter in front of it
 //!   (Write and Destructive calls, sensitive reads, refusals), and the sign-in and server events.
@@ -45,7 +46,7 @@ use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
 use ambidex::{Router, ServerConfig};
-use ambidex_axum::accounts::PasswordHasher;
+use ambidex_axum::accounts::{Accounts, AccountsConfig, PasswordHasher, Signup};
 use ambidex_axum::oidc::{LoginRoutes, OidcLogin};
 use ambidex_axum::{ConfigError, DEFAULT_SESSION_COOKIE, LoginSessions, WsConfig, WsTransport};
 use security_types::{AuditSink, Clock, SystemClock};
@@ -53,15 +54,15 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use crate::api::{AppApi, AppState, ServerFacts, TermApi};
+use crate::api::{AccountApi, AppApi, AppState, MeApi, ServerFacts, TermApi, TotpApi};
 use crate::audit::{
     AuditSettings, Event, EventLog, LineWriter, McAuditSink, SensitiveTable, Stderr,
 };
-use crate::authz::LocalAuthorizer;
+use crate::authz::SignedInAuthorizer;
 use crate::config::{AuthSettings, OIDC_CLIENT_SECRET_ENV};
 use crate::core::{Hub, IDLE_TIMEOUT, SWEEP_INTERVAL};
-use crate::sessions::{LocalSessions, local_principal};
-use crate::sessions::{McSignIn, ServerSessions, SessionLog, SignInSessions};
+use crate::sessions::{McAccounts, McSignIn, ServerSessions, SessionLog};
+use crate::store::McAccountStore;
 use crate::tls::{ServerTls, TlsError, TlsSource};
 
 /// The `api` the server announces in Hello.
@@ -101,6 +102,15 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(TermApi(Arc::clone(state)))
         .expect("term API registers");
+    router
+        .mount(MeApi(Arc::clone(state)))
+        .expect("app.me registers");
+    router
+        .mount(AccountApi(Arc::clone(state)))
+        .expect("app.account API registers");
+    router
+        .mount(TotpApi(Arc::clone(state)))
+        .expect("app.account.totp API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -115,8 +125,17 @@ pub fn codegen_router() -> Router {
             public_origin: String::new(),
             certificate_fingerprint: String::new(),
         },
+        sessions: Arc::new(LoginSessions::new(
+            Arc::new(SystemClock),
+            ambidex_axum::SessionLimits::default(),
+            Arc::new(ambidex_axum::NoSessionEvents),
+        )),
+        accounts: None,
     });
-    let router = Router::new(LocalAuthorizer::new(local_principal().id));
+    let router = Router::new(SignedInAuthorizer::new(
+        "codegen",
+        Arc::clone(&state.sessions),
+    ));
     mount(&router, &state);
     router
 }
@@ -164,10 +183,15 @@ impl ServeConfig {
     /// The login cookie of a pending OIDC sign-in (DOC-25 §3.2.2): `__Host-mc_login`, with the
     /// base path in its name as for the session cookie.
     pub fn login_cookie(&self) -> String {
+        self.cookie_named("__Host-mc_login")
+    }
+
+    /// `name`, with the base path in it as for the session cookie (`__Host-` needs `Path=/`).
+    fn cookie_named(&self, name: &str) -> String {
         if self.base_path.is_empty() {
-            "__Host-mc_login".to_owned()
+            name.to_owned()
         } else {
-            format!("__Host-mc_login{}", self.base_path.replace('/', "_"))
+            format!("{name}{}", self.base_path.replace('/', "_"))
         }
     }
 
@@ -177,6 +201,8 @@ impl ServeConfig {
         routes.base_path = self.base_path.clone();
         routes.session_cookie = self.session_cookie();
         routes.login_cookie = self.login_cookie();
+        routes.pre_cookie = self.cookie_named("__Host-mc_pre");
+        routes.totp_cookie = self.cookie_named("__Host-mc_totp");
         routes.csrf_header = CSRF_HEADER.clone();
         routes
     }
@@ -324,7 +350,14 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
         }
     }
     match &config.auth.oidc {
-        None => report.push("sign-in: none configured ([auth.oidc]); the local user only".into()),
+        None => report.push(format!(
+            "sign-in: built-in accounts{}; no [auth.oidc]",
+            if config.auth.accounts {
+                ""
+            } else {
+                " off (the default administrator only)"
+            }
+        )),
         Some(oidc) => match oidc.load(std::env::var(OIDC_CLIENT_SECRET_ENV).ok()) {
             Err(e) => problems.push(e),
             Ok(loaded) => {
@@ -366,14 +399,14 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
     }
 }
 
-/// The tenant the audit log records in: the server's (`auth.tenant`) with sign-in, v0.1's local
-/// one without.
+/// The tenant the audit log records in: the server's (`auth.tenant`).
 pub fn audit_tenant(config: &ServeConfig) -> String {
-    match &config.auth.oidc {
-        Some(_) => config.auth.tenant.clone(),
-        None => authz::LOCAL_TENANT.to_owned(),
-    }
+    config.auth.tenant.clone()
 }
+
+/// Why `auth.accounts = false` without OIDC does not start (DOC-25 §3.6.2 point 1).
+pub const ACCOUNTS_OFF_WITHOUT_OIDC: &str = "auth.accounts = false needs [auth.oidc]: \
+     otherwise only the default administrator could sign in";
 
 /// Why `auth.default_admin = false` does not start yet (DOC-25 §3.2.7, §3.6.2 point 1).
 pub const DEFAULT_ADMIN_OFF: &str = "auth.default_admin = false needs a pinned \
@@ -403,12 +436,10 @@ fn reset_watcher(
         hasher,
         Arc::clone(clock),
         move |reset: &admin::Reset| {
-            if let ServerSessions::SignIn(signed) = &sessions {
-                signed.sessions.revoke_user(
-                    &ambidex_axum::accounts::principal_id(&reset.account),
-                    Some("system:server"),
-                );
-            }
+            sessions.sessions.revoke_user(
+                &ambidex_axum::accounts::principal_id(&reset.account),
+                Some("system:server"),
+            );
             events.record(&Event::AdminReset {
                 via: "request".into(),
             });
@@ -511,13 +542,15 @@ impl Server {
         };
 
         // Someone can sign in (DOC-25 §3.6.2 point 1). Pinned group mappings come with roles.
+        if !config.auth.accounts && config.auth.oidc.is_none() {
+            return Err(StartError::Auth(ACCOUNTS_OFF_WITHOUT_OIDC.into()));
+        }
         if !config.auth.default_admin {
             return Err(StartError::Auth(DEFAULT_ADMIN_OFF.into()));
         }
         if let Some(worker) = options.jq_worker {
             core::jq::set_worker_program(worker);
         }
-        let principal = local_principal();
         let log: Arc<dyn LineWriter> = Arc::new(Stderr);
         // The audit log first: a server that cannot record does not start (DOC-25 §3.6.2).
         let tenant = audit_tenant(&config);
@@ -609,47 +642,62 @@ impl Server {
                 admin::PASSWORD_FILE,
             ));
         }
-        let (sessions, authorizer, mut auth_tasks) = match &config.auth.oidc {
-            None => (
-                ServerSessions::Local(Arc::new(LocalSessions::new(principal.clone()))),
-                LocalAuthorizer::new(principal.id.clone()),
-                Vec::new(),
-            ),
+        // Every browser signs in (DOC-25 §3.1): one session store for the built-in accounts and
+        // OIDC.
+        let clock: Arc<dyn Clock> = Arc::clone(&options.clock);
+        let login_sessions = Arc::new(LoginSessions::new(
+            Arc::clone(&clock),
+            config.auth.limits,
+            Arc::new(SessionLog(events.clone())),
+        ));
+        let hooks = Arc::new(
+            McSignIn::new(&config.auth.tenant, Arc::clone(&log), events.clone())
+                .with_data(data.clone())
+                .accounts_enabled(config.auth.accounts),
+        );
+        let mut accounts_config = AccountsConfig::new("Mightyconsole");
+        accounts_config.signup = if config.auth.accounts {
+            config.auth.signup
+        } else {
+            Signup::Off
+        };
+        accounts_config.require_totp = config.auth.require_totp;
+        let accounts = Accounts::new(
+            McAccountStore(Arc::clone(&store)),
+            Arc::clone(&hooks),
+            Arc::clone(&login_sessions),
+            config.login_routes(),
+            accounts_config,
+            hasher.clone(),
+            Arc::clone(&clock),
+        );
+        let mut auth_tasks = vec![login_sessions.spawn_sweeper(SESSION_SWEEP)];
+        let oidc = match &config.auth.oidc {
+            None => None,
             Some(oidc) => {
                 let env_secret = std::env::var(OIDC_CLIENT_SECRET_ENV).ok();
                 let oidc = oidc.load(env_secret).map_err(StartError::Auth)?;
-                let clock: Arc<dyn Clock> = Arc::clone(&options.clock);
-                let store = Arc::new(LoginSessions::new(
-                    Arc::clone(&clock),
-                    config.auth.limits,
-                    Arc::new(SessionLog(events.clone())),
-                ));
-                let hooks = Arc::new(McSignIn::new(
-                    &config.auth.tenant,
-                    Arc::clone(&log),
-                    events.clone(),
-                ));
                 let login = OidcLogin::new(
                     oidc,
                     config.login_routes(),
-                    Arc::clone(&store),
-                    hooks,
-                    clock,
+                    Arc::clone(&login_sessions),
+                    Arc::clone(&hooks),
+                    Arc::clone(&clock),
                 )
                 .map_err(|e| StartError::Auth(e.to_string()))?;
                 // The IdP being unreachable is not a start failure (DOC-25 §3.2.1): the refresh
-                // task retries with backoff and sign-in answers `unreachable` meanwhile.
-                let tasks = vec![login.spawn_refresh(), store.spawn_sweeper(SESSION_SWEEP)];
-                (
-                    ServerSessions::SignIn(SignInSessions {
-                        sessions: store,
-                        login,
-                    }),
-                    LocalAuthorizer::signed_in(&config.auth.tenant),
-                    tasks,
-                )
+                // task retries with backoff and sign-in answers `unreachable` meanwhile, while
+                // built-in accounts and the default administrator still sign in.
+                auth_tasks.push(login.spawn_refresh());
+                Some(login)
             }
         };
+        let sessions = ServerSessions {
+            sessions: Arc::clone(&login_sessions),
+            accounts: Some(accounts.clone()),
+            oidc,
+        };
+        let authorizer = SignedInAuthorizer::new(&config.auth.tenant, Arc::clone(&login_sessions));
         auth_tasks.push(reset_watcher(
             &store,
             &data,
@@ -667,6 +715,8 @@ impl Server {
                 public_origin: config.public_origin.clone(),
                 certificate_fingerprint: tls.fingerprint.clone(),
             },
+            sessions: Arc::clone(&login_sessions),
+            accounts: Some(accounts.clone()),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
@@ -694,10 +744,13 @@ impl Server {
         } else {
             axum::Router::new().nest(&config.base_path, tools::temporal::codec::routes())
         };
-        let mut routes = static_ui::routes(ui, sessions.clone(), page).merge(codec);
-        if let ServerSessions::SignIn(signed) = &sessions {
-            routes = routes.merge(signed.login.routes());
-        }
+        let mut routes = static_ui::routes(ui, sessions.clone(), page)
+            .merge(codec)
+            .merge(accounts.routes());
+        routes = match &sessions.oidc {
+            Some(login) => routes.merge(login.routes()),
+            None => routes.merge(accounts.logout_routes()),
+        };
         let codec_task = match config.codec_listen {
             Some(addr) => {
                 let listener = TcpListener::bind(addr)
@@ -743,10 +796,10 @@ impl Server {
         });
         events.record(&Event::ServerStart {
             version: VERSION.to_owned(),
-            mode: if config.auth.oidc.is_some() {
-                "oidc"
-            } else {
-                "local"
+            mode: match (config.auth.accounts, config.auth.oidc.is_some()) {
+                (true, true) => "accounts+oidc",
+                (true, false) => "accounts",
+                (false, _) => "oidc",
             }
             .to_owned(),
             exposed: config.is_exposed(),
@@ -787,20 +840,14 @@ impl Server {
         &self.store
     }
 
-    /// The local browser sessions, when no sign-in is configured.
-    pub fn local_sessions(&self) -> Option<&Arc<LocalSessions>> {
-        match &self.sessions {
-            ServerSessions::Local(local) => Some(local),
-            ServerSessions::SignIn(_) => None,
-        }
+    /// The login sessions.
+    pub fn login_sessions(&self) -> &Arc<LoginSessions> {
+        &self.sessions.sessions
     }
 
-    /// The signed-in sessions, with OIDC sign-in.
-    pub fn login_sessions(&self) -> Option<&Arc<LoginSessions>> {
-        match &self.sessions {
-            ServerSessions::Local(_) => None,
-            ServerSessions::SignIn(signed) => Some(&signed.sessions),
-        }
+    /// The built-in accounts.
+    pub fn accounts(&self) -> Option<&McAccounts> {
+        self.sessions.accounts.as_ref()
     }
 
     pub fn tls(&self) -> &ServerTls {
