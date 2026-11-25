@@ -184,8 +184,10 @@ async fn a_tampered_log_refuses_the_start_and_names_the_file() {
     let Err(err) = Server::start_with(config(&dir, None), StartOptions::default()).await else {
         panic!("a tampered log must not start");
     };
-    assert!(matches!(err, StartError::Audit(_)), "{err}");
+    // Found by the checks made before anything is opened (DOC-25 §3.6.2), with the others.
+    assert!(matches!(err, StartError::Preflight(_)), "{err}");
     let message = err.to_string();
+    assert!(message.contains("audit log"), "{message}");
     assert!(message.contains("audit-000000000001.jsonl"), "{message}");
     // A server with no data directory has nowhere to write: also refused.
     let mut no_data = config(&dir, None);
@@ -193,8 +195,7 @@ async fn a_tampered_log_refuses_the_start_and_names_the_file() {
     let Err(err) = Server::start_with(no_data, StartOptions::default()).await else {
         panic!("no data directory, no log, no start");
     };
-    // The store opens first (the audit checkpoint is keyed from its keys).
-    assert!(matches!(err, StartError::Store(_)), "{err}");
+    assert!(matches!(err, StartError::Preflight(_)), "{err}");
     assert!(err.to_string().contains("no data directory"), "{err}");
 }
 
@@ -414,7 +415,8 @@ async fn the_server_rotates_its_log_and_a_new_chain_follows_a_broken_one() {
     let Err(err) = Server::start_with(config(&dir, None), StartOptions::default()).await else {
         panic!("a broken log must not start");
     };
-    assert!(matches!(err, StartError::Audit(_)), "{err}");
+    assert!(matches!(err, StartError::Preflight(_)), "{err}");
+    assert!(err.to_string().contains("audit log"), "{err}");
 
     let mut again = config(&dir, None);
     again.audit.new_chain = true;

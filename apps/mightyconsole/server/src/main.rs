@@ -4,7 +4,6 @@
 use std::process::ExitCode;
 
 use mightyconsole_server::cli::{AuditTarget, Command, Env, USAGE, parse};
-use mightyconsole_server::tls::TlsSource;
 use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, ServedUi, Server, VERSION};
 
 fn main() -> ExitCode {
@@ -368,12 +367,11 @@ async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
     if let Err(e) = mightyconsole_server::secrets::disable_core_dumps() {
         eprintln!("mightyconsole-server: WARNING: {e}");
     }
-    let exposed = config.is_exposed();
+    let warnings = mightyconsole_server::preflight::warnings(&config);
     let sign_in = config.auth.oidc.as_ref().map(|oidc| oidc.issuer.clone());
     let accounts = config.auth.accounts;
     let signup_open = config.auth.signup == ambidex_axum::accounts::Signup::Open;
     let redirect_uri = config.login_routes().redirect_uri();
-    let generated_cert = matches!(config.tls, TlsSource::Generated { .. });
     let origin = format!("{}{}", config.public_origin, config.base_path);
     let hosts = config.allowed_hosts.join(", ");
     let server = match Server::start(config).await {
@@ -424,16 +422,9 @@ async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
             "off"
         }
     );
-    eprintln!(
-        "mightyconsole-server: WARNING: roles are not built yet: every signed-in person may do \
-         everything"
-    );
     // DOC-25 §3.6.2 point 3 (Open question 2): allowed, with a warning.
-    if exposed && generated_cert {
-        eprintln!(
-            "mightyconsole-server: WARNING: the certificate is self-signed: give --tls-cert and \
-             --tls-key"
-        );
+    for warning in warnings {
+        eprintln!("mightyconsole-server: WARNING: {warning}");
     }
     eprintln!("mightyconsole-server: open {origin}/");
 
