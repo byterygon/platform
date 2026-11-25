@@ -127,6 +127,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "admin.secrets.status",
+            Query,
+            "admin.secrets.manage",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "admin.sessions.list",
             Query,
             "admin.users.read",

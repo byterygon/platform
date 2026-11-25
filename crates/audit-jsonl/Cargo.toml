@@ -12,10 +12,16 @@ publish = false
 workspace = true
 
 [dependencies]
+# The checkpoint's HMAC-SHA-256 (DOC-25 §3.5.4).
+hmac = "0.13.0"
 security-types = { path = "../security-types" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11"
+zeroize = "1.9.1"
 tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+zeroize = "1.9.1"
 tokio = { version = "1.54.1", features = ["rt", "macros"] }

@@ -626,10 +626,14 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 name = "audit-jsonl"
 version = "0.1.0"
 dependencies = [
+ "hmac",
  "security-types",
+ "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -3867,6 +3871,7 @@ dependencies = [
  "eventsource-stream",
  "futures-util",
  "getrandom 0.4.3",
+ "hkdf",
  "hmac",
  "http-body-util",
  "hyper",

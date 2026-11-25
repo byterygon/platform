@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:6de6f524980becf48145685994aeb64b65c4047c0007b52b85af9f8980d0baa7";
+export const SCHEMA_HASH = "sha256:6c444a12f446bcaff29e521d9742157a0842ba35d6f781c16adccaa35b45681c";
 
 // ---- Types
 
@@ -1463,6 +1463,24 @@ export type Interrupt = { id?: string, value: JsonValue, };
 export type IntervalForm = { every: string, offset?: string | null, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
+
+/**
+ * One key, as `admin.secrets.status` shows it.
+ */
+export type KeyRow = { id: string, 
+/**
+ * `file`, `generated`, `passphrase` or `command`; empty for a key not loaded.
+ */
+source: string, active: boolean, 
+/**
+ * `false` for a key that stored entries name but the server has not loaded (only seen
+ * after a refused reload).
+ */
+loaded: boolean, 
+/**
+ * Entries whose data key is wrapped under it.
+ */
+entries: number, };
 
 export type LanggraphConnIdInput = { connId: string, };
 
@@ -2980,6 +2998,31 @@ maximumAttempts?: number | null, nonRetryableErrorTypes?: Array<string> | null, 
 export type RevokedOutput = { revoked: number, };
 
 /**
+ * Where the re-wrap job is.
+ */
+export type RewrapProgress = { 
+/**
+ * The job is moving entries now.
+ */
+running: boolean, 
+/**
+ * The key entries are moved to (the active key when the job last ran).
+ */
+to: string | null, 
+/**
+ * Entries moved by the job's current or last run.
+ */
+done: number, 
+/**
+ * Entries the current or last run set out to move.
+ */
+total: number, 
+/**
+ * Why the last run stopped early, without values.
+ */
+error: string | null, };
+
+/**
  * A role in force for a user, and how it reached them.
  */
 export type RoleGrant = { role: string, 
@@ -3473,6 +3516,19 @@ export type SearchAttributesOutput = { attributes: Array<SearchAttribute>,
  * Set when the server did not list them and these are the built-in ones only: its message.
  */
 fallback?: string, };
+
+/**
+ * What `admin.secrets.status` answers.
+ */
+export type SecretsStatusOutput = { 
+/**
+ * The keys, active first, then any key stored entries name but the server has not loaded.
+ */
+keys: Array<KeyRow>, 
+/**
+ * Stored secret entries.
+ */
+entries: number, rewrap: RewrapProgress, };
 
 export type SeenTaskQueue = { name: string, source: TaskQueueSource, 
 /**
@@ -4382,6 +4438,7 @@ export interface Procedures {
   readonly "admin.roles.get": ProcedureDef<"query", RoleIdInput, RoleInfo, ToolError>;
   readonly "admin.roles.list": ProcedureDef<"query", Empty, RolesListOutput, ToolError>;
   readonly "admin.roles.update": ProcedureDef<"mutation", RoleInput, RoleInfo, ToolError>;
+  readonly "admin.secrets.status": ProcedureDef<"query", Empty, SecretsStatusOutput, ToolError>;
   readonly "admin.sessions.list": ProcedureDef<"query", Empty, SessionsOutput, ToolError>;
   readonly "admin.sessions.revoke": ProcedureDef<"mutation", AdminRevokeInput, RevokedOutput, ToolError>;
   readonly "admin.users.create": ProcedureDef<"mutation", CreateUserInput, SetupLinkOutput, ToolError>;
@@ -4594,6 +4651,9 @@ export interface Api {
       readonly get: Procedures["admin.roles.get"];
       readonly list: Procedures["admin.roles.list"];
       readonly update: Procedures["admin.roles.update"];
+    };
+    readonly secrets: {
+      readonly status: Procedures["admin.secrets.status"];
     };
     readonly sessions: {
       readonly list: Procedures["admin.sessions.list"];
@@ -5000,6 +5060,18 @@ export const procedures: Api = {
         kind: "mutation",
         perm: "admin.roles.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    secrets: {
+      status: {
+        name: "admin.secrets.status",
+        kind: "query",
+        perm: "admin.secrets.manage",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

@@ -1,8 +1,9 @@
 // Security acceptance (DOC-25 §6), run on the lab with the identity provider (the `idp` profile:
 // Dex). Each build task wires its own items; TSK-141 attaches the evidence. Wired so far: "Login and
 // sessions" (TSK-136), "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
-// rotation; the checkpoint waits for the key of TSK-139), the built-in accounts and the default
-// administrator (TSK-142), Authorization and Destroy (TSK-138). The parts other tasks own are
+// rotation, and the checkpoint with the key of TSK-139), the built-in accounts and the default
+// administrator (TSK-142), Authorization and Destroy (TSK-138), and from TSK-139 the keys of the
+// secret store (the Start item about them, rotation). The parts other tasks own are
 // `manual` checks naming them; the rest of the Start section (TSK-141) and the Secrets section come
 // with their tasks. Until TSK-139 moves profiles to the server, every connection is the caller's
 // own (DOC-25 Open question 22): what roles do on shared profiles is proved by the server's tests,
@@ -117,6 +118,26 @@ export default {
       ],
     },
     {
+      id: "start-keys",
+      text: "(TSK-139) A key file with mode 0644, a wrong passphrase, a failing key command, and a store entry whose key is missing each refuse the start with their own message.",
+      checks: [
+        cargo("a_key_file_with_mode_0644_refuses_the_start", { label: "a key file with mode 0644" }),
+        cargo("a_wrong_passphrase_refuses_the_start", { label: "a wrong passphrase" }),
+        cargo("a_failing_key_command_refuses_the_start", { label: "a failing key command" }),
+        cargo("a_secret_whose_key_is_missing_refuses_the_start", { label: "a stored entry whose key is missing" }),
+        cargo("a_first_start_generates_a_key_and_says_where", { label: "a first start generates the key (0600) and says where, never what" }),
+      ],
+    },
+    {
+      id: "secrets-rotation",
+      text: "(TSK-139) After a key rotation (SIGHUP) every profile still connects, and the old key can be removed.",
+      checks: [
+        cargo("sighup_rotates_to_a_new_key_and_the_old_one_can_then_go", { label: "SIGHUP: a reload without the old key is refused; with the new key first every entry moves (secrets.rewrap start and end); then the old key goes" }),
+        cargo("rotation_with_calls_running_loses_nothing", { label: "rotation with calls running, and a restart half way (the job resumes)" }),
+        manual("every profile still connects after the rotation: with profiles on the server (TSK-139, a later batch)"),
+      ],
+    },
+    {
       id: "audit-events",
       text: "(TSK-137) A sign-in, a refused call, a write, a destroy with its confirmation, a Secret reveal, a file download, a connect and a role change each leave the entries of 3.5.1, with digests and no values.",
       checks: [
@@ -138,7 +159,8 @@ export default {
         cargo("audit_verify_passes_on_a_log_of_many_segments_and_names_each_kind_of_break", { label: "the audit verify command on a copy: intact (0), an edited line, a deleted line and a missing segment (1, naming file and line), nothing to check (2)" }),
         cargo("the_server_rotates_its_log_and_a_new_chain_follows_a_broken_one", { label: "the server rotates its log; --audit-new-chain moves a broken log aside and the new chain names it" }),
         command("audit-jsonl: segments, a gap across a boundary, retention with its anchor, the size limit and a full log", ["cargo", "test", "-p", "audit-jsonl"], { requires: ["cargo"] }),
-        manual("a log cut at its end (the checkpoint): needs the key of TSK-139; until then audit verify says the end is not checked"),
+        cargo("a_log_cut_at_its_end_is_found_by_the_checkpoint", { label: "a log cut at its end: audit verify and the start find it through the checkpoint (TSK-139)" }),
+        command("audit-jsonl: the checkpoint (a cut tail, a forged checkpoint, another key, rotation)", ["cargo", "test", "-p", "audit-jsonl", "--test", "segments", "--", "checkpoint"], { requires: ["cargo"] }),
       ],
     },
     {

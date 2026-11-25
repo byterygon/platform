@@ -36,6 +36,8 @@ pub struct AppState {
     pub confirmations: Arc<crate::authz::confirm::Confirmations>,
     /// Roles and users, for `app.me` (`None` only in the codegen router).
     pub management: Option<Arc<crate::management::Management>>,
+    /// The secret store, for `admin.secrets.*` (`None` only in the codegen router).
+    pub secrets: Option<Arc<crate::secrets::service::SecretService>>,
 }
 
 /// A tool built into the server.

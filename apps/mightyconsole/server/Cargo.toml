@@ -28,6 +28,8 @@ path = "src/main.rs"
 # RustCrypto (MIT OR Apache-2.0).
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
 argon2 = { version = "0.6.0", default-features = false, features = ["alloc"] }
+# The audit checkpoint's key, derived from the KEK (DOC-25 §3.5.4).
+hkdf = "0.13.0"
 ambidex = { path = "../../../crates/ambidex", features = ["arrow"] }
 ambidex-axum = { path = "../../../crates/ambidex-axum" }
 # NATS (spec §6.6): core, headers, request-reply, JetStream, KV, Object Store; rustls with ring, as the

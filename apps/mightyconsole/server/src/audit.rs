@@ -281,6 +281,20 @@ pub enum Event {
         ip: Option<IpAddr>,
         until_ms: u64,
     },
+    /// `secrets.rewrap` (DOC-25 §3.4.5), by `system:server`, when the re-wrap job starts and
+    /// when it ends: the keys it moves entries from, the active key, how many entries.
+    SecretsRewrap {
+        phase: &'static str,
+        from: Vec<String>,
+        to: String,
+        count: u64,
+    },
+    /// `server.restore` (DOC-25 §3.4.6), by `system:server`: the first start after a restore,
+    /// with the backup's last audit record.
+    ServerRestore {
+        backup_seq: String,
+        backup_hash: String,
+    },
 }
 
 /// Clips `text` to the detail's value limit on a character boundary and replaces control
@@ -313,6 +327,8 @@ impl Event {
             Event::AdminReset { .. } => "auth.admin.reset",
             Event::Signup { .. } => "auth.signup",
             Event::Lockout { .. } => "auth.lockout",
+            Event::SecretsRewrap { .. } => "secrets.rewrap",
+            Event::ServerRestore { .. } => "server.restore",
         }
     }
 
@@ -429,6 +445,34 @@ impl Event {
                         ("until", until_ms.to_string()),
                     ],
                 ),
+                Event::SecretsRewrap {
+                    phase,
+                    from,
+                    to,
+                    count,
+                } => (
+                    vec![system("system:server")],
+                    AuditDecision::Allow,
+                    Outcome::Success,
+                    vec![
+                        ("phase", (*phase).to_owned()),
+                        ("from", clip(&from.join(","))),
+                        ("to", clip(to)),
+                        ("count", count.to_string()),
+                    ],
+                ),
+                Event::ServerRestore {
+                    backup_seq,
+                    backup_hash,
+                } => (
+                    vec![system("system:server")],
+                    AuditDecision::Allow,
+                    Outcome::Success,
+                    vec![
+                        ("backup_seq", clip(backup_seq)),
+                        ("backup_hash", clip(backup_hash)),
+                    ],
+                ),
             };
         let name = self.name();
         AuditEntry {
@@ -497,6 +541,20 @@ impl Event {
                 "auth.lockout {user} (failures from {}) until {until_ms}",
                 ip_text(ip)
             ),
+            Event::SecretsRewrap {
+                phase,
+                from,
+                to,
+                count,
+            } => format!(
+                "secrets.rewrap {phase}: {count} entr{} from {} to {to}",
+                if *count == 1 { "y" } else { "ies" },
+                from.join(", ")
+            ),
+            Event::ServerRestore {
+                backup_seq,
+                backup_hash,
+            } => format!("server.restore from a backup ending at seq {backup_seq} ({backup_hash})"),
         };
         format!("mightyconsole-server: {text}")
     }
@@ -600,18 +658,21 @@ pub fn log_path(data: &Path) -> PathBuf {
 /// Opens the log of the data directory: `DATA/audit/audit-<n>.jsonl`, every segment read and the
 /// chain verified across them, a broken or unreadable log refused naming file, line and `seq`
 /// (DOC-25 §3.6.2 point 6). With `settings.new_chain` a broken log is moved to `broken-<utc>/`
-/// instead and a new chain starts, the name of the directory returned.
+/// instead and a new chain starts, the name of the directory returned. With `checkpoint` keys
+/// the checkpoint is checked (a tail cut before it is refused) and kept up to date (§3.5.4).
 pub fn open_log(
     data: &Path,
     settings: &AuditSettings,
     tenant: &str,
     warn: Option<Warn>,
+    checkpoint: Arc<audit_jsonl::checkpoint::CheckpointKeys>,
 ) -> Result<(SegmentedSink, Option<String>), AuditLogError> {
     let options = SegmentOptions {
         policy: settings.policy,
         tenant: TenantId::new(tenant),
         clock: Arc::new(security_types::SystemClock),
         warn,
+        checkpoint,
     };
     let dir = audit_dir(data);
     if settings.new_chain {
@@ -957,7 +1018,9 @@ mod tests {
     async fn the_durable_log_resumes_and_a_tampered_one_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let settings = AuditSettings::default();
-        let open = |settings: &AuditSettings| open_log(dir.path(), settings, "t", None);
+        let open = |settings: &AuditSettings| {
+            open_log(dir.path(), settings, "t", None, Default::default())
+        };
         let (sink, moved) = open(&settings).unwrap();
         assert!(moved.is_none());
         let first = audit_dir(dir.path()).join("audit-000000000001.jsonl");

@@ -188,7 +188,9 @@ async fn a_tampered_log_refuses_the_start_and_names_the_file() {
     let Err(err) = Server::start_with(no_data, StartOptions::default()).await else {
         panic!("no data directory, no log, no start");
     };
-    assert!(matches!(err, StartError::Audit(_)), "{err}");
+    // The store opens first (the audit checkpoint is keyed from its keys).
+    assert!(matches!(err, StartError::Store(_)), "{err}");
+    assert!(err.to_string().contains("no data directory"), "{err}");
 }
 
 /// The sensitive reads are the ones DOC-25 §3.5.2 names: the classification is on the procedure,

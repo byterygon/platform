@@ -63,6 +63,15 @@ pub enum KeySource {
 }
 
 impl KeySource {
+    /// `file`, `passphrase` or `command`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            KeySource::File(_) => "file",
+            KeySource::Passphrase { .. } => "passphrase",
+            KeySource::Command(_) => "command",
+        }
+    }
+
     fn describe(&self) -> String {
         match self {
             KeySource::File(path) => format!("key file {}", path.display()),
@@ -103,11 +112,21 @@ fn key_err(message: impl Into<String>) -> KeyError {
 /// The loaded keys: the first is the active one.
 pub struct Keyring {
     keys: Vec<Kek>,
+    /// Each key's source: `file`, `generated`, `passphrase` or `command`.
+    sources: Vec<&'static str>,
 }
 
 impl Keyring {
-    /// A keyring of these keys, active first. Refuses none, and two keys with one id.
+    /// A keyring of these keys (from key files), active first. Refuses none, and two keys with
+    /// one id.
     pub fn new(keys: Vec<Kek>) -> Result<Keyring, KeyError> {
+        let sources = vec!["file"; keys.len()];
+        Keyring::with_sources(keys, sources)
+    }
+
+    /// As [`Keyring::new`], with each key's source.
+    pub fn with_sources(keys: Vec<Kek>, sources: Vec<&'static str>) -> Result<Keyring, KeyError> {
+        assert_eq!(keys.len(), sources.len(), "one source per key");
         if keys.is_empty() {
             return Err(key_err("no key"));
         }
@@ -119,7 +138,12 @@ impl Keyring {
                 )));
             }
         }
-        Ok(Keyring { keys })
+        Ok(Keyring { keys, sources })
+    }
+
+    /// Each key's source, active first.
+    pub fn sources(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.sources.iter().copied()
     }
 
     pub fn active(&self) -> &Kek {
@@ -128,6 +152,11 @@ impl Keyring {
 
     pub fn get(&self, id: &str) -> Option<&Kek> {
         self.keys.iter().find(|k| k.id() == id)
+    }
+
+    /// The keys, active first.
+    pub fn keks(&self) -> impl Iterator<Item = &Kek> {
+        self.keys.iter()
     }
 
     /// The ids, active first.
@@ -180,11 +209,12 @@ pub async fn load(
             ));
             generated = Some(path);
         }
-        vec![key]
+        (vec![key], vec!["generated"])
     } else {
-        load_configured(data, &settings.keys, prompt, &mut warnings).await?
+        let keys = load_configured(data, &settings.keys, prompt, true, &mut warnings).await?;
+        (keys, settings.keys.iter().map(KeySource::kind).collect())
     };
-    let keyring = Keyring::new(keys)?;
+    let keyring = Keyring::with_sources(keys.0, keys.1)?;
     let missing: Vec<String> = entries_by_key
         .iter()
         .filter(|(id, _)| keyring.get(id).is_none())
@@ -415,6 +445,43 @@ pub fn read_key_file(path: &Path) -> Result<Kek, KeyError> {
     })
 }
 
+/// The keys that exist, for commands that read the data directory (`audit verify`): the
+/// configured keys, or the generated key when none is configured. Generates nothing, makes no
+/// passphrase key and asks on no terminal; `None` when no key is configured and none was
+/// generated.
+pub async fn load_existing(
+    data: &Path,
+    settings: &SecretsSettings,
+) -> Result<Option<Keyring>, KeyError> {
+    check_keys_dir(data)?;
+    if settings.keys.is_empty() {
+        let dir = keys_dir(data);
+        let found: Vec<PathBuf> = fs::read_dir(&dir)
+            .map(|d| {
+                d.filter_map(Result::ok)
+                    .map(|e| e.path())
+                    .filter(|p| {
+                        p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with("kek-") && n.ends_with(".key"))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if found.is_empty() {
+            return Ok(None);
+        }
+        let keys = found
+            .iter()
+            .map(|p| read_key_file(p))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Keyring::new(keys).map(Some);
+    }
+    let mut warnings = Vec::new();
+    let keys = load_configured(data, &settings.keys, false, false, &mut warnings).await?;
+    Keyring::new(keys).map(Some)
+}
+
 /// `keys generate --out FILE`: a new random key in a new file (mode 0600); its id.
 pub fn generate_file(out: &Path) -> Result<String, KeyError> {
     let kek = Kek::generate().map_err(|e| key_err(e.to_string()))?;
@@ -426,6 +493,7 @@ async fn load_configured(
     data: &Path,
     sources: &[KeySource],
     prompt: bool,
+    create: bool,
     warnings: &mut Vec<String>,
 ) -> Result<Vec<Kek>, KeyError> {
     // Passphrase keys are matched to their salts after every other key is known, so the salts
@@ -456,6 +524,12 @@ async fn load_configured(
                 }
                 None => unmatched.push((i, passphrase)),
             }
+        }
+        if !unmatched.is_empty() && !create {
+            return Err(key_err(format!(
+                "the passphrase opens no key in {}",
+                dir.display()
+            )));
         }
         if !unmatched.is_empty() && !salts.is_empty() {
             return Err(key_err(format!(
