@@ -19,6 +19,17 @@ export function describeError(error: unknown): DescribedError {
   return { title: error instanceof Error ? error.message : String(error) };
 }
 
+/**
+ * One line of About's diagnostics (DOC-21 §3.5): the time, the code, the correlation id and the
+ * server's message, nothing else. The details (the target's answer, a host key) stay out, and the
+ * server's messages hold no secret (TSK-141's redaction test), so neither does this list. `null`
+ * for an error without a correlation id (a local one, which the server log cannot match).
+ */
+export function diagnosticLine(d: DescribedError, at: Date): string | null {
+  if (!d.correlationId) return null;
+  return `${at.toISOString()} ${d.code ?? ""} ${d.correlationId} ${d.title}`;
+}
+
 /** The remedy a ToolError kind asks for (spec §2.6, "UI action"). */
 export function remedyOf(error: DescribedError): "retry" | "editProfile" | "trust" | "refresh" | null {
   switch (error.kind) {

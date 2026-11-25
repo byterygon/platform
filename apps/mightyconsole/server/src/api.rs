@@ -118,12 +118,22 @@ impl AppApi {
 }
 
 /// Input of `term.write`.
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TermWriteInput {
     pub terminal_id: String,
     /// The bytes typed or pasted, base64; at most 64 KiB decoded.
     pub data: String,
+}
+
+// What is typed into a terminal may be a password: never in a log line or a panic message.
+impl std::fmt::Debug for TermWriteInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TermWriteInput")
+            .field("terminal_id", &self.terminal_id)
+            .field("data_len", &self.data.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Input of `term.resize`.
@@ -248,27 +258,47 @@ pub struct Me {
 }
 
 /// Input of `app.account.changePassword`.
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangePasswordInput {
     pub current: String,
     pub new: String,
 }
 
+// Debug by hand: the passwords never reach a log line, an error or a panic message (TSK-141).
+impl std::fmt::Debug for ChangePasswordInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChangePasswordInput")
+            .finish_non_exhaustive()
+    }
+}
+
 /// Input of `app.account.totp.confirm`.
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TotpConfirmInput {
     /// The six-digit code the authenticator shows.
     pub code: String,
 }
 
+impl std::fmt::Debug for TotpConfirmInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TotpConfirmInput").finish_non_exhaustive()
+    }
+}
+
 /// Input of `app.account.totp.remove`.
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TotpRemoveInput {
     /// The current password.
     pub current: String,
+}
+
+impl std::fmt::Debug for TotpRemoveInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TotpRemoveInput").finish_non_exhaustive()
+    }
 }
 
 /// Output of `app.account.totp.begin`: shown once.

@@ -40,6 +40,12 @@ use table::{Ownership, StoredProfile, WriteError};
 pub const MAX_RECORD_BYTES: usize = 4 << 20;
 /// The longest profile name, in characters.
 pub const MAX_NAME_CHARS: usize = 100;
+/// Personal profiles one user may keep (TSK-141; DOC-25 Open question 26). Sign-up is open by
+/// default (Open question 1), so without a quota anyone who can reach the server could fill its
+/// disk with records of [`MAX_RECORD_BYTES`].
+pub const MAX_PERSONAL_PROFILES: usize = 200;
+/// The largest total of one user's personal profiles, as stored.
+pub const MAX_PERSONAL_BYTES: usize = 64 << 20;
 
 /// What a person may do with a profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -217,6 +223,12 @@ fn check_color(color: &Option<String>) -> Result<(), ProfileError> {
     }
 }
 
+/// The size of a record's `fields` and `extras`, as JSON.
+fn record_bytes(fields: &Value, extras: &Value) -> usize {
+    serde_json::to_vec(fields).map_or(0, |v| v.len())
+        + serde_json::to_vec(extras).map_or(0, |v| v.len())
+}
+
 /// `fields` and `extras` are objects, small enough, and `fields` holds no secret.
 fn check_record(spec: &ToolSpec, fields: &Value, extras: &Value) -> Result<(), ProfileError> {
     if !fields.is_object() {
@@ -233,8 +245,7 @@ fn check_record(spec: &ToolSpec, fields: &Value, extras: &Value) -> Result<(), P
             ));
         }
     }
-    let size = serde_json::to_vec(fields).map_or(0, |v| v.len())
-        + serde_json::to_vec(extras).map_or(0, |v| v.len());
+    let size = record_bytes(fields, extras);
     if size > MAX_RECORD_BYTES {
         return Err(invalid(
             "extras",
@@ -400,6 +411,31 @@ impl ProfileService {
         }
     }
 
+    /// The personal quota of `user` (TSK-141): `adding` bytes more, as a new profile when
+    /// `replacing` is `None`, else instead of that profile's record.
+    fn within_quota(
+        &self,
+        user: &str,
+        adding: usize,
+        replacing: Option<&str>,
+    ) -> Result<(), ProfileError> {
+        let (count, bytes) = self.store.personal_usage(user, replacing)?;
+        if replacing.is_none() && count >= MAX_PERSONAL_PROFILES {
+            return Err(ProfileError::Conflict(format!(
+                "you keep {count} personal profiles, the most this server allows \
+                 ({MAX_PERSONAL_PROFILES}): delete one first"
+            )));
+        }
+        if bytes.saturating_add(adding) > MAX_PERSONAL_BYTES {
+            return Err(ProfileError::Conflict(format!(
+                "your personal profiles would take {} bytes, more than this server keeps for one \
+                 person ({MAX_PERSONAL_BYTES}): make them smaller or delete one first",
+                bytes.saturating_add(adding)
+            )));
+        }
+        Ok(())
+    }
+
     fn may_use_host(
         &self,
         p: &Principal,
@@ -478,6 +514,9 @@ impl ProfileService {
             .unwrap_or_else(|| Value::Object(Default::default()));
         check_record(spec, &fields, &extras)?;
         self.may_use_host(p, spec, &fields)?;
+        if let Ownership::Personal { user } = &owner {
+            self.within_quota(user, record_bytes(&fields, &extras), None)?;
+        }
         let version = version.unwrap_or(spec.version);
         if version == 0 || version > spec.version {
             return Err(invalid(
@@ -550,6 +589,13 @@ impl ProfileService {
         }
         check_record(spec, &next.fields, &next.extras)?;
         self.may_use_host(p, spec, &next.fields)?;
+        if let Ownership::Personal { user } = &next.owner {
+            self.within_quota(
+                user,
+                record_bytes(&next.fields, &next.extras),
+                Some(&current.id),
+            )?;
+        }
         let secrets = check_secrets(spec, secrets)?;
         let unbind: Vec<&str> = spec
             .secrets_to_unbind(&current.fields, &next.fields)

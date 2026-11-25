@@ -488,6 +488,8 @@ pub struct StartOptions {
     /// thousands of audited calls, or that read the entries back). `None` is the log of the
     /// data directory, opened and verified before the server listens.
     pub audit_sink: Option<Arc<dyn AuditSink>>,
+    /// Where the server's log lines go instead of stderr (the redaction test reads them back).
+    pub log: Option<Arc<dyn LineWriter>>,
 }
 
 impl Default for StartOptions {
@@ -498,6 +500,7 @@ impl Default for StartOptions {
             sweep_interval: Some(SWEEP_INTERVAL),
             jq_worker: None,
             audit_sink: None,
+            log: None,
         }
     }
 }
@@ -573,7 +576,7 @@ impl Server {
         if let Some(worker) = options.jq_worker {
             core::jq::set_worker_program(worker);
         }
-        let log: Arc<dyn LineWriter> = Arc::new(Stderr);
+        let log: Arc<dyn LineWriter> = options.log.clone().unwrap_or_else(|| Arc::new(Stderr));
         // The store and the secret store's keys before the audit log, whose checkpoint is keyed
         // from them (DOC-25 §3.5.4).
         let data = config.data.clone().ok_or_else(|| {
@@ -852,7 +855,10 @@ impl Server {
                 config.audit,
                 Arc::clone(&log),
             ))
-            .with_targets(McTargets::new(Arc::clone(&hub)))
+            .with_targets(authz::limits::SecretCallLimits::new(
+                McTargets::new(Arc::clone(&hub)),
+                Arc::clone(&clock),
+            ))
             .with_denial_details();
         mount(&router, &state);
         sensitive.fill(&router);

@@ -198,7 +198,7 @@ pub struct ProfileIdInput {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileCreateInput {
     pub tool: String,
@@ -218,7 +218,22 @@ pub struct ProfileCreateInput {
     pub secrets: Option<BTreeMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+// Debug by hand: secret values never reach a log line, an error or a panic message (TSK-141).
+impl std::fmt::Debug for ProfileCreateInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProfileCreateInput")
+            .field("tool", &self.tool)
+            .field("name", &self.name)
+            .field("owner", &self.owner)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileUpdateInput {
     pub id: String,
@@ -241,6 +256,19 @@ pub struct ProfileUpdateInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub secrets: Option<BTreeMap<String, String>>,
+}
+
+impl std::fmt::Debug for ProfileUpdateInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProfileUpdateInput")
+            .field("id", &self.id)
+            .field("etag", &self.etag)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -293,7 +321,7 @@ pub struct ImportRecord {
     pub extras: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfileImportInput {
     /// The record's id in the browser.
@@ -304,6 +332,19 @@ pub struct ProfileImportInput {
     #[ts(optional = nullable)]
     pub secrets: Option<BTreeMap<String, String>>,
     pub owner: OwnerWire,
+}
+
+impl std::fmt::Debug for ProfileImportInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProfileImportInput")
+            .field("source_id", &self.source_id)
+            .field("owner", &self.owner)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -323,13 +364,22 @@ pub struct SecretOwnerWire {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[derive(Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SecretSetInput {
     pub owner: SecretOwnerWire,
     pub field: String,
     /// The value (redacted; never answered).
     pub value: String,
+}
+
+impl std::fmt::Debug for SecretSetInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretSetInput")
+            .field("owner", &self.owner)
+            .field("field", &self.field)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
