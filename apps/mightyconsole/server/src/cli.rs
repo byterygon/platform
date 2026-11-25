@@ -22,6 +22,7 @@ USAGE
   mightyconsole-server reset-admin [--print] [--data DIR] [--config FILE]
   mightyconsole-server keys generate --out FILE
   mightyconsole-server secrets status [--data DIR] [--config FILE]
+  mightyconsole-server restore --data DIR [--check-secrets] [--config FILE] FILE.tar
   mightyconsole-server --version | --help
 
 OPTIONS
@@ -96,6 +97,14 @@ SECRETS
   `keys generate --out FILE` writes a new key file (mode 0600) and prints its id.
   `secrets status` (server stopped) counts the stored secrets by key.
 
+BACKUP AND RESTORE
+  Offline: stop the server, copy the data directory without keys/, keep the keys (or the
+  passphrase) apart. Online: admin.backup.snapshot writes DATA/backups/backup-<utc>.tar (the
+  store, the audit log and its checkpoint; never the keys).
+  `restore --data DIR FILE.tar` unpacks a backup into a new (empty) DIR and checks the store
+  and the audit chain; --check-secrets also decrypts every stored secret with the configured
+  keys and names the ones that fail. Then provide the keys and start the server on DIR.
+
 The server keeps no connection settings: profiles live in the browser.
 ";
 
@@ -126,6 +135,12 @@ pub enum Command {
     /// `secrets status`: the stored secrets by key (DOC-25 §3.4.5).
     SecretsStatus {
         config: ServeConfig,
+    },
+    /// `restore --data DIR [--check-secrets] FILE.tar` (DOC-25 §3.4.6).
+    Restore {
+        config: ServeConfig,
+        archive: PathBuf,
+        check_secrets: bool,
     },
     Help,
     Version,
@@ -275,6 +290,38 @@ pub fn parse(args: impl IntoIterator<Item = String>, env: &Env) -> Result<Comman
             }
             let out = out.ok_or("keys generate: give --out FILE")?;
             return Ok(Command::KeysGenerate { out });
+        }
+        Some("restore") => {
+            args.next();
+            let mut check_secrets = false;
+            let mut archive = None;
+            let mut rest = Vec::new();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--check-secrets" => check_secrets = true,
+                    flag if flag.starts_with("--") => {
+                        rest.push(arg.clone());
+                        if !flag.contains('=') {
+                            rest.extend(args.next());
+                        }
+                    }
+                    _ if archive.is_none() => archive = Some(PathBuf::from(arg)),
+                    other => return Err(format!("restore: unexpected {other:?}")),
+                }
+            }
+            let archive = archive.ok_or("restore: name the backup file (FILE.tar)")?;
+            if !rest
+                .iter()
+                .any(|a| a == "--data" || a.starts_with("--data="))
+            {
+                return Err("restore: give --data DIR, the new data directory".into());
+            }
+            let config = parse_serve(rest.into_iter(), env)?;
+            return Ok(Command::Restore {
+                config,
+                archive,
+                check_secrets,
+            });
         }
         Some("secrets") => {
             args.next();
@@ -719,6 +766,36 @@ mod tests {
         write(dir.path(), "bad.toml", "[server]\nlisten = 1\n");
         let bad = format!("--config {}", dir.path().join("bad.toml").display());
         assert!(parse(args(&bad), &Env::default()).is_err());
+    }
+
+    #[test]
+    fn restore_parses_and_needs_a_new_data_directory() {
+        let Command::Restore {
+            config,
+            archive,
+            check_secrets,
+        } = parse(
+            args("restore --data /new --check-secrets /b/backup-x.tar"),
+            &Env::data("/old"),
+        )
+        .unwrap()
+        else {
+            panic!("restore");
+        };
+        assert_eq!(config.data, Some("/new".into()));
+        assert_eq!(archive, PathBuf::from("/b/backup-x.tar"));
+        assert!(check_secrets);
+        // $MIGHTYCONSOLE_DATA is not enough: the directory is named.
+        assert!(
+            parse(args("restore /b/x.tar"), &Env::data("/old"))
+                .unwrap_err()
+                .contains("--data")
+        );
+        assert!(
+            parse(args("restore --data /new"), &Env::default())
+                .unwrap_err()
+                .contains("FILE.tar")
+        );
     }
 
     #[test]

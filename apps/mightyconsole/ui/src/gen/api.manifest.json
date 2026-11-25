@@ -12169,6 +12169,35 @@
       ],
       "type": "string"
     },
+    "SnapshotOutput": {
+      "description": "What `admin.backup.snapshot` answers.",
+      "properties": {
+        "auditSeq": {
+          "description": "The last audit record in it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "file": {
+          "description": "The file, relative to the data directory (`backups/backup-<utc>.tar`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "bytes",
+        "auditSeq"
+      ],
+      "type": "object"
+    },
     "SshFacts": {
       "description": "The connection's SSH side, for the Host page's subtitle.",
       "properties": {
@@ -14835,6 +14864,27 @@
   },
   "format": "ambidex.manifest.v1",
   "procedures": [
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.backup.snapshot",
+      "output": {
+        "$ref": "#/$defs/SnapshotOutput"
+      },
+      "perm": "admin.secrets.manage",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
     {
       "agent": "hidden",
       "deprecated": false,
@@ -19285,5 +19335,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:6c444a12f446bcaff29e521d9742157a0842ba35d6f781c16adccaa35b45681c"
+  "schema_hash": "sha256:ecf61d52212b8d1e9943408afba4283216e6ca4ac5d41edc6aabda69869084f6"
 }

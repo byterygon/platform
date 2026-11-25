@@ -85,6 +85,17 @@ pub struct SegmentOptions {
     pub checkpoint: Arc<CheckpointKeys>,
 }
 
+/// What a backup copies of the log (DOC-25 §3.4.6): the closed segments, oldest first, and the
+/// checkpoint that names their last record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackupSet {
+    pub segments: Vec<PathBuf>,
+    /// The bytes of `checkpoint.json`, when the log has keys.
+    pub checkpoint: Option<Vec<u8>>,
+    /// The last record: `seq` and hash.
+    pub head: Option<(u64, Digest)>,
+}
+
 /// A snapshot for `audit.status` (DOC-25 §3.5.7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentStatus {
@@ -407,6 +418,40 @@ impl SegmentedSink {
                 false
             }
         }
+    }
+
+    /// For a backup: closes the active segment when it holds records (so every record is in a
+    /// closed segment, which never changes again), writes the checkpoint of the head, and names
+    /// the closed segments. Retention may delete the oldest of them later; the caller copies
+    /// them soon.
+    pub fn close_for_backup(&self) -> Result<BackupSet, AuditError> {
+        let mut state = lock(&self.inner.state);
+        if let Some(reason) = &state.failed {
+            return Err(AuditError(reason.clone()));
+        }
+        if state.active.info.records > 0 {
+            self.rotate(&mut state)?;
+        }
+        if !self.write_checkpoint(&mut state) {
+            return Err(AuditError(
+                "the audit checkpoint could not be written".into(),
+            ));
+        }
+        let checkpoint = match fs::read(self.inner.dir.join(checkpoint::CHECKPOINT_FILE)) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => return Err(AuditError(format!("reading the checkpoint: {}", e.kind()))),
+        };
+        Ok(BackupSet {
+            segments: state
+                .closed
+                .iter()
+                .filter(|s| s.records > 0)
+                .map(|s| s.path.clone())
+                .collect(),
+            checkpoint,
+            head: head(&state),
+        })
     }
 
     /// Applies the retention and size policy now. The owner calls it once a day.

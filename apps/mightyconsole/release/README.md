@@ -143,6 +143,12 @@ accept or trust the certificate. To avoid the warning, give your own certificate
   secret to it in the background (`mightyconsole-server secrets status` with the server stopped,
   or `admin.secrets.status`, shows the progress). When no secret is left under the old key,
   remove it from the configuration.
+- **Backups.** Offline: stop the server and copy the data directory without `keys/`; keep the
+  keys (or the passphrase) somewhere else. Online: an administrator's `admin.backup.snapshot`
+  writes `backups/backup-<utc>.tar` in the data directory (the store, the audit log and its
+  checkpoint; never the keys); move it off the machine. To restore:
+  `mightyconsole-server restore --data NEW_DIR [--check-secrets] backup-<utc>.tar`, then provide
+  the keys and start the server on `NEW_DIR`. Without the keys the restored server does not start.
 - Live connections are held in the server's memory for the browser tab that opened them and are
   released when the tab closes, on Disconnect, or after 10 minutes without use.
 

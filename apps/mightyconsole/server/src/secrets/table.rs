@@ -150,25 +150,11 @@ impl Store {
         max_wraps: u64,
         make: impl FnOnce(u64) -> Result<SecretEntry, SecretError>,
     ) -> Result<SecretEntry, SecretError> {
-        let key = row_key(owner, field);
         let write = self.db().begin_write().map_err(store_err)?;
         let entry = {
             let mut table = write.open_table(SECRETS).map_err(store_err)?;
             let mut meta = write.open_table(META).map_err(store_err)?;
-            let version = match table.get(key.as_str()).map_err(store_err)? {
-                Some(row) => decode(row.value())?.version + 1,
-                None => 1,
-            };
-            let wraps = bump_wraps(&mut meta, kek_id, max_wraps)?;
-            let entry = make(version)?;
-            debug_assert_eq!(entry.kek_id, kek_id);
-            let bytes = serde_json::to_vec(&entry).map_err(store_err)?;
-            table
-                .insert(key.as_str(), bytes.as_slice())
-                .map_err(store_err)?;
-            meta.insert(wraps_key(kek_id).as_str(), wraps.to_string().as_str())
-                .map_err(store_err)?;
-            entry
+            put_in(&mut table, &mut meta, owner, field, kek_id, max_wraps, make)?
         };
         write.commit().map_err(store_err)?;
         Ok(entry)
@@ -304,6 +290,72 @@ impl Store {
         }
         Ok(out)
     }
+}
+
+/// The tables a write transaction needs for [`put_in`].
+/// The `secrets` table and `meta`, open in a write transaction.
+pub(crate) type WriteTables<'t> = (
+    redb::Table<'t, &'static str, &'static [u8]>,
+    redb::Table<'t, &'static str, &'static str>,
+);
+
+pub(crate) fn open_tables(write: &redb::WriteTransaction) -> Result<WriteTables<'_>, SecretError> {
+    Ok((
+        write.open_table(SECRETS).map_err(store_err)?,
+        write.open_table(META).map_err(store_err)?,
+    ))
+}
+
+/// One entry, read in a transaction the caller holds.
+pub(crate) fn get_in(
+    table: &impl redb::ReadableTable<&'static str, &'static [u8]>,
+    owner: &Owner,
+    field: &str,
+) -> Result<Option<SecretEntry>, SecretError> {
+    table
+        .get(row_key(owner, field).as_str())
+        .map_err(store_err)?
+        .map(|row| decode(row.value()))
+        .transpose()
+}
+
+/// [`Store::put_secret`] in a transaction the caller holds (an account and its TOTP key in one).
+pub(crate) fn put_in(
+    table: &mut redb::Table<'_, &'static str, &'static [u8]>,
+    meta: &mut redb::Table<'_, &'static str, &'static str>,
+    owner: &Owner,
+    field: &str,
+    kek_id: &str,
+    max_wraps: u64,
+    make: impl FnOnce(u64) -> Result<SecretEntry, SecretError>,
+) -> Result<SecretEntry, SecretError> {
+    let key = row_key(owner, field);
+    let version = match table.get(key.as_str()).map_err(store_err)? {
+        Some(row) => decode(row.value())?.version + 1,
+        None => 1,
+    };
+    let wraps = bump_wraps(meta, kek_id, max_wraps)?;
+    let entry = make(version)?;
+    debug_assert_eq!(entry.kek_id, kek_id);
+    let bytes = serde_json::to_vec(&entry).map_err(store_err)?;
+    table
+        .insert(key.as_str(), bytes.as_slice())
+        .map_err(store_err)?;
+    meta.insert(wraps_key(kek_id).as_str(), wraps.to_string().as_str())
+        .map_err(store_err)?;
+    Ok(entry)
+}
+
+/// Removes one entry in a transaction the caller holds.
+pub(crate) fn remove_in(
+    table: &mut redb::Table<'_, &'static str, &'static [u8]>,
+    owner: &Owner,
+    field: &str,
+) -> Result<bool, SecretError> {
+    Ok(table
+        .remove(row_key(owner, field).as_str())
+        .map_err(store_err)?
+        .is_some())
 }
 
 /// The count of wraps under `kek_id` after one more, refused at `max_wraps`.

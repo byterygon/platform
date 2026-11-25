@@ -646,3 +646,30 @@ async fn a_rotation_writes_the_checkpoint_and_new_keys_take_over() {
     let cp = audit_jsonl::checkpoint::read(dir.path()).unwrap().unwrap();
     assert_eq!((cp.seq, cp.kek_id.as_str()), (11, "k2"));
 }
+
+#[tokio::test]
+async fn a_backup_closes_the_active_segment_and_names_every_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let sink = SegmentedSink::open(dir.path(), keyed(&clock, "k1", 1)).unwrap();
+    for i in 0..5 {
+        sink.append(entry(i, T0)).await.unwrap();
+    }
+    let set = sink.close_for_backup().unwrap();
+    assert_eq!(set.segments.len(), 1);
+    assert_eq!(set.head.unwrap().0, 4);
+    let cp: audit_jsonl::checkpoint::Checkpoint =
+        serde_json::from_slice(&set.checkpoint.unwrap()).unwrap();
+    assert_eq!(cp.seq, 4);
+    // The copy verifies on its own, and the log goes on in a new segment.
+    let copy = tempfile::tempdir().unwrap();
+    for path in &set.segments {
+        fs::copy(path, copy.path().join(path.file_name().unwrap())).unwrap();
+    }
+    assert_eq!(check_files(&files(copy.path())).unwrap().records, 5);
+    sink.append(entry(5, T0)).await.unwrap();
+    assert_eq!(files(dir.path()).len(), 2);
+    // Nothing new: nothing to close, the same segments.
+    let again = sink.close_for_backup().unwrap();
+    assert_eq!(again.segments.len(), 2);
+}
