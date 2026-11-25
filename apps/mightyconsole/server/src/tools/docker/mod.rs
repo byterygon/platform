@@ -260,7 +260,6 @@ impl DockerApi {
         perm = "docker.read",
         risk = Risk::Read,
         timeout_default = "60s",
-        redact = ["profile.privateKey", "profile.passphrase", "profile.password"],
         audit = "always",
     )]
     async fn connect(
@@ -268,10 +267,7 @@ impl DockerApi {
         ctx: Ctx,
         input: DockerConnectInput,
     ) -> ToolResult<DockerConnectOutput> {
-        let (profile, acts_on) = self
-            .0
-            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
-            .await?;
+        let (profile, acts_on) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
         let target = target(&profile)?;
         let socket = socket_path(&profile)?;
         let auth = profile.auth.unwrap_or_default();

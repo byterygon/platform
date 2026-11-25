@@ -10,7 +10,7 @@ import type { AnyRoute } from "@tanstack/react-router";
 import { Icon } from "@/components/ui/icon";
 import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute, str } from "@/app/router";
 import { viewOf } from "@/app/tab-view";
-import type { ConnectDockerProfile, ContainerRow } from "@/gen/api";
+import type { ContainerRow } from "@/gen/api";
 import { BoxMultiple, Cube, Globe, HardDrive, Image, Server, Stack } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
 import { CONTAINER_VIEWS, ContainerTab } from "./ContainerTab";
@@ -229,7 +229,7 @@ export const dockerTool: ToolModule = {
   ],
   actions: [],
   async connect(client, record) {
-    const out = await client.docker.connect({ profile: profile.toConnect(record) as ConnectDockerProfile });
+    const out = await client.docker.connect({ profileId: record.id });
     return { connId: out.connId };
   },
   async disconnect(client, connId) {

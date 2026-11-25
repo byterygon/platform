@@ -36,7 +36,8 @@ export type ActionId =
   | "shortcuts"
   | "about"
   | "exportProfiles"
-  | "importProfiles";
+  | "importProfiles"
+  | "moveProfiles";
 
 export type ActionGroup = "App" | "Tools" | "Connections" | "Tabs" | "Live views" | "Navigation";
 
@@ -68,6 +69,7 @@ export const ACTIONS: readonly Action[] = [
   { id: "addConnection", label: "Add connection", group: "Connections", keys: ["Mod+Alt+N"], keywords: ["new", "profile"] },
   { id: "exportProfiles", label: "Export profiles", group: "Connections", keys: [], keywords: ["backup", "save", "file"] },
   { id: "importProfiles", label: "Import profiles", group: "Connections", keys: [], keywords: ["restore", "load", "file"] },
+  { id: "moveProfiles", label: "Move my profiles to the server", group: "Connections", keys: [], keywords: ["import", "browser", "indexeddb", "migrate"] },
   { id: "closeTab", label: "Close tab", group: "Tabs", keys: ["Alt+Shift+W"] },
   { id: "nextTab", label: "Next tab", group: "Tabs", keys: ["Alt+Shift+]"] },
   { id: "prevTab", label: "Previous tab", group: "Tabs", keys: ["Alt+Shift+["] },

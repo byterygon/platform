@@ -5,10 +5,14 @@
 //! [`crate::core`] (live handles, terminals, stream progress, [`ToolError`]) and its own
 //! libraries, never another tool. Its procedures:
 //!
-//! - `<tool>.connect { profile }` (mutation, Read) opens the tool's client from the profile the
-//!   browser sends (the server keeps no configuration) and returns a `connId`
-//!   ([`Hub::insert`]); `<tool>.disconnect { connId }` (mutation, Read) releases it,
-//!   idempotently ([`Hub::remove`]).
+//! - `<tool>.connect { profileId }` (mutation, Read, audited) opens the tool's client from a
+//!   stored profile, its secrets opened on the server ([`crate::core::stored`],
+//!   [`crate::profiles::connect`]), and returns a `connId` ([`Hub::insert_for`]);
+//!   `<tool>.disconnect { connId }` (mutation, Read) releases it, idempotently ([`Hub::remove`]).
+//! - `<tool>.test { draft, basedOn? }` (mutation, Read, audited): Test connection of the profile
+//!   form; `draft.secrets` is redacted and used for that call only.
+//! - A tool's secret fields and the target fields guarding them are in
+//!   [`crate::profiles::spec`]; it never takes a secret from the browser otherwise.
 //! - Every other procedure names the `connId` and gets the handle with [`Hub::get`], or
 //!   [`Hub::busy`] for a stream, so that the idle sweep leaves it alone while the stream runs.
 //! - Streams select on the handle's token, so releasing the handle ends them.
@@ -16,7 +20,7 @@
 //!   procedure is hidden from agents (the default); inputs holding secrets are in `redact`.
 //!
 //! [`ToolError`]: crate::core::ToolError
-//! [`Hub::insert`]: crate::core::Hub::insert
+//! [`Hub::insert_for`]: crate::core::Hub::insert_for
 //! [`Hub::remove`]: crate::core::Hub::remove
 //! [`Hub::get`]: crate::core::Hub::get
 //! [`Hub::busy`]: crate::core::Hub::busy

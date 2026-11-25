@@ -60,14 +60,9 @@ pub const MAX_SUBJECTS: usize = 32;
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NatsConnectInput {
-    /// The stored profile to connect with (DOC-25 §3.4.7).
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile_id: Option<String>,
-    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile: Option<ConnectNatsProfile>,
+    /// The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+    /// browser never sends one.
+    pub profile_id: String,
 }
 
 /// What the server said about itself when the client connected (`INFO`).
@@ -434,14 +429,10 @@ impl NatsApi {
     #[rpc::mutation(
         perm = "nats.read",
         risk = Risk::Read,
-        redact = ["profile.password", "profile.token", "profile.nkeySeed", "profile.creds", "profile.tls.clientKeyPem", "profile.schemaRegistry.password", "profile.schemaRegistry.token", "profile.schemaRegistry.tls.clientKeyPem"],
         audit = "always",
     )]
     async fn connect(&self, ctx: Ctx, input: NatsConnectInput) -> ToolResult<NatsConnectOutput> {
-        let (profile, target) = self
-            .0
-            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
-            .await?;
+        let (profile, target) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
         let prepared = options(&profile)?;
         // Checked before connecting: a registry the profile cannot use fails the connect.
         let registry = match &profile.schema_registry {

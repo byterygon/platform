@@ -27,7 +27,6 @@ const schemaV2: ProfileSchema = {
       return { ...r, secrets: { ...rest, password: pw } };
     },
   },
-  toConnect: (r) => r.fields,
 };
 
 const schemas = (tool: string) => (tool === "test" ? schemaV2 : tool === "echo" ? echoTool.profile : undefined);

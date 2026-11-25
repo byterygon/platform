@@ -1,14 +1,15 @@
 // The NATS profile (Mightyconsole spec §6.1): its versioned schema, defaults, validation and the
 // input of `nats.connect`. Pure, so the form and the tests share it.
-import type { ConnectNatsProfile, LocalSchema, NatsAuth, SchemaMapping, TlsOptions } from "@/gen/api";
-import type { ProfileRecord } from "@/profiles/record";
-import { registryOf, registryToConnect } from "@/messaging/schemas/registry";
+import { hasSecret, type ProfileRecord } from "@/profiles/record";
 import type { FieldErrors, ProfileSchema } from "../types";
 
 export const DEFAULT_SERVER = "nats://127.0.0.1:4222";
 export const DEFAULT_CONNECTION_NAME = "mightyconsole";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 export const MAX_REQUEST_TIMEOUT_MS = 300_000;
+
+/** How a NATS profile signs in (the server's connect profile takes the same names). */
+export type NatsAuth = "none" | "userPassword" | "token" | "nkey" | "creds";
 
 export const AUTH_LABELS: Record<NatsAuth, string> = {
   none: "None",
@@ -107,7 +108,7 @@ export const profile: ProfileSchema = {
     const auth = authOf(rec.fields);
     if (auth === "userPassword" && text(rec.fields["user"]).trim() === "") errors["user"] = "A user name is required.";
     const secret = SECRET_OF[auth];
-    if (secret && auth !== "userPassword" && text(rec.secrets[secret]).trim() === "") errors[secret] = "Required for this authentication.";
+    if (secret && auth !== "userPassword" && !hasSecret(rec, secret)) errors[secret] = "Required for this authentication.";
     if (auth === "nkey") {
       const seed = text(rec.secrets["nkeySeed"]).trim();
       if (seed !== "" && !(seed.startsWith("SU") && seed.length === 58)) errors["nkeySeed"] = "A user nkey seed starts with SU and is 58 characters long.";
@@ -121,48 +122,8 @@ export const profile: ProfileSchema = {
     const prefix = text(rec.fields["inboxPrefix"]).trim();
     if (/[*> ]/.test(prefix)) errors["inboxPrefix"] = "A subject without wildcards or spaces.";
     const tls = tlsOf(rec.fields);
-    const clientKey = text(rec.secrets["clientKeyPem"]);
-    if (tls.enabled && (tls.clientCertPem !== undefined) !== (clientKey !== "")) errors["tls"] = tls.clientCertPem === undefined ? "A client key needs its certificate." : "A client certificate needs its private key.";
+    if (tls.enabled && (tls.clientCertPem !== undefined) !== hasSecret(rec, "clientKeyPem")) errors["tls"] = tls.clientCertPem === undefined ? "A client key needs its certificate." : "A client certificate needs its private key.";
     return errors;
   },
   migrations: {},
-  toConnect(rec: ProfileRecord): ConnectNatsProfile {
-    const auth = authOf(rec.fields);
-    const tls = tlsOf(rec.fields);
-    const secret = (key: string): string | null => {
-      const value = text(rec.secrets[key]);
-      return value !== "" ? value : null;
-    };
-    const tlsOptions: TlsOptions = { enabled: tls.enabled };
-    if (tls.enabled) {
-      tlsOptions.caPem = tls.caPem ?? null;
-      tlsOptions.clientCertPem = tls.clientCertPem ?? null;
-      tlsOptions.serverName = tls.serverName ?? null;
-      tlsOptions.clientKeyPem = secret("clientKeyPem");
-    }
-    const js = record(rec.fields["jetstream"]);
-    const schemas = Array.isArray(rec.extras["schemas"]) ? (rec.extras["schemas"] as LocalSchema[]) : [];
-    const mappings = Array.isArray(rec.extras["mappings"]) ? (rec.extras["mappings"] as SchemaMapping[]) : [];
-    const registry = registryOf(rec);
-    return {
-      name: rec.name,
-      servers: serversOf(rec.fields),
-      auth,
-      // Only the chosen authentication's values travel.
-      user: auth === "userPassword" ? text(rec.fields["user"]).trim() || null : null,
-      password: auth === "userPassword" ? (typeof rec.secrets["password"] === "string" ? (rec.secrets["password"] as string) : null) : null,
-      token: auth === "token" ? secret("token") : null,
-      nkeySeed: auth === "nkey" ? (secret("nkeySeed")?.trim() ?? null) : null,
-      creds: auth === "creds" ? secret("creds") : null,
-      tls: tlsOptions,
-      connectionName: text(rec.fields["connectionName"]).trim() || null,
-      jetstream: { domain: text(js["domain"]).trim() || null, apiPrefix: text(js["apiPrefix"]).trim() || null },
-      inboxPrefix: text(rec.fields["inboxPrefix"]).trim() || null,
-      requestTimeoutMs: requestTimeoutOf(rec),
-      schemas,
-      mappings,
-      // The registry's wire format is looked for only on the subjects the profile lists.
-      schemaRegistry: registry ? registryToConnect(registry, rec.secrets, true) : null,
-    };
-  },
 };

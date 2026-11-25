@@ -1,7 +1,6 @@
 // The Temporal profile (Mightyconsole spec §9.1): its versioned schema, defaults, validation and
 // the input of `temporal.connect`. Pure, so the form and the tests share it.
-import type { ConnectTemporalProfile, ExternalStorageOptions, TemporalTlsOptions } from "@/gen/api";
-import type { ProfileRecord } from "@/profiles/record";
+import { hasSecret, type ProfileRecord } from "@/profiles/record";
 import type { FieldErrors, ProfileSchema } from "../types";
 
 export const DEFAULT_ADDRESS = "127.0.0.1:7233";
@@ -181,8 +180,8 @@ export const profile: ProfileSchema = {
     const pageSize = record.fields["pageSize"];
     if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000)) errors["pageSize"] = "A whole number from 1 to 1000.";
     const tls = tlsOf(record.fields);
-    const apiKey = text(record.secrets["apiKey"]);
-    const clientKey = text(record.secrets["clientKeyPem"]);
+    const apiKey = hasSecret(record, "apiKey");
+    const clientKey = hasSecret(record, "clientKeyPem");
     const payloadCodec = payloadCodecOf(record.fields);
     if (payloadCodec.enabled) {
       const e = payloadCodec.endpoint.trim() === "" ? "The codec server's URL is required." : codecEndpointError(payloadCodec.endpoint);
@@ -201,69 +200,13 @@ export const profile: ProfileSchema = {
       if (ext.endpoint.trim() !== "" && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(ext.endpoint.trim())) errors["externalStorage.endpoint"] = "An http:// or https:// URL, for example https://minio.example.com:9000.";
       if (ext.thresholdBytes !== undefined && (!Number.isInteger(ext.thresholdBytes) || ext.thresholdBytes < 1)) errors["externalStorage.thresholdBytes"] = "A whole number of bytes, 1 or more.";
     }
-    if (apiKey !== "" && !tls.enabled) errors["tls"] = "An API key is only sent over TLS; turn TLS on.";
-    else if ((tls.clientCertPem !== undefined) !== (clientKey !== "") && tls.enabled) {
+    if (apiKey && !tls.enabled) errors["tls"] = "An API key is only sent over TLS; turn TLS on.";
+    else if ((tls.clientCertPem !== undefined) !== clientKey && tls.enabled) {
       errors["tls"] = tls.clientCertPem === undefined ? "A client key needs its certificate." : "A client certificate needs its private key.";
     }
     return errors;
   },
   migrations: {},
-  toConnect(record: ProfileRecord): ConnectTemporalProfile {
-    const tls = tlsOf(record.fields);
-    const options: TemporalTlsOptions = { enabled: tls.enabled };
-    if (tls.enabled) {
-      options.caPem = tls.caPem ?? null;
-      options.clientCertPem = tls.clientCertPem ?? null;
-      options.serverName = tls.serverName ?? null;
-    }
-    const apiKey = text(record.secrets["apiKey"]);
-    const clientKeyPem = text(record.secrets["clientKeyPem"]);
-    const ext = externalStorageOf(record.fields);
-    const secret = (key: string) => text(record.secrets[key]).trim() || null;
-    const externalStorage: ExternalStorageOptions | null = ext.enabled
-      ? {
-          enabled: true,
-          bucket: ext.bucket.trim(),
-          readBuckets: bucketsOf(ext.readBuckets),
-          region: ext.region.trim() || null,
-          endpoint: ext.endpoint.trim() || null,
-          pathStyle: ext.pathStyle,
-          caPem: ext.caPem.trim() || null,
-          driverName: null,
-          thresholdBytes: ext.thresholdBytes ?? null,
-          maxPayloadBytes: null,
-        }
-      : null;
-    const codec = codecServerOf(record.fields);
-    const pc = payloadCodecOf(record.fields);
-    const payloadCodec = pc.enabled
-      ? {
-          enabled: true,
-          endpoint: pc.endpoint.trim(),
-          namespaces: codecNamespacesOf(pc.namespaces) ?? [],
-          caPem: pc.caPem.trim() || null,
-          sendNamespace: pc.sendNamespace,
-          encodeInputs: pc.encodeInputs,
-          timeoutMs: pc.timeoutMs ?? null,
-        }
-      : null;
-    return {
-      name: record.name,
-      codec: payloadCodec,
-      codecAuthorization: payloadCodec ? text(record.secrets["codecAuthorization"]).trim() || null : null,
-      profileId: record.id,
-      codecServer: externalStorage && codec.enabled ? { enabled: true, allowedOrigins: bucketsOf(codec.allowedOrigins) } : null,
-      address: text(record.fields["address"]).trim() || null,
-      namespace: text(record.fields["namespace"]).trim() || null,
-      tls: options,
-      clientKeyPem: clientKeyPem !== "" ? clientKeyPem : null,
-      apiKey: apiKey !== "" ? apiKey : null,
-      externalStorage,
-      s3AccessKeyId: externalStorage ? secret("s3AccessKeyId") : null,
-      s3SecretAccessKey: externalStorage ? secret("s3SecretAccessKey") : null,
-      s3SessionToken: externalStorage ? secret("s3SessionToken") : null,
-    };
-  },
 };
 
 /** The page size a profile asks for, 50 when it names none. */

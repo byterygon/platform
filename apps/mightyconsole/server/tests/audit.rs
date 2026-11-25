@@ -125,11 +125,12 @@ async fn the_digest_does_not_depend_on_the_secret() {
     let path = log_path(t._dir.path());
     let browser = t.browser().await;
     let mut tab = t.tab(&browser).await;
+    // Test connection's draft secrets are redacted before the digest (connect takes none).
     for (id, token) in [(1, "one"), (2, "two")] {
         tab.call(
             id,
-            "echo.connect",
-            json!({ "profile": { "name": "lab", "token": token } }),
+            "echo.test",
+            json!({ "draft": { "name": "lab", "fields": {}, "secrets": { "token": token } } }),
         )
         .await;
         tab.result(id).await;
@@ -139,7 +140,7 @@ async fn the_digest_does_not_depend_on_the_secret() {
     let digests: Vec<String> = read_records(&path)
         .unwrap()
         .iter()
-        .filter(|r| r.entry.action.name == "echo.connect" && r.entry.outcome == Outcome::Success)
+        .filter(|r| r.entry.action.name == "echo.test" && r.entry.outcome == Outcome::Success)
         .map(|r| r.entry.input_digest.to_string())
         .collect();
     assert_eq!(digests.len(), 2);
@@ -155,9 +156,13 @@ async fn without_a_writable_log_writes_and_sensitive_reads_are_refused_and_other
     let t = start_with_durable_audit(options).await;
     let browser = t.browser().await;
     let mut tab = t.tab(&browser).await;
-    // A sensitive read: refused, nothing ran.
-    tab.call(1, "echo.connect", json!({ "profile": { "name": "lab" } }))
-        .await;
+    // A sensitive read (Test connection of the caller's own draft): refused, nothing ran.
+    tab.call(
+        1,
+        "echo.test",
+        json!({ "draft": { "fields": {}, "secrets": {} } }),
+    )
+    .await;
     let err = tab.error(1, Code::Unavailable).await;
     assert!(err.retryable);
     // An ordinary read still works.

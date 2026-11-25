@@ -114,6 +114,8 @@ export type Dialog =
   | { kind: "profile"; tool: string; editId?: string; duplicateOf?: string; name?: string }
   | { kind: "deleteProfile"; id: string }
   | { kind: "export"; ids: string[] | null }
+  /** DOC-25 §3.4.9: the browser's own profiles to the server. */
+  | { kind: "moveProfiles" }
   | { kind: "import" }
   | { kind: "settings" }
   | { kind: "about" }
@@ -208,6 +210,8 @@ export type Action =
   | { type: "reveal"; tool: string; profileId: string; path: string[] }
   /** The expanded nodes of one profile's tree. */
   | { type: "treeExpanded"; profileId: string; ids: string[] }
+  /** A browser profile moved to the server under a new id (DOC-25 §3.4.9): its tabs and tree follow. */
+  | { type: "remapProfile"; from: string; to: string }
   | { type: "diagnostic"; line: string }
   /** The missing-profile page shown, or dropped. */
   | { type: "missingLink"; link: MissingLink | null };
@@ -289,6 +293,26 @@ export function reducer(state: State, action: Action): State {
 
 function reduce(state: State, action: Action): State {
   switch (action.type) {
+    case "remapProfile": {
+      const { from, to } = action;
+      const ids = new Map<string, string>();
+      const tabs = state.tabs.map((t) => {
+        if (t.profileId !== from) return t;
+        const id = tabIdOf(t.tool, to, t.kind, t.params);
+        ids.set(t.id, id);
+        return { ...t, profileId: to, id };
+      });
+      const id = (x: string) => ids.get(x) ?? x;
+      const { [from]: expanded, ...treeExpanded } = state.treeExpanded;
+      return {
+        ...state,
+        tabs,
+        activeTab: state.activeTab === null ? null : id(state.activeTab),
+        lastActive: Object.fromEntries(Object.entries(state.lastActive).map(([tool, t]) => [tool, id(t)])),
+        closedTabs: state.closedTabs.filter((t) => t.profileId !== from),
+        treeExpanded: expanded ? { ...treeExpanded, [to]: expanded } : treeExpanded,
+      };
+    }
     case "profiles": {
       // A deleted profile's tree goes with it.
       const ids = new Set(action.profiles.map((p) => p.id));

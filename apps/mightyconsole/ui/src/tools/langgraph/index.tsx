@@ -88,25 +88,6 @@ export const profile: ProfileSchema = {
     return errors;
   },
   migrations: {},
-  toConnect(record: ProfileRecord): api.ConnectLanggraphProfile {
-    const tls = (record.fields["tls"] ?? {}) as Record<string, unknown>;
-    const lines = record.secrets["headerLines"];
-    const headers = typeof lines === "string" ? parseHeaderLines(lines).headers : [];
-    const opt = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : null);
-    return {
-      name: record.name,
-      url: text(record.fields["url"]).trim(),
-      apiKey: opt(record.secrets["apiKey"]),
-      headers: headers.length > 0 ? headers : null,
-      tls: {
-        enabled: tls["enabled"] === true,
-        caPem: opt(tls["caPem"]),
-        clientCertPem: opt(tls["clientCertPem"]),
-        clientKeyPem: opt(record.secrets["clientKeyPem"]),
-        serverName: opt(tls["serverName"]),
-      },
-    };
-  },
 };
 
 function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
@@ -224,7 +205,7 @@ export const langgraphTool: ToolModule = {
   ],
   actions: [],
   async connect(client, record) {
-    const out = await client.langgraph.connect({ profile: profile.toConnect(record) as api.ConnectLanggraphProfile });
+    const out = await client.langgraph.connect({ profileId: record.id });
     return { connId: out.connId };
   },
   async disconnect(client, connId) {

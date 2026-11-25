@@ -103,14 +103,12 @@ const record = (fields: Record<string, unknown>, secrets: Record<string, unknown
 });
 
 describe("profile", () => {
-  test("validates the URL and the header lines; toConnect sends the secrets", () => {
+  test("validates the URL and the header lines", () => {
     expect(profile.validate(record(profile.defaults().fields))).toEqual({});
     expect(profile.validate(record({ url: "ftp://x" }))["url"]).toBeDefined();
     expect(profile.validate(record({ url: "http://u:p@x" }))["url"]).toContain("credentials");
     expect(profile.validate(record({ url: DEFAULT_URL }, { headerLines: "no colon" }))["headerLines"]).toBeDefined();
     expect(parseHeaderLines("X-A: 1\n\nX-B: two: three")).toEqual({ headers: [{ name: "X-A", value: "1" }, { name: "X-B", value: "two: three" }] });
-    const out = profile.toConnect(record({ url: " https://lg.example ", tls: { caPem: "PEM", serverName: "" } }, { apiKey: "k", headerLines: "X-A: 1", clientKeyPem: "" })) as api.ConnectLanggraphProfile;
-    expect(out).toEqual({ name: "lab", url: "https://lg.example", apiKey: "k", headers: [{ name: "X-A", value: "1" }], tls: { enabled: false, caPem: "PEM", clientCertPem: null, clientKeyPem: null, serverName: null } });
     expect(defaultInput({ properties: { messages: {} } })).toContain('"human"');
     expect(defaultInput({ properties: {} })).toBe("{}");
   });

@@ -17,8 +17,28 @@ export interface ProfileRecord {
   createdAt: string;
   updatedAt: string;
   fields: Record<string, unknown>;
+  /**
+   * Secret values. In a record read from the server (TSK-139) always empty: the server never
+   * answers a value; a form fills it with what the person typed, for the save or a test.
+   */
   secrets: Record<string, unknown>;
   extras: Record<string, unknown>;
+  /** A server record's version: an edit names it, and a stale one is refused. */
+  etag?: string;
+  /** What the person may do with a server record: `owner`, `edit`, `use` or `metadata`. */
+  access?: string;
+  /** Whose a server record is. */
+  owner?: { kind: "personal"; user?: string | null } | { kind: "shared" };
+  /** The secrets a server record holds (browser keys), set but never shown. */
+  storedSecrets?: string[];
+  /** A browser record already moved to the server: the profile it became (DOC-25 §3.4.9). */
+  importedAs?: string;
+}
+
+/** Whether a secret is given: typed in `secrets`, or stored on the server. */
+export function hasSecret(record: Pick<ProfileRecord, "secrets" | "storedSecrets">, key: string): boolean {
+  const value = record.secrets[key];
+  return (typeof value === "string" && value.trim() !== "") || (record.storedSecrets?.includes(key) ?? false);
 }
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

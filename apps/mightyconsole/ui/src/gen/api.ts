@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:6abc6e4f8f1eb7616ca8921838b93c3fa0ca5370ecd6d4bed4effea2abc65c24";
+export const SCHEMA_HASH = "sha256:1af1798d64ae9b8576bbddfe6427c6723d78a35a4b6d43dfa4a1b01c31e54ce9";
 
 // ---- Types
 
@@ -292,25 +292,9 @@ export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "cbor" | 
 export type CodecInfo = { id: CodecId, label: string, needsSchema: boolean, canEncode: boolean, };
 
 /**
- * One namespace's own codec endpoint.
- */
-export type CodecNamespaceEndpoint = { namespace: string, endpoint: string, };
-
-/**
  * `"auto"` or a codec id.
  */
 export type CodecSelector = Auto | CodecId;
-
-/**
- * The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
- * `/codec/<profileId>/decode` and `/encode` while the profile is connected.
- */
-export type CodecServerOptions = { enabled?: boolean | null, 
-/**
- * The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin
- * (the CLI) are accepted.
- */
-allowedOrigins?: Array<string> | null, };
 
 /**
  * What the Composer sends for a key or a value (spec §5.7).
@@ -395,172 +379,6 @@ export type ConfirmationIdInput = {
  * From `ApprovalRequired`'s details.
  */
 approvalId: string, };
-
-/**
- * The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).
- */
-export type ConnectDockerProfile = { name: string, 
-/**
- * Host name or IP address of the SSH server.
- */
-host: string, 
-/**
- * 22 when absent.
- */
-port?: number | null, username: string, auth?: DockerAuth | null, 
-/**
- * For `privateKey`: the key's text (a profile secret, never logged).
- */
-privateKey?: string | null, 
-/**
- * For an encrypted private key.
- */
-passphrase?: string | null, 
-/**
- * For `password`.
- */
-password?: string | null, 
-/**
- * The trusted host key; `null` until the person trusts it on first use (spec §10.2).
- */
-hostKey?: HostKeyFingerprint | null, 
-/**
- * `/var/run/docker.sock` when absent; rootless Docker: `/run/user/<uid>/docker.sock`.
- */
-socketPath?: string | null, 
-/**
- * SSH keepalive interval, 30 s when absent; 0 turns it off.
- */
-keepaliveSec?: number | null, };
-
-/**
- * The echo tool's profile as `toConnect` builds it (spec §4.4).
- */
-export type ConnectEchoProfile = { name: string, 
-/**
- * Sent back by `echo.ping`.
- */
-greeting?: string | null, 
-/**
- * A stand-in secret: `"wrong"` is refused with `Auth`. Never logged.
- */
-token?: string | null, 
-/**
- * Local schemas for the test topic's messages (the profile's `extras.schemas`).
- */
-schemas?: Array<LocalSchema> | null, 
-/**
- * Mappings of local schemas to the topic `echo` (the profile's `extras.mappings`).
- */
-mappings?: Array<SchemaMapping> | null, };
-
-/**
- * The LangGraph profile as `toConnect` builds it (spec §11.1).
- */
-export type ConnectLanggraphProfile = { name: string, 
-/**
- * The server's base URL, e.g. `http://127.0.0.1:2024`.
- */
-url: string, 
-/**
- * Sent as `x-api-key` when set.
- */
-apiKey?: string | null, 
-/**
- * Extra headers (custom auth), sent with every request.
- */
-headers?: Array<HeaderPair> | null, 
-/**
- * For `https` URLs: a pinned CA, a client certificate, the expected name.
- */
-tls?: TlsOptions | null, };
-
-/**
- * The NATS profile as `toConnect` builds it (spec §4.4, §6.1). Secrets (`password`, `token`,
- * `nkeySeed`, `creds`, `tls.clientKeyPem`) are redacted from every log.
- */
-export type ConnectNatsProfile = { name: string, 
-/**
- * `nats://` or `tls://` URLs, or `host:port`; several for a cluster.
- */
-servers?: Array<string> | null, auth?: NatsAuth | null, user?: string | null, password?: string | null, token?: string | null, 
-/**
- * A user nkey seed (`SU…`).
- */
-nkeySeed?: string | null, 
-/**
- * The text of a `.creds` file: the user JWT and its seed.
- */
-creds?: string | null, 
-/**
- * `tls://` URLs turn TLS on as well.
- */
-tls?: TlsOptions | null, connectionName?: string | null, jetstream?: NatsJetStreamOptions | null, 
-/**
- * `_INBOX` when absent.
- */
-inboxPrefix?: string | null, 
-/**
- * Request-reply and JetStream API calls; 5,000 when absent.
- */
-requestTimeoutMs?: number | null, 
-/**
- * The profile's `extras.schemas`.
- */
-schemas?: Array<LocalSchema> | null, 
-/**
- * The profile's `extras.mappings` (subject patterns, KV buckets).
- */
-mappings?: Array<SchemaMapping> | null, 
-/**
- * The profile's Schema Registry (`fields.schemaRegistry` and its secrets).
- */
-schemaRegistry?: RegistryProfile | null, };
-
-/**
- * The Temporal profile as `toConnect` builds it (spec §9.1).
- */
-export type ConnectTemporalProfile = { name: string, 
-/**
- * `host:port` of the frontend; 127.0.0.1:7233 when empty.
- */
-address?: string | null, 
-/**
- * The namespace opened first; `default` when empty.
- */
-namespace?: string | null, tls?: TemporalTlsOptions | null, 
-/**
- * The client certificate's private key (PEM); never logged.
- */
-clientKeyPem?: string | null, 
-/**
- * Sent as `Authorization: Bearer`; never logged.
- */
-apiKey?: string | null, 
-/**
- * External Storage (TSK-103).
- */
-externalStorage?: ExternalStorageOptions | null, 
-/**
- * The profile's stable id in the browser: the codec endpoint's path names it.
- */
-profileId?: string | null, 
-/**
- * The payload codec (TSK-92, spec §9.5).
- */
-codec?: PayloadCodecOptions | null, 
-/**
- * The codec's `Authorization` header value; never logged, never sent to the browser again.
- */
-codecAuthorization?: string | null, 
-/**
- * Serve the profile on the codec endpoint (TSK-103).
- */
-codecServer?: CodecServerOptions | null, 
-/**
- * The S3 credentials of External Storage; never logged.
- */
-s3AccessKeyId?: string | null, s3SecretAccessKey?: string | null, s3SessionToken?: string | null, };
 
 /**
  * The state of a live handle (spec §2.2, "Status").
@@ -863,13 +681,10 @@ export type DockerConnIdInput = { connId: string, };
 
 export type DockerConnectInput = { 
 /**
- * The stored profile to connect with (DOC-25 §3.4.7).
+ * The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+ * browser never sends one.
  */
-profileId?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
- */
-profile?: ConnectDockerProfile | null, };
+profileId: string, };
 
 export type DockerConnectOutput = { connId: string, host: HostInfo, };
 
@@ -906,13 +721,10 @@ export type EchoConnIdInput = { connId: string, };
 
 export type EchoConnectInput = { 
 /**
- * The stored profile to connect with (DOC-25 §3.4.7).
+ * The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+ * browser never sends one.
  */
-profileId?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
- */
-profile?: ConnectEchoProfile | null, };
+profileId: string, };
 
 export type EchoConnectOutput = { connId: string, greeting: string, 
 /**
@@ -1013,49 +825,6 @@ export type ErrorPosition = { line: number, column: number, };
  * What an event is about, for the History filter and the Timeline's lanes.
  */
 export type EventCategory = "Workflow" | "WorkflowTask" | "Activity" | "Timer" | "ChildWorkflow" | "Signal" | "Update" | "Marker" | "Other";
-
-/**
- * Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps
- * payloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,
- * `s3SecretAccessKey` and `s3SessionToken`.
- */
-export type ExternalStorageOptions = { enabled?: boolean | null, 
-/**
- * Where Mightyconsole and the codec endpoint write; read too.
- */
-bucket?: string | null, 
-/**
- * Other buckets references may name (the workers' buckets); `bucket` is always read.
- */
-readBuckets?: Array<string> | null, 
-/**
- * `us-east-1` when empty.
- */
-region?: string | null, 
-/**
- * `https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.
- */
-endpoint?: string | null, 
-/**
- * `<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).
- */
-pathStyle?: boolean | null, 
-/**
- * The store's CA (PEM); the system's trust store when empty (spec Open question (b)).
- */
-caPem?: string | null, 
-/**
- * `aws.s3driver` when empty: the name the workers' driver has.
- */
-driverName?: string | null, 
-/**
- * Payloads this size or larger are stored outside (262144, the SDKs' default).
- */
-thresholdBytes?: number | null, 
-/**
- * The largest payload read or written (50 MiB, the Go driver's default).
- */
-maxPayloadBytes?: number | null, };
 
 /**
  * One entry of a folder.
@@ -1255,11 +1024,6 @@ export type HeaderFilter = { name: string, match?: TextMatch | null, };
  * A header as the UI sends it (Composer, KeyValueEditor): text or base64.
  */
 export type HeaderInput = { key: string, value: string, encoding?: HeaderEncoding | null, };
-
-/**
- * An extra header of the profile (custom auth); its value is a secret.
- */
-export type HeaderPair = { name: string, value: string, };
 
 /**
  * One run of the health check.
@@ -1507,13 +1271,10 @@ export type LanggraphConnIdInput = { connId: string, };
 
 export type LanggraphConnectInput = { 
 /**
- * The stored profile to connect with (DOC-25 §3.4.7).
+ * The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+ * browser never sends one.
  */
-profileId?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
- */
-profile?: ConnectLanggraphProfile | null, };
+profileId: string, };
 
 export type LanggraphConnectOutput = { connId: string, info: LanggraphInfo, };
 
@@ -1813,11 +1574,6 @@ export type NatsAccountLimits = { maxMemory?: number, maxStorage?: number, maxSt
 export type NatsAckPolicy = "explicit" | "all" | "none";
 
 /**
- * How the profile authenticates (spec §6.1, `fields.auth`).
- */
-export type NatsAuth = "none" | "userPassword" | "token" | "nkey" | "creds";
-
-/**
  * Where a browse stops (the last message read is the one at or before it).
  */
 export type NatsBrowseEnd = { sequence?: number | null, timeUs?: number | null, };
@@ -1867,13 +1623,10 @@ export type NatsConnIdInput = { connId: string, };
 
 export type NatsConnectInput = { 
 /**
- * The stored profile to connect with (DOC-25 §3.4.7).
+ * The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+ * browser never sends one.
  */
-profileId?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
- */
-profile?: ConnectNatsProfile | null, };
+profileId: string, };
 
 export type NatsConnectOutput = { connId: string, server: NatsServerInfo, 
 /**
@@ -1991,11 +1744,6 @@ processingTimeNs: number, averageProcessingTimeNs: number, lastError?: string,
 data?: string, };
 
 export type NatsGetMessageInput = { connId: string, stream: string, sequence: number, decode?: DecodeOptions | null, };
-
-/**
- * JetStream through a domain or an API prefix (leaf nodes, imported JetStream).
- */
-export type NatsJetStreamOptions = { domain?: string | null, apiPrefix?: string | null, };
 
 /**
  * A bucket's configuration and state (spec §6.5, `KvBucketInfo`).
@@ -2568,37 +2316,6 @@ bytes: number,
  */
 preview: string, };
 
-/**
- * The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
- * mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
- * comes beside it as `codecAuthorization`.
- */
-export type PayloadCodecOptions = { enabled?: boolean | null, 
-/**
- * `https://codec.internal:8888`; plain http on localhost only.
- */
-endpoint?: string | null, 
-/**
- * Namespaces with their own endpoint.
- */
-namespaces?: Array<CodecNamespaceEndpoint> | null, 
-/**
- * The codec's CA (PEM): the only trusted root (Open question 31).
- */
-caPem?: string | null, 
-/**
- * Send `X-Namespace` (on when empty).
- */
-sendNamespace?: boolean | null, 
-/**
- * Encode the inputs Mightyconsole sends through `/encode` (on when empty).
- */
-encodeInputs?: boolean | null, 
-/**
- * Per call (10000 when empty).
- */
-timeoutMs?: number | null, };
-
 export type PayloadDownloadInput = { connId: string, payloadId: string, form: PayloadForm, };
 
 export type PayloadDownloadSummary = { bytes: number, };
@@ -2894,52 +2611,28 @@ export type RecordHeaderEncoding = "text" | "base64";
 export type RecoveryCodes = { codes: Array<string>, };
 
 /**
- * How the server authenticates to the registry.
- */
-export type RegistryAuthKind = "none" | "basic" | "bearer";
-
-/**
- * The profile's registry (`fields.schemaRegistry` with its secrets), as a tool's connect input
- * and `messaging.registry.test` take it.
- */
-export type RegistryProfile = { 
-/**
- * `http://host:port[/path]` or `https://…`.
- */
-url: string, auth?: RegistryAuthKind | null, username?: string | null, 
-/**
- * Secret `registryPassword`.
- */
-password?: string | null, 
-/**
- * Secret `registryToken`.
- */
-token?: string | null, 
-/**
- * The CA to trust for `https` (no system roots), the server name to check, and a client
- * certificate for mutual TLS (its key a secret).
- */
-tls?: TlsOptions | null, 
-/**
- * NATS: the subject patterns whose messages may carry the Confluent wire format, which
- * auto-detect looks for there only. Absent: everywhere (Kafka).
- */
-wireFormatSubjects?: Array<string> | null, };
-
-/**
  * A schema in the registry, by id or by subject and version.
  */
 export type RegistryRef = { id: number, } | { subject: string, version: SchemaVersion, };
 
-export type RegistrySetInput = { connId: string, 
-/**
- * The profile's registry as saved; `null` removes it.
- */
-registry?: RegistryProfile | null, };
+export type RegistrySetInput = { connId: string, };
 
 export type RegistrySubjectsInput = { connId: string, };
 
-export type RegistryTestInput = { registry: RegistryProfile, };
+export type RegistryTestInput = { 
+/**
+ * The tool whose profile the draft is (`nats`).
+ */
+tool: string, 
+/**
+ * The profile form's draft, its `schemaRegistry` in `fields` and its typed secrets.
+ */
+draft: TestDraft, 
+/**
+ * The stored profile the form edits, whose secrets fill those the draft leaves empty
+ * while the draft keeps the registry's target fields (DOC-25 §3.4.8).
+ */
+basedOn?: string | null, };
 
 /**
  * What a registry said when tested.
@@ -3868,13 +3561,10 @@ export type TemporalConnIdInput = { connId: string, };
 
 export type TemporalConnectInput = { 
 /**
- * The stored profile to connect with (DOC-25 §3.4.7).
+ * The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+ * browser never sends one.
  */
-profileId?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
- */
-profile?: ConnectTemporalProfile | null, };
+profileId: string, };
 
 export type TemporalConnectOutput = { connId: string, serverVersion: string, 
 /**
@@ -3895,15 +3585,11 @@ export type TemporalTestCodecInput = {
 /**
  * The profile form's draft (DOC-25 §3.4.7), as `temporal.test` takes it.
  */
-draft?: TestDraft | null, 
+draft: TestDraft, 
 /**
  * The stored profile the form edits, whose secrets fill those the draft leaves empty.
  */
-basedOn?: string | null, 
-/**
- * A profile the browser sends, until the UI moves to stored profiles; not with `draft`.
- */
-profile?: ConnectTemporalProfile | null, namespace?: string | null, };
+basedOn?: string | null, namespace?: string | null, };
 
 /**
  * What the codec did with the inputs of the namespace's latest workflows.
@@ -3929,24 +3615,6 @@ from: Array<string>, to: Array<string>, ms: number,
  * Why the codec failed, when it did.
  */
 error?: string, };
-
-/**
- * TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as
- * `clientKeyPem`. There is no "skip verification" (spec Open question 6).
- */
-export type TemporalTlsOptions = { enabled: boolean, 
-/**
- * Extra trusted CA certificates (PEM); the operating system's roots are used as well.
- */
-caPem?: string | null, 
-/**
- * Client certificate chain (PEM) for mTLS.
- */
-clientCertPem?: string | null, 
-/**
- * The name to verify the server certificate against, when it is not the address's host.
- */
-serverName?: string | null, };
 
 /**
  * Input of `term.resize`.
@@ -4096,32 +3764,6 @@ sortOrder?: string | null, };
  * An inclusive range of RFC 3339 times.
  */
 export type TimeRange = { from?: string | null, to?: string | null, };
-
-/**
- * TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from
- * the profile's `secrets`; procedures that take it list it in `redact`.
- */
-export type TlsOptions = { 
-/**
- * Use TLS. Tools whose address says it (`https://`) use TLS either way.
- */
-enabled?: boolean | null, 
-/**
- * PEM certificates of the CA to trust instead of the system's trust store.
- */
-caPem?: string | null, 
-/**
- * PEM client certificate (chain) for mutual TLS.
- */
-clientCertPem?: string | null, 
-/**
- * PEM private key of the client certificate. A secret.
- */
-clientKeyPem?: string | null, 
-/**
- * The name the server's certificate must carry, when it is not the address's host.
- */
-serverName?: string | null, };
 
 /**
  * `details` of every tool procedure's errors (spec §2.6).

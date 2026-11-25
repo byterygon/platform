@@ -421,14 +421,10 @@ async fn connect_names_a_stored_profile_and_the_server_opens_its_secret() {
         .call(1, "echo.connect", json!({ "profileId": id }))
         .await;
     viewer.error(1, Code::PermissionDenied).await;
-    // A profile is named or sent, not both; and it is a profile of the tool connecting.
-    mia.call(
-        5,
-        "echo.connect",
-        json!({ "profileId": id, "profile": { "name": "x" } }),
-    )
-    .await;
-    mia.error(5, Code::InvalidArgument).await;
+    // A connect names a stored profile; one the browser sends names nothing and is refused.
+    mia.call_raw(5, "echo.connect", json!({ "profile": { "name": "x" } }))
+        .await;
+    mia.error(5, Code::PermissionDenied).await;
 
     // A shared profile: whoever holds echo.read connects with a token they never see; a
     // member (no echo.read) does not.

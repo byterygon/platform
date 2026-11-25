@@ -38,15 +38,15 @@ async fn a_user_without_a_role_can_only_see_who_they_are() {
         details(&err),
         json!({ "perm": "app.read", "reason": "missing" })
     );
-    // Not even their own connection: they may not keep personal profiles.
-    tab.call(3, "echo.connect", json!({ "profile": { "name": "lab" } }))
+    // No connection: no role lets them read a profile, nor keep one of their own.
+    tab.call_raw(3, "echo.connect", json!({ "profileId": "P1" }))
         .await;
     let err = tab.error(3, Code::PermissionDenied).await;
     assert_eq!(
         details(&err),
         json!({
             "perm": "echo.read",
-            "target": { "kind": "browser", "id": "echo" },
+            "target": { "kind": "profile", "id": "P1" },
             "reason": "missing",
         })
     );
@@ -68,7 +68,7 @@ async fn a_member_has_every_right_on_their_own_connection() {
 }
 
 #[tokio::test]
-async fn without_profiles_personal_the_roles_bind_on_browser_profiles() {
+async fn without_profiles_personal_the_roles_bind_on_shared_profiles() {
     let t = start().await;
     t.server.policy().update(|p| {
         p.custom_roles.push(CustomRole {
@@ -79,9 +79,35 @@ async fn without_profiles_personal_the_roles_bind_on_browser_profiles() {
         });
         p.default_role = Some("reader".into());
     });
+    let admin_id = t
+        .server
+        .store()
+        .account_by_username("admin")
+        .unwrap()
+        .expect("the default administrator")
+        .principal_id();
+    let admin = t.browser_as(&admin_id, &[]).await;
+    let mut a = t.tab(&admin).await;
+    a.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": {} }),
+    )
+    .await;
+    let team = a.result(1).await["id"].as_str().unwrap().to_owned();
     let browser = t.browser().await;
     let mut tab = t.tab(&browser).await;
-    let conn = tab.connect(1).await;
+    // Without profiles.personal the reader keeps no profile of their own.
+    tab.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Mine", "owner": { "kind": "personal" }, "fields": {} }),
+    )
+    .await;
+    tab.error(1, Code::PermissionDenied).await;
+    tab.call(4, "echo.connect", json!({ "profileId": team }))
+        .await;
+    let conn = tab.result(4).await["connId"].as_str().unwrap().to_owned();
     tab.call(2, "echo.ping", json!({ "connId": conn, "text": "hi" }))
         .await;
     assert_eq!(tab.result(2).await["text"], "hi");
@@ -96,7 +122,7 @@ async fn without_profiles_personal_the_roles_bind_on_browser_profiles() {
         details(&err),
         json!({
             "perm": "echo.write",
-            "target": { "kind": "browser", "id": "echo" },
+            "target": { "kind": "profile", "id": team },
             "reason": "missing",
         })
     );

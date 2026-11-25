@@ -206,7 +206,15 @@ pub fn with_registry(
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistryTestInput {
-    pub registry: RegistryProfile,
+    /// The tool whose profile the draft is (`nats`).
+    pub tool: String,
+    /// The profile form's draft, its `schemaRegistry` in `fields` and its typed secrets.
+    pub draft: crate::core::stored::TestDraft,
+    /// The stored profile the form edits, whose secrets fill those the draft leaves empty
+    /// while the draft keeps the registry's target fields (DOC-25 §3.4.8).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub based_on: Option<String>,
 }
 
 /// What a registry said when tested.
@@ -229,10 +237,6 @@ pub struct RegistryTestOutput {
 #[serde(rename_all = "camelCase")]
 pub struct RegistrySetInput {
     pub conn_id: String,
-    /// The profile's registry as saved; `null` removes it.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub registry: Option<RegistryProfile>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
@@ -263,16 +267,22 @@ fn registry_of(codecs: &Codecs) -> Result<RegistryClient, ToolError> {
 
 #[rpc::router(namespace = "messaging.registry")]
 impl RegistryApi {
-    /// Reaches a registry as the profile would (before it is saved): counts its subjects and
-    /// reads its mode and global compatibility.
+    /// Reaches the registry of the profile form's draft (before it is saved): counts its
+    /// subjects and reads its mode and global compatibility. Its typed secrets are used for this
+    /// call only.
     #[rpc::query(
         perm = "messaging.read",
         risk = Risk::Read,
-        redact = ["registry.password", "registry.token", "registry.tls.clientKeyPem"],
+        redact = ["draft.secrets"],
         audit = "always",
     )]
-    async fn test(&self, _ctx: Ctx, input: RegistryTestInput) -> ToolResult<RegistryTestOutput> {
-        let client = input.registry.client_with(TEST_TIMEOUT)?;
+    async fn test(&self, ctx: Ctx, input: RegistryTestInput) -> ToolResult<RegistryTestOutput> {
+        let test = crate::core::stored::ToolTestInput {
+            draft: input.draft,
+            based_on: input.based_on,
+        };
+        let registry: RegistryProfile = self.0.draft_registry(&ctx, input.tool, test).await?;
+        let client = registry.client_with(TEST_TIMEOUT)?;
         let subjects = client.subjects().await.map_err(|e| tool_error(SYSTEM, e))?;
         // Registries that answer `/subjects` but not these (older or compatible ones) still pass.
         let mode = client.mode().await.ok();
@@ -285,17 +295,15 @@ impl RegistryApi {
         })
     }
 
-    /// Gives a connection the profile's registry as saved (or none). Streams already running
-    /// keep the codecs they started with.
-    #[rpc::mutation(
-        perm = "messaging.read",
-        risk = Risk::Read,
-        redact = ["registry.password", "registry.token", "registry.tls.clientKeyPem"]
-    )]
+    /// Gives a connection its stored profile's registry as saved (or none), its secrets opened
+    /// on the server. Streams already running keep the codecs they started with.
+    #[rpc::mutation(perm = "messaging.read", risk = Risk::Read)]
     async fn set(&self, ctx: Ctx, input: RegistrySetInput) -> ToolResult<Empty> {
         let session = &ctx.session().id;
         let current = self.0.codecs(session, &input.conn_id)?;
-        let codecs = with_registry(&current, input.registry.as_ref())?;
+        let registry: Option<RegistryProfile> =
+            self.0.stored_registry(&ctx, &input.conn_id).await?;
+        let codecs = with_registry(&current, registry.as_ref())?;
         self.0.set_codecs(session, &input.conn_id, codecs)?;
         Ok(Empty {})
     }

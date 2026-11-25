@@ -194,7 +194,7 @@ export default {
       text: "(TSK-138) A viewer can browse every tool but cannot write, exec or read container files (PermissionDenied naming the permission). An operator can write and exec but cannot destroy or reveal a Kubernetes Secret. An administrator can destroy, after the confirmation.",
       checks: [
         cargo("every_built_in_role_on_every_tool", { label: "every built-in role against procedures of every tool" }),
-        cargo("without_profiles_personal_the_roles_bind_on_browser_profiles", { label: "over the wire: PermissionDenied names the permission, the target and the reason" }),
+        cargo("without_profiles_personal_the_roles_bind_on_shared_profiles", { label: "over the wire, on a shared profile: PermissionDenied names the permission, the profile target and the reason" }),
         cargo("the_right_phrase_allows_the_same_call_once", { label: "the destroy confirmation" }),
         cargo("the_idp_groups_decide_what_each_lab_user_may_do", { features: ["lab-tests"], label: "lab users through Dex: an administrator, a viewer and a user with no role, by their groups" }),
         cargo("idp_users_on_a_shared_profile_act_by_their_roles", { features: ["lab-tests"], label: "lab users through Dex on a shared profile: the viewer reads and is refused echo.write, the administrator writes, the user with no role cannot connect (the lab's groups map no operator)" }),

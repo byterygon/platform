@@ -23,7 +23,8 @@ import type { AppEvent, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 import { cn } from "@/lib/cn";
 import { layerSurface } from "@/lib/control";
 import { Add, ArrowImport, Eye, Info, Options, Pin, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
-import { loadProfiles } from "@/profiles/migrate";
+import { loadProfiles, recordStatesOf } from "@/profiles/migrate";
+import { deleteProfile as deleteServerProfile, importRecord, listProfiles as listServerProfiles, saveProfile as saveServerProfile, updateRecord as updateServerRecord } from "@/profiles/server";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
@@ -31,7 +32,8 @@ import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPla
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { HostKeyDialog } from "./dialogs/HostKeyDialog";
-import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
+import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, MoveProfilesDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
+import { moveToServer } from "@/profiles/move";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
@@ -289,11 +291,13 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   // --- Profiles ---------------------------------------------------------------------------------
 
   const schemaOf = useCallback((id: string) => toolById(tools, id)?.profile, [tools]);
+  // Profiles live on the server (DOC-25 §3.4.2, TSK-139); the browser's own records wait in
+  // IndexedDB until the person moves them ("Move my profiles to the server", §3.4.9).
   const reloadProfiles = useCallback(async () => {
     try {
-      const loaded = await loadProfiles(storage, schemaOf);
-      dispatch({ type: "profiles", profiles: loaded.records, recordStates: loaded.states });
-      return loaded;
+      const records = await listServerProfiles(client);
+      dispatch({ type: "profiles", profiles: records, recordStates: recordStatesOf(records, schemaOf) });
+      return records;
     } catch (e) {
       const d = note(e);
       toast.add({ title: "Could not read the profiles", description: d.title, type: "danger", timeout: 0 });
@@ -303,9 +307,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   }, [storage, schemaOf, dispatch, note, toast]);
 
   useEffect(() => {
-    void reloadProfiles().then((loaded) => {
-      if (loaded && loaded.migrated > 0) toast.add({ title: `Updated ${loaded.migrated} profile${loaded.migrated === 1 ? "" : "s"} to this version`, description: "The previous versions are kept until the next start.", type: "info" });
-    });
+    void reloadProfiles();
+    void reloadBrowserProfiles();
     // A store opened in memory on purpose (tests) has no reason and no warning.
     if (storage.kind === "memory" && storage.fallbackReason !== null) {
       toast.add({
@@ -320,11 +323,35 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storage]);
 
+  /** Saves a change to a stored profile's fields or extras (a saved filter, a trusted key). */
   const saveProfile = async (record: ProfileRecord) => {
-    await storage.putProfile(record);
-    storage.announce();
+    await updateServerRecord(client, record);
     await reloadProfiles();
   };
+
+  // --- The browser's own profiles, to move to the server (DOC-25 §3.4.9) -------------------------
+
+  const [browserProfiles, setBrowserProfiles] = useState<ProfileRecord[]>([]);
+  const movePrompted = useRef(false);
+  useEffect(() => {
+    if (browserProfiles.length === 0 || movePrompted.current) return;
+    movePrompted.current = true;
+    toast.add({
+      title: `${browserProfiles.length} profile${browserProfiles.length === 1 ? " is" : "s are"} kept in this browser`,
+      description: "Move them to the server, where their secrets are stored encrypted. Until then they are not listed.",
+      type: "info",
+      timeout: 0,
+      actionProps: { children: "Move to the server", onClick: () => dispatch({ type: "dialog", dialog: { kind: "moveProfiles" } }) },
+    });
+  }, [browserProfiles, toast, dispatch]);
+  const reloadBrowserProfiles = useCallback(async () => {
+    try {
+      const loaded = await loadProfiles(storage, schemaOf);
+      setBrowserProfiles(loaded.records.filter((r) => r.importedAs === undefined && loaded.states[r.id]?.kind === "current"));
+    } catch (e) {
+      note(e);
+    }
+  }, [storage, schemaOf, note]);
 
   // --- Connections ------------------------------------------------------------------------------
 
@@ -394,6 +421,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   const handleEvent = (event: AppEvent) => {
     if (event.kind === "StreamProgress") return services.progress.publish(event);
+    if (event.kind === "ProfileChanged") return void reloadProfiles();
     if (event.kind !== "ConnectionStatus") return;
     const entry = Object.entries(stateRef.current.conns).find(([, c]) => c.connId === event.connId);
     if (!entry) return;
@@ -836,6 +864,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       case "importProfiles":
         dispatch({ type: "dialog", dialog: { kind: "import" } });
         break;
+      case "moveProfiles":
+        dispatch({ type: "dialog", dialog: { kind: "moveProfiles" } });
+        break;
       case "closeTab":
         if (state.activeTab) closeTab(state.activeTab);
         break;
@@ -1024,21 +1055,46 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   };
 
   const doImport = async (plan: ImportPlan) => {
-    const stored = await storage.listProfiles();
-    const { writes, deletes } = applyImport(plan, stored);
-    for (const id of deletes) await storage.deleteProfile(id);
-    for (const record of writes) await storage.putProfile(record);
-    storage.announce();
+    const stored = stateRef.current.profiles ?? [];
+    // Replace keeps the stored profile (an edit of it); anything else is a new profile, imported
+    // once per record id (a second import of the same file makes nothing new).
+    const { writes } = applyImport(plan, stored);
+    for (const record of writes) {
+      const existing = stored.find((p) => p.id === record.id);
+      if (existing) await saveServerProfile(client, record, { mode: "edit", base: existing });
+      else await importRecord(client, record);
+    }
     await reloadProfiles();
     closeDialog();
     toast.add({ title: `Imported ${writes.length} profile${writes.length === 1 ? "" : "s"}`, type: "success" });
   };
 
+  /** The backup before a move: the browser's records with their secrets, in plain text. */
+  const doBackup = () => {
+    const file = exportFile(browserProfiles, { includeSecrets: true, app: state.info?.version ?? "0.1.0" });
+    const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportFileName();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const doMove = async (shared: ReadonlySet<string>) => {
+    const result = await moveToServer(client, storage, browserProfiles, shared, (m) => dispatch({ type: "remapProfile", from: m.from, to: m.to }));
+    await reloadProfiles();
+    await reloadBrowserProfiles();
+    if (result.failed) throw result.failed.error;
+    closeDialog();
+    toast.add({ title: `Moved ${result.moved.length} profile${result.moved.length === 1 ? "" : "s"} to the server`, description: "This browser keeps no secret now.", type: "success" });
+  };
+
   const doDelete = async (id: string) => {
     disconnectProfile(id);
     for (const t of stateRef.current.tabs) if (t.profileId === id) closeTab(t.id, true);
-    await storage.deleteProfile(id);
-    storage.announce();
+    const record = profileById(id);
+    if (record) await deleteServerProfile(client, record);
     await reloadProfiles();
     closeDialog();
   };
@@ -1373,10 +1429,14 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         {...(profileDialog?.name && sheetMode === "add" ? { name: profileDialog.name } : {})}
         takenNames={takenNames}
         {...(sheetBase && state.recordStates[sheetBase.id] ? { recordState: state.recordStates[sheetBase.id]! } : {})}
-        onSave={async (record) => {
-          await saveProfile(record);
+        onSave={async (record, { remove, shared }) => {
+          const saved = await saveServerProfile(client, record, { mode: sheetMode, base: sheetBase, remove, shared });
+          await reloadProfiles();
           closeDialog();
-          dispatch({ type: "select", nodeId: profileNodeId(record.id) });
+          if (saved.removedSecrets.length > 0) {
+            toast.add({ title: `${record.name}: ${saved.removedSecrets.join(", ")} removed`, description: "The target changed: a stored secret is only sent to the target it was set for. Enter it again to keep it.", type: "warning" });
+          }
+          dispatch({ type: "select", nodeId: profileNodeId(saved.record.id) });
           toast.add({ title: `${record.name} saved`, description: "Connect when you are ready.", type: "success" });
         }}
       />
@@ -1399,6 +1459,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       <DiscardChangesDialog open={leaving !== null || blocker.status === "blocked"} onKeep={keepEditing} onDiscard={discardChanges} />
       <CloseTabDialog open={closing !== undefined} title={closing?.title ?? ""} onCancel={closeDialog} onClose={() => closing && closeTab(closing.id, true)} />
       <ExportDialog open={dialog.kind === "export"} onOpenChange={(open) => !open && closeDialog()} count={exportCount} onExport={doExport} />
+      <MoveProfilesDialog open={dialog.kind === "moveProfiles"} onOpenChange={(open) => !open && closeDialog()} records={browserProfiles} toolLabel={(id) => toolById(tools, id)?.label ?? id} onBackup={doBackup} onMove={doMove} />
       <ImportDialog open={dialog.kind === "import"} onOpenChange={(open) => !open && closeDialog()} plan={(text) => planImport(text, profiles, schemaOf)} onImport={doImport} toolLabel={(id) => toolById(tools, id)?.label ?? id} />
       <SettingsDialog
         open={dialog.kind === "settings"}

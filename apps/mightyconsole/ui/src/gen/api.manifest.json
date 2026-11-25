@@ -1111,22 +1111,6 @@
       ],
       "type": "object"
     },
-    "CodecNamespaceEndpoint": {
-      "description": "One namespace's own codec endpoint.",
-      "properties": {
-        "endpoint": {
-          "type": "string"
-        },
-        "namespace": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "namespace",
-        "endpoint"
-      ],
-      "type": "object"
-    },
     "CodecSelector": {
       "anyOf": [
         {
@@ -1137,30 +1121,6 @@
         }
       ],
       "description": "`\"auto\"` or a codec id."
-    },
-    "CodecServerOptions": {
-      "description": "The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at\n`/codec/<profileId>/decode` and `/encode` while the profile is connected.",
-      "properties": {
-        "allowedOrigins": {
-          "default": null,
-          "description": "The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin\n(the CLI) are accepted.",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "enabled": {
-          "default": null,
-          "type": [
-            "boolean",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
     },
     "ComposePayload": {
       "description": "What the Composer sends for a key or a value (spec §5.7).",
@@ -1354,473 +1314,6 @@
       },
       "required": [
         "approvalId"
-      ],
-      "type": "object"
-    },
-    "ConnectDockerProfile": {
-      "description": "The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).",
-      "properties": {
-        "auth": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/DockerAuth"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "host": {
-          "description": "Host name or IP address of the SSH server.",
-          "type": "string"
-        },
-        "hostKey": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HostKeyFingerprint"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The trusted host key; `null` until the person trusts it on first use (spec §10.2)."
-        },
-        "keepaliveSec": {
-          "default": null,
-          "description": "SSH keepalive interval, 30 s when absent; 0 turns it off.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "passphrase": {
-          "default": null,
-          "description": "For an encrypted private key.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "password": {
-          "default": null,
-          "description": "For `password`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "port": {
-          "default": null,
-          "description": "22 when absent.",
-          "format": "uint16",
-          "maximum": 65535,
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "privateKey": {
-          "default": null,
-          "description": "For `privateKey`: the key's text (a profile secret, never logged).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "socketPath": {
-          "default": null,
-          "description": "`/var/run/docker.sock` when absent; rootless Docker: `/run/user/<uid>/docker.sock`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "username": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "host",
-        "username"
-      ],
-      "type": "object"
-    },
-    "ConnectEchoProfile": {
-      "description": "The echo tool's profile as `toConnect` builds it (spec §4.4).",
-      "properties": {
-        "greeting": {
-          "default": null,
-          "description": "Sent back by `echo.ping`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "mappings": {
-          "default": null,
-          "description": "Mappings of local schemas to the topic `echo` (the profile's `extras.mappings`).",
-          "items": {
-            "$ref": "#/$defs/SchemaMapping"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "schemas": {
-          "default": null,
-          "description": "Local schemas for the test topic's messages (the profile's `extras.schemas`).",
-          "items": {
-            "$ref": "#/$defs/LocalSchema"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "token": {
-          "default": null,
-          "description": "A stand-in secret: `\"wrong\"` is refused with `Auth`. Never logged.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "ConnectLanggraphProfile": {
-      "description": "The LangGraph profile as `toConnect` builds it (spec §11.1).",
-      "properties": {
-        "apiKey": {
-          "default": null,
-          "description": "Sent as `x-api-key` when set.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "headers": {
-          "description": "Extra headers (custom auth), sent with every request.",
-          "items": {
-            "$ref": "#/$defs/HeaderPair"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "tls": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TlsOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "For `https` URLs: a pinned CA, a client certificate, the expected name."
-        },
-        "url": {
-          "description": "The server's base URL, e.g. `http://127.0.0.1:2024`.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "url"
-      ],
-      "type": "object"
-    },
-    "ConnectNatsProfile": {
-      "description": "The NATS profile as `toConnect` builds it (spec §4.4, §6.1). Secrets (`password`, `token`,\n`nkeySeed`, `creds`, `tls.clientKeyPem`) are redacted from every log.",
-      "properties": {
-        "auth": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/NatsAuth"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "connectionName": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "creds": {
-          "default": null,
-          "description": "The text of a `.creds` file: the user JWT and its seed.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "inboxPrefix": {
-          "default": null,
-          "description": "`_INBOX` when absent.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "jetstream": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/NatsJetStreamOptions"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "mappings": {
-          "default": null,
-          "description": "The profile's `extras.mappings` (subject patterns, KV buckets).",
-          "items": {
-            "$ref": "#/$defs/SchemaMapping"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "name": {
-          "type": "string"
-        },
-        "nkeySeed": {
-          "default": null,
-          "description": "A user nkey seed (`SU…`).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "password": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "requestTimeoutMs": {
-          "default": null,
-          "description": "Request-reply and JetStream API calls; 5,000 when absent.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "schemaRegistry": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RegistryProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The profile's Schema Registry (`fields.schemaRegistry` and its secrets)."
-        },
-        "schemas": {
-          "default": null,
-          "description": "The profile's `extras.schemas`.",
-          "items": {
-            "$ref": "#/$defs/LocalSchema"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "servers": {
-          "default": null,
-          "description": "`nats://` or `tls://` URLs, or `host:port`; several for a cluster.",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "tls": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TlsOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "`tls://` URLs turn TLS on as well."
-        },
-        "token": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "user": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "ConnectTemporalProfile": {
-      "description": "The Temporal profile as `toConnect` builds it (spec §9.1).",
-      "properties": {
-        "address": {
-          "default": null,
-          "description": "`host:port` of the frontend; 127.0.0.1:7233 when empty.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "apiKey": {
-          "default": null,
-          "description": "Sent as `Authorization: Bearer`; never logged.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "clientKeyPem": {
-          "default": null,
-          "description": "The client certificate's private key (PEM); never logged.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "codec": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PayloadCodecOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The payload codec (TSK-92, spec §9.5)."
-        },
-        "codecAuthorization": {
-          "default": null,
-          "description": "The codec's `Authorization` header value; never logged, never sent to the browser again.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "codecServer": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CodecServerOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Serve the profile on the codec endpoint (TSK-103)."
-        },
-        "externalStorage": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ExternalStorageOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "External Storage (TSK-103)."
-        },
-        "name": {
-          "type": "string"
-        },
-        "namespace": {
-          "default": null,
-          "description": "The namespace opened first; `default` when empty.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "profileId": {
-          "default": null,
-          "description": "The profile's stable id in the browser: the codec endpoint's path names it.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "s3AccessKeyId": {
-          "default": null,
-          "description": "The S3 credentials of External Storage; never logged.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "s3SecretAccessKey": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "s3SessionToken": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tls": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TemporalTlsOptions"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "name"
       ],
       "type": "object"
     },
@@ -2859,26 +2352,14 @@
     },
     "DockerConnectInput": {
       "properties": {
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectDockerProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
-        },
         "profileId": {
-          "default": null,
-          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the\nbrowser never sends one.",
+          "type": "string"
         }
       },
+      "required": [
+        "profileId"
+      ],
       "type": "object"
     },
     "DockerConnectOutput": {
@@ -3006,26 +2487,14 @@
     },
     "EchoConnectInput": {
       "properties": {
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectEchoProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
-        },
         "profileId": {
-          "default": null,
-          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the\nbrowser never sends one.",
+          "type": "string"
         }
       },
+      "required": [
+        "profileId"
+      ],
       "type": "object"
     },
     "EchoConnectOutput": {
@@ -3546,98 +3015,6 @@
         "Other"
       ],
       "type": "string"
-    },
-    "ExternalStorageOptions": {
-      "description": "Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps\npayloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,\n`s3SecretAccessKey` and `s3SessionToken`.",
-      "properties": {
-        "bucket": {
-          "default": null,
-          "description": "Where Mightyconsole and the codec endpoint write; read too.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "caPem": {
-          "default": null,
-          "description": "The store's CA (PEM); the system's trust store when empty (spec Open question (b)).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "driverName": {
-          "default": null,
-          "description": "`aws.s3driver` when empty: the name the workers' driver has.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "enabled": {
-          "default": null,
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "endpoint": {
-          "default": null,
-          "description": "`https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "maxPayloadBytes": {
-          "default": null,
-          "description": "The largest payload read or written (50 MiB, the Go driver's default).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "pathStyle": {
-          "default": null,
-          "description": "`<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "readBuckets": {
-          "default": null,
-          "description": "Other buckets references may name (the workers' buckets); `bucket` is always read.",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "region": {
-          "default": null,
-          "description": "`us-east-1` when empty.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "thresholdBytes": {
-          "default": null,
-          "description": "Payloads this size or larger are stored outside (262144, the SDKs' default).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
     },
     "FileEntry": {
       "description": "One entry of a folder.",
@@ -4281,22 +3658,6 @@
       },
       "required": [
         "key",
-        "value"
-      ],
-      "type": "object"
-    },
-    "HeaderPair": {
-      "description": "An extra header of the profile (custom auth); its value is a secret.",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "value": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
         "value"
       ],
       "type": "object"
@@ -5004,26 +4365,14 @@
     },
     "LanggraphConnectInput": {
       "properties": {
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectLanggraphProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
-        },
         "profileId": {
-          "default": null,
-          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the\nbrowser never sends one.",
+          "type": "string"
         }
       },
+      "required": [
+        "profileId"
+      ],
       "type": "object"
     },
     "LanggraphConnectOutput": {
@@ -6004,17 +5353,6 @@
       ],
       "type": "string"
     },
-    "NatsAuth": {
-      "description": "How the profile authenticates (spec §6.1, `fields.auth`).",
-      "enum": [
-        "none",
-        "userPassword",
-        "token",
-        "nkey",
-        "creds"
-      ],
-      "type": "string"
-    },
     "NatsBrowseEnd": {
       "description": "Where a browse stops (the last message read is the one at or before it).",
       "properties": {
@@ -6239,26 +5577,14 @@
     },
     "NatsConnectInput": {
       "properties": {
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectNatsProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
-        },
         "profileId": {
-          "default": null,
-          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the\nbrowser never sends one.",
+          "type": "string"
         }
       },
+      "required": [
+        "profileId"
+      ],
       "type": "object"
     },
     "NatsConnectOutput": {
@@ -6699,26 +6025,6 @@
         "stream",
         "sequence"
       ],
-      "type": "object"
-    },
-    "NatsJetStreamOptions": {
-      "description": "JetStream through a domain or an API prefix (leaf nodes, imported JetStream).",
-      "properties": {
-        "apiPrefix": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "domain": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
       "type": "object"
     },
     "NatsKvBucketInfo": {
@@ -9277,71 +8583,6 @@
       ],
       "type": "object"
     },
-    "PayloadCodecOptions": {
-      "description": "The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that\nmightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header\ncomes beside it as `codecAuthorization`.",
-      "properties": {
-        "caPem": {
-          "default": null,
-          "description": "The codec's CA (PEM): the only trusted root (Open question 31).",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "enabled": {
-          "default": null,
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "encodeInputs": {
-          "default": null,
-          "description": "Encode the inputs Mightyconsole sends through `/encode` (on when empty).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "endpoint": {
-          "default": null,
-          "description": "`https://codec.internal:8888`; plain http on localhost only.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "namespaces": {
-          "description": "Namespaces with their own endpoint.",
-          "items": {
-            "$ref": "#/$defs/CodecNamespaceEndpoint"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "sendNamespace": {
-          "default": null,
-          "description": "Send `X-Namespace` (on when empty).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "timeoutMs": {
-          "default": null,
-          "description": "Per call (10000 when empty).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
     "PayloadDownloadInput": {
       "properties": {
         "connId": {
@@ -10211,84 +9452,6 @@
       ],
       "type": "object"
     },
-    "RegistryAuthKind": {
-      "description": "How the server authenticates to the registry.",
-      "enum": [
-        "none",
-        "basic",
-        "bearer"
-      ],
-      "type": "string"
-    },
-    "RegistryProfile": {
-      "description": "The profile's registry (`fields.schemaRegistry` with its secrets), as a tool's connect input\nand `messaging.registry.test` take it.",
-      "properties": {
-        "auth": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RegistryAuthKind"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "password": {
-          "default": null,
-          "description": "Secret `registryPassword`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tls": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TlsOptions"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The CA to trust for `https` (no system roots), the server name to check, and a client\ncertificate for mutual TLS (its key a secret)."
-        },
-        "token": {
-          "default": null,
-          "description": "Secret `registryToken`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "url": {
-          "description": "`http://host:port[/path]` or `https://…`.",
-          "type": "string"
-        },
-        "username": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "wireFormatSubjects": {
-          "default": null,
-          "description": "NATS: the subject patterns whose messages may carry the Confluent wire format, which\nauto-detect looks for there only. Absent: everywhere (Kafka).",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "url"
-      ],
-      "type": "object"
-    },
     "RegistryRef": {
       "anyOf": [
         {
@@ -10326,17 +9489,6 @@
       "properties": {
         "connId": {
           "type": "string"
-        },
-        "registry": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RegistryProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The profile's registry as saved; `null` removes it."
         }
       },
       "required": [
@@ -10357,12 +9509,26 @@
     },
     "RegistryTestInput": {
       "properties": {
-        "registry": {
-          "$ref": "#/$defs/RegistryProfile"
+        "basedOn": {
+          "default": null,
+          "description": "The stored profile the form edits, whose secrets fill those the draft leaves empty\nwhile the draft keeps the registry's target fields (DOC-25 §3.4.8).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft": {
+          "$ref": "#/$defs/TestDraft",
+          "description": "The profile form's draft, its `schemaRegistry` in `fields` and its typed secrets."
+        },
+        "tool": {
+          "description": "The tool whose profile the draft is (`nats`).",
+          "type": "string"
         }
       },
       "required": [
-        "registry"
+        "tool",
+        "draft"
       ],
       "type": "object"
     },
@@ -13305,26 +12471,14 @@
     },
     "TemporalConnectInput": {
       "properties": {
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectTemporalProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
-        },
         "profileId": {
-          "default": null,
-          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the\nbrowser never sends one.",
+          "type": "string"
         }
       },
+      "required": [
+        "profileId"
+      ],
       "type": "object"
     },
     "TemporalConnectOutput": {
@@ -13383,15 +12537,7 @@
           ]
         },
         "draft": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TestDraft"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/TestDraft",
           "description": "The profile form's draft (DOC-25 §3.4.7), as `temporal.test` takes it."
         },
         "namespace": {
@@ -13400,19 +12546,11 @@
             "string",
             "null"
           ]
-        },
-        "profile": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConnectTemporalProfile"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `draft`."
         }
       },
+      "required": [
+        "draft"
+      ],
       "type": "object"
     },
     "TemporalTestCodecOutput": {
@@ -13478,42 +12616,6 @@
         "from",
         "to",
         "ms"
-      ],
-      "type": "object"
-    },
-    "TemporalTlsOptions": {
-      "description": "TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as\n`clientKeyPem`. There is no \"skip verification\" (spec Open question 6).",
-      "properties": {
-        "caPem": {
-          "default": null,
-          "description": "Extra trusted CA certificates (PEM); the operating system's roots are used as well.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "clientCertPem": {
-          "default": null,
-          "description": "Client certificate chain (PEM) for mTLS.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "serverName": {
-          "default": null,
-          "description": "The name to verify the server certificate against, when it is not the address's host.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "enabled"
       ],
       "type": "object"
     },
@@ -13928,52 +13030,6 @@
         },
         "to": {
           "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "TlsOptions": {
-      "description": "TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from\nthe profile's `secrets`; procedures that take it list it in `redact`.",
-      "properties": {
-        "caPem": {
-          "default": null,
-          "description": "PEM certificates of the CA to trust instead of the system's trust store.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "clientCertPem": {
-          "default": null,
-          "description": "PEM client certificate (chain) for mutual TLS.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "clientKeyPem": {
-          "default": null,
-          "description": "PEM private key of the client certificate. A secret.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "enabled": {
-          "default": null,
-          "description": "Use TLS. Tools whose address says it (`https://`) use TLS either way.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "serverName": {
-          "default": null,
-          "description": "The name the server's certificate must carry, when it is not the address's host.",
           "type": [
             "string",
             "null"
@@ -16420,11 +15476,7 @@
         "$ref": "#/$defs/DockerConnectOutput"
       },
       "perm": "docker.read",
-      "redact": [
-        "profile.privateKey",
-        "profile.passphrase",
-        "profile.password"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 60000,
       "timeout_max_ms": 300000
@@ -17069,9 +16121,7 @@
         "$ref": "#/$defs/EchoConnectOutput"
       },
       "perm": "echo.read",
-      "redact": [
-        "profile.token"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -17393,11 +16443,7 @@
         "$ref": "#/$defs/LanggraphConnectOutput"
       },
       "perm": "langgraph.read",
-      "redact": [
-        "profile.apiKey",
-        "profile.headers",
-        "profile.tls.clientKeyPem"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -18063,11 +17109,7 @@
         "$ref": "#/$defs/Empty"
       },
       "perm": "messaging.read",
-      "redact": [
-        "registry.password",
-        "registry.token",
-        "registry.tls.clientKeyPem"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -18114,9 +17156,7 @@
       },
       "perm": "messaging.read",
       "redact": [
-        "registry.password",
-        "registry.token",
-        "registry.tls.clientKeyPem"
+        "draft.secrets"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -18228,16 +17268,7 @@
         "$ref": "#/$defs/NatsConnectOutput"
       },
       "perm": "nats.read",
-      "redact": [
-        "profile.password",
-        "profile.token",
-        "profile.nkeySeed",
-        "profile.creds",
-        "profile.tls.clientKeyPem",
-        "profile.schemaRegistry.password",
-        "profile.schemaRegistry.token",
-        "profile.schemaRegistry.tls.clientKeyPem"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -19576,14 +18607,7 @@
         "$ref": "#/$defs/TemporalConnectOutput"
       },
       "perm": "temporal.read",
-      "redact": [
-        "profile.clientKeyPem",
-        "profile.apiKey",
-        "profile.s3AccessKeyId",
-        "profile.s3SecretAccessKey",
-        "profile.s3SessionToken",
-        "profile.codecAuthorization"
-      ],
+      "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -20056,13 +19080,7 @@
       },
       "perm": "temporal.read",
       "redact": [
-        "draft.secrets",
-        "profile.clientKeyPem",
-        "profile.apiKey",
-        "profile.s3AccessKeyId",
-        "profile.s3SecretAccessKey",
-        "profile.s3SessionToken",
-        "profile.codecAuthorization"
+        "draft.secrets"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -20451,5 +19469,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:6abc6e4f8f1eb7616ca8921838b93c3fa0ca5370ecd6d4bed4effea2abc65c24"
+  "schema_hash": "sha256:1af1798d64ae9b8576bbddfe6427c6723d78a35a4b6d43dfa4a1b01c31e54ce9"
 }

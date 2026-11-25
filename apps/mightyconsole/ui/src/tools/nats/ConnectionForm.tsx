@@ -7,9 +7,8 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { NatsAuth } from "@/gen/api";
 import type { ConnectionFormProps } from "../types";
-import { AUTH_LABELS, DEFAULT_CONNECTION_NAME, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SERVER, authOf, tlsOf } from "./profile";
+import { AUTH_LABELS, DEFAULT_CONNECTION_NAME, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SERVER, type NatsAuth, authOf, tlsOf } from "./profile";
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 const AUTHS = Object.keys(AUTH_LABELS) as NatsAuth[];

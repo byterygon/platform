@@ -79,17 +79,11 @@ pub struct ExternalStorageOptions {
 #[serde(rename_all = "camelCase")]
 pub struct TemporalTestCodecInput {
     /// The profile form's draft (DOC-25 §3.4.7), as `temporal.test` takes it.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub draft: Option<crate::core::stored::TestDraft>,
+    pub draft: crate::core::stored::TestDraft,
     /// The stored profile the form edits, whose secrets fill those the draft leaves empty.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub based_on: Option<String>,
-    /// A profile the browser sends, until the UI moves to stored profiles; not with `draft`.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile: Option<ConnectTemporalProfile>,
     #[serde(default)]
     #[ts(optional = nullable)]
     pub namespace: Option<String>,
@@ -234,14 +228,9 @@ pub struct ConnectTemporalProfile {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TemporalConnectInput {
-    /// The stored profile to connect with (DOC-25 §3.4.7).
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile_id: Option<String>,
-    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile: Option<ConnectTemporalProfile>,
+    /// The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+    /// browser never sends one.
+    pub profile_id: String,
 }
 
 /// What the server reports about itself.

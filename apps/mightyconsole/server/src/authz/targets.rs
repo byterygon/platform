@@ -10,17 +10,16 @@
 //! - `uploadId`: the handle a NATS upload runs on;
 //! - `id` of a `profiles.*` call and `owner.id` of a `secrets.*` call: the stored profile;
 //! - `profileId` (a `<tool>.connect`) and `basedOn` (a `<tool>.test`): the stored profile;
-//! - `profile` (a `<tool>.connect`, `temporal.testCodec`): the profile the browser sends, and
-//!   `draft` (a `<tool>.test` with no `basedOn`): the caller's own draft, both as below;
+//! - `draft` (a `<tool>.test` or `temporal.testCodec` with no `basedOn`): the caller's own draft,
+//!   as below;
 //! - then, for a tool with namespaces ([`catalogue::NAMESPACED_TOOLS`]), the input's
 //!   `namespace` below that target.
 //!
-//! **Browser-held profiles.** Until profiles move to the server (TSK-139), every connection is
-//! opened with a profile the browser keeps and sends: there is no stored profile id, owner or
-//! shared profile yet. Such a target has the kind [`BROWSER_TARGET`] and the id
-//! `<tool>[/ns:<namespace>]`. It is built only from the calling session's own input and handles,
-//! so it is always the caller's own: the Authorizer treats it as the caller's personal profile
-//! (DOC-25 §3.4.9 imports each of them as one), and no scoped assignment covers it.
+//! **Drafts.** A `<tool>.test` (or `temporal.testCodec`) with no `basedOn` tests the profile form's
+//! draft, which is not stored: its target has the kind [`BROWSER_TARGET`] and the id
+//! `<tool>[/ns:<namespace>]`. It is built only from the calling session's own input, so it is
+//! always the caller's own: the Authorizer treats it as the caller's personal profile, and no
+//! scoped assignment covers it. Every connection names a stored profile (`profileId`, TSK-139).
 
 use ambidex::{ErrorPayload, IntoErrorPayload, ProcedureMeta, Session, Targets};
 use security_types::{PROFILE_TARGET, ProfileTarget, TargetRef};
@@ -30,10 +29,10 @@ use std::sync::Arc;
 use super::catalogue;
 use crate::core::{Hub, ToolError};
 
-/// The target kind of a connection opened with a profile the browser sends.
+/// The target kind of a profile form's draft (Test connection), the caller's own.
 pub const BROWSER_TARGET: &str = "browser";
 
-/// The target of a browser-held profile of `tool`.
+/// The target of a draft profile of `tool`.
 pub fn browser(tool: &str) -> TargetRef {
     TargetRef::new(BROWSER_TARGET, tool)
 }
@@ -160,8 +159,7 @@ impl Targets for McTargets {
             && catalogue::TOOLS.contains(&namespace)
         {
             crate::profiles::target_of(id)
-        } else if (input.get("profile").is_some_and(Value::is_object)
-            || input.get("draft").is_some_and(Value::is_object))
+        } else if input.get("draft").is_some_and(Value::is_object)
             && catalogue::TOOLS.contains(&namespace)
         {
             browser(namespace)

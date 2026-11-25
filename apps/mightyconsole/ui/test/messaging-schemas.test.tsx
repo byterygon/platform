@@ -7,13 +7,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { MightyClient } from "@/app/client";
 import { describeError } from "@/app/messages";
 import { NoticeContext } from "@/app/page";
-import type { Inspection, LocalSchema, MappingTestOutput, RegistryProfile, SchemaMapping, SchemasStatusOutput } from "@/gen/api";
+import type { Inspection, LocalSchema, MappingTestOutput, SchemaMapping, SchemasStatusOutput } from "@/gen/api";
 import type { MessageRow } from "@/messaging/arrow";
 import { LABELS } from "@/messaging/columns";
 import { MessageDetail } from "@/messaging/MessageDetail";
 import type { DecodeAs } from "@/messaging/schemas/DecodeAs";
 import { choiceText, decodeChoices, firstMapping, insertAbove, mappingFromChoice, mappingMatches, mappingSchemaText, moveItem, newId, subjectMatches, targetProblem } from "@/messaging/schemas/model";
-import { registryOf, registryProblems, registryToConnect, splitPatterns, withRegistry } from "@/messaging/schemas/registry";
+import { registryOf, registryProblems, splitPatterns, withRegistry } from "@/messaging/schemas/registry";
 import { importPath, issueText } from "@/messaging/schemas/SchemaSheet";
 import { schemaChoices } from "@/messaging/schemas/use-decoding";
 import type { ProfileRecord } from "@/profiles/record";
@@ -324,12 +324,7 @@ describe("a schema registry on a NATS profile (batch 4b)", () => {
     expect(bearer.secrets["registryPassword"]).toBeUndefined();
     expect(bearer.secrets["registryToken"]).toBe("t");
     expect(withRegistry(bearer, null).secrets["registryToken"]).toBeUndefined();
-    // What nats.connect takes: the secret of the chosen auth only, the subjects to look at.
-    const connect = schema.toConnect(r) as { schemaRegistry: RegistryProfile | null };
-    expect(connect.schemaRegistry).toMatchObject({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", password: "pw", token: null, wireFormatSubjects: ["orders.wire.>"] });
-    expect((schema.toConnect(record()) as { schemaRegistry: unknown }).schemaRegistry).toBeNull();
-    // Kafka sends no subject list: every record is looked at.
-    expect(registryToConnect(registryOf(r)!, r.secrets, false).wireFormatSubjects).toBeNull();
+    // The registry the server builds from the stored profile: server/src/profiles/connect.rs.
     expect(splitPatterns(" orders.>, payments.>\naudit ")).toEqual(["orders.>", "payments.>", "audit"]);
     expect(Object.keys(registryProblems({ url: "https://r:8081", auth: "bearer", tls: {}, wireFormatSubjects: ["a..b"] }, false)).sort()).toEqual(["caPem", "secret", "wireFormatSubjects"]);
     expect(registryProblems({ url: "r:8081", auth: "none", tls: {} }, false)["url"]).toMatch(/http:\/\//);
@@ -359,16 +354,19 @@ describe("a schema registry on a NATS profile (batch 4b)", () => {
     await click(byRole("button", "Test", sheet));
     await waitFor(() => byText(/Registry answered/, sheet) !== null, "the answer");
     expect(sheet.textContent).toContain("3 subjects · mode READWRITE · compatibility BACKWARD");
-    const tested = ((client.messaging.registry.test.mock.calls[0] as unknown[])[0] as { registry: RegistryProfile }).registry;
-    expect(tested).toMatchObject({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", password: "pw-1", wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+    // The profile form's draft with this registry; the typed password under its server name.
+    const tested = (client.messaging.registry.test.mock.calls[0] as unknown[])[0] as { tool: string; draft: { fields: Record<string, unknown>; secrets: Record<string, string> }; basedOn: string };
+    expect(tested.tool).toBe("nats");
+    expect(tested.draft.fields["schemaRegistry"]).toMatchObject({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+    expect(tested.draft.secrets).toEqual({ "schemaRegistry.password": "pw-1" });
+    expect(tested.basedOn).toBe(s.get().id);
     expect(await axeViolations(sheet)).toEqual([]);
     await click(byRole("button", "Save registry", sheet));
     await waitFor(() => client.messaging.registry.set.mock.calls.length === 1, "given to the connection");
     expect(s.get().fields["schemaRegistry"]).toEqual({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", tls: {}, wireFormatSubjects: ["orders.wire.>", "audit.>"] });
     expect(s.get().secrets["registryPassword"]).toBe("pw-1");
-    const set = (client.messaging.registry.set.mock.calls[0] as unknown[])[0] as { connId: string; registry: RegistryProfile };
-    expect(set.connId).toBe("conn-1");
-    expect(set.registry).toMatchObject({ password: "pw-1", wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+    // The connection gets the registry the server rebuilds from the saved profile: no secret here.
+    expect((client.messaging.registry.set.mock.calls[0] as unknown[])[0]).toEqual({ connId: "conn-1" });
   });
 
   test("a mapping to a registry subject and version; the registry cannot go while a mapping uses it", async () => {
