@@ -38,7 +38,7 @@ async fn summary(tab: &mut Tab, id: u32) -> Value {
     loop {
         let frame = tab.frame(id).await;
         match frame.kind {
-            Kind::Chunk => tab.client.credit(id, 1).await,
+            Kind::Chunk => tab.credit(id, 1).await,
             Kind::StreamEnd => return serde_json::from_slice(&frame.payload).unwrap(),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
         }
@@ -217,7 +217,7 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
         match frame.kind {
             Kind::Chunk => {
                 chunks += 1;
-                tab.client.credit(1004, 1).await;
+                tab.credit(1004, 1).await;
             }
             Kind::Error => {
                 break serde_json::from_slice::<ambidex::ErrorPayload>(&frame.payload).unwrap();
@@ -252,7 +252,7 @@ async fn the_filter_s_jq_runs_in_a_worker_per_stream() {
     responsive(&mut tab, 1006).await;
     let busy = live_workers();
     assert!(!busy.is_empty());
-    tab.client.cancel(1005).await;
+    tab.cancel(1005).await;
     only_the_spare_is_left(&busy).await;
 
     // Releasing the connection ends its streams and their workers.

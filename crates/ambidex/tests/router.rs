@@ -576,6 +576,52 @@ async fn denial_details_name_the_permission_target_and_reason() {
 }
 
 #[tokio::test]
+async fn an_approval_request_sees_the_redacted_input() {
+    #[derive(Clone, Default)]
+    struct Inputs(Arc<Mutex<Vec<Option<Value>>>>);
+    impl Approvals for Inputs {
+        fn request<'a>(
+            &'a self,
+            _principal: &'a Principal,
+            _spec: &'a ApprovalSpec,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async { None })
+        }
+        fn request_for<'a>(
+            &'a self,
+            _principal: &'a Principal,
+            _spec: &'a ApprovalSpec,
+            input: Option<&'a Value>,
+        ) -> BoxFuture<'a, Option<String>> {
+            self.0.lock().unwrap().push(input.cloned());
+            Box::pin(async { Some("apr-1".to_owned()) })
+        }
+    }
+    let policy = Policy {
+        known: vec!["demo.drop"],
+        approval: vec!["demo.drop"],
+        ..Policy::default()
+    };
+    let inputs = Inputs::default();
+    let router = Router::with_approvals(policy, inputs.clone()).with_audit(MemoryAuditLog::new());
+    router.mount(DemoApi::default()).unwrap();
+    let err = call(
+        &router,
+        human(),
+        "demo.dropTable",
+        json!({"connection": "c1", "password": "hunter2"}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, Code::ApprovalRequired);
+    let seen = inputs.0.lock().unwrap().clone();
+    assert_eq!(seen.len(), 1);
+    let input = seen[0].clone().expect("the dispatch check has the input");
+    assert_eq!(input["connection"], "c1");
+    assert_ne!(input["password"], "hunter2", "redacted");
+}
+
+#[tokio::test]
 async fn authorization_runs_before_input_decoding() {
     let policy = Policy::default();
     let (router, _) = setup(&policy);

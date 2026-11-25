@@ -63,3 +63,17 @@ export const command = (label: string, argv: string[], options: { cwd?: string; 
 export const server = (label: string, args: string[], expect: RegExp[]): Check => ({ kind: "server", label, args, expect });
 export const browser = (label: string, run: (ctx: BrowserContext) => Promise<void>): Check => ({ kind: "browser", label, run });
 export const manual = (label: string): Check => ({ kind: "manual", label });
+
+/**
+ * Answers the server's destroy confirmation (DOC-25 §3.3.6) as a person does: waits for its
+ * dialog after a destroy was asked for, types the phrase it shows, confirms, and waits for it to
+ * close. Every Destructive call needs it, the caller's own connections included.
+ */
+export async function confirmDestroy(ctx: Pick<BrowserContext, "run" | "until">, what: string): Promise<void> {
+  const dialog = `document.querySelector("[data-confirmation-phrase]:not([data-confirmation-phrase=''])")`;
+  await ctx.until(dialog, `the server's confirmation of ${what}`);
+  await ctx.run(`__mc.type(${dialog}.querySelector("input"), ${dialog}.getAttribute("data-confirmation-phrase"))`);
+  await ctx.until(`!${dialog}.querySelector("button[type=submit]").disabled`, `the confirmation of ${what}, typed`);
+  await ctx.run(`__mc.click(${dialog}.querySelector("button[type=submit]"))`);
+  await ctx.until(`!document.querySelector("[data-confirmation-phrase]")`, `${what} confirmed`);
+}

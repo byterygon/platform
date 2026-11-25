@@ -2,10 +2,12 @@
 // Dex). Each build task wires its own items; TSK-141 attaches the evidence. Wired so far: "Login and
 // sessions" (TSK-136), "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
 // rotation; the checkpoint waits for the key of TSK-139), the built-in accounts and the default
-// administrator (TSK-142). The parts other tasks own are `manual` checks naming them; the rest of
-// the Start section (TSK-141) and the Authorization, Destroy and Secrets sections come with their
-// tasks.
-import { cargo, command, manual } from "../checklist.mts";
+// administrator (TSK-142), Authorization and Destroy (TSK-138). The parts other tasks own are
+// `manual` checks naming them; the rest of the Start section (TSK-141) and the Secrets section come
+// with their tasks. Until TSK-139 moves profiles to the server, every connection is the caller's
+// own (DOC-25 Open question 22): what roles do on shared profiles is proved by the server's tests,
+// and on the lab once shared profiles exist.
+import { cargo, command, manual, vitest } from "../checklist.mts";
 import type { Checklist } from "../checklist.mts";
 
 /** One test of the sign-in conformance cases (`crates/ambidex-conformance/tests/oidc.rs`), built with
@@ -144,6 +146,62 @@ export default {
       checks: [
         cargo("without_a_writable_log_writes_and_sensitive_reads_are_refused_and_other_reads_run", { label: "a log that refuses entries: a sensitive read is Unavailable, an ordinary read runs" }),
         command("Ambidex: Write and Destructive calls are refused before the handler, a sensitive read fails closed for a human", ["cargo", "test", "-p", "ambidex", "--test", "audit", "--", "a_failing_sink_stops_writes_and_agent_calls_before_the_handler", "a_sensitive_read_fails_closed_for_a_human_and_is_marked_in_the_table"], { requires: ["cargo"] }),
+      ],
+    },
+    {
+      id: "authz-roles",
+      text: "(TSK-138) A viewer can browse every tool but cannot write, exec or read container files (PermissionDenied naming the permission). An operator can write and exec but cannot destroy or reveal a Kubernetes Secret. An administrator can destroy, after the confirmation.",
+      checks: [
+        cargo("every_built_in_role_on_every_tool", { label: "every built-in role against procedures of every tool" }),
+        cargo("without_profiles_personal_the_roles_bind_on_browser_profiles", { label: "over the wire: PermissionDenied names the permission, the target and the reason" }),
+        cargo("the_right_phrase_allows_the_same_call_once", { label: "the destroy confirmation" }),
+        manual("viewer, operator and administrator signed in through the lab's IdP on a shared profile: TSK-139 (shared profiles on the server; until then every connection is the caller's own)"),
+      ],
+    },
+    {
+      id: "authz-scope",
+      text: "(TSK-138) A role limited to one Temporal namespace (and one Kubernetes namespace when TSK-82 lands) is refused in another, and in a cluster-wide list.",
+      checks: [
+        cargo("scopes_limit_a_role_to_profiles_and_namespaces", { label: "inside, outside, the whole profile, no target" }),
+        command("the scope matcher (security-types)", ["cargo", "test", "-p", "security-types", "--lib", "--", "scope::"], { requires: ["cargo"] }),
+        manual("a lab user whose group maps to a role limited to one Temporal namespace: TSK-139 (a scope names a profile stored on the server)"),
+      ],
+    },
+    {
+      id: "authz-no-role",
+      text: "(TSK-138) A user with no role signs in and can do nothing but app.me.",
+      checks: [
+        cargo("a_user_without_a_role_can_only_see_who_they_are"),
+      ],
+    },
+    {
+      id: "authz-personal",
+      text: "(TSK-138) A viewer who adds a personal profile with their own credentials can write, exec and destroy (after the confirmation) through it; another user, an administrator included, cannot see or connect with it; saving it with a kubeconfig exec plugin is refused without profiles.hostAccess.",
+      checks: [
+        cargo("a_browser_held_profile_is_the_callers_own"),
+        cargo("a_stored_personal_profile_is_its_owners_alone"),
+        cargo("a_member_has_every_right_on_their_own_connection"),
+        manual("host-access fields need profiles.hostAccess when a profile is saved: TSK-139 (profiles.create and update)"),
+      ],
+    },
+    {
+      id: "authz-completeness",
+      text: "(TSK-138) The completeness test fails for a procedure without a permission, a target or a confirmation subject (a test fixture).",
+      checks: [
+        cargo("the_fixture_catches_each_gap"),
+        cargo("every_procedure_is_protected", { label: "the real API passes" }),
+      ],
+    },
+    {
+      id: "destroy",
+      text: "(TSK-138) A Destructive call without a confirmation gets ApprovalRequired; a wrong phrase, an expired challenge, a reused challenge, another session's challenge and a changed input are each refused; the right phrase lets the same call through once.",
+      checks: [
+        cargo("the_right_phrase_allows_the_same_call_once", { label: "wrong phrases, a changed input, target or action; the right phrase once" }),
+        cargo("another_session_or_principal_cannot_see_or_answer_it"),
+        cargo("challenges_expire_pending_and_confirmed"),
+        cargo("a_destroy_needs_a_confirmed_challenge_even_on_ones_own_connection", { label: "the Authorizer: no destroy without a confirmed challenge, used once" }),
+        cargo("containers_are_listed_acted_on_and_their_logs_split_by_stream", { label: "over the wire: a Docker remove answered and sent again" }),
+        vitest("test/confirmations.test.tsx"),
       ],
     },
   ],

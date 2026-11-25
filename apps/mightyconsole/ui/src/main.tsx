@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { App } from "./app/App";
 import { ServicesContext, createServices } from "./app/client";
+import { ConfirmationHost } from "./app/confirmations";
 import { applyAppearance } from "./app/presets";
 import { createAppHistory, readRouterConfig } from "./app/router";
 import { accountGate, gateApi } from "./app/account-gate";
@@ -50,6 +51,7 @@ async function boot(): Promise<void> {
       <ServicesContext.Provider value={services}>
         <StoreProvider persisted={persisted} storage={storage}>
           <App history={history} routerConfig={routerConfig} />
+          {services.confirmations ? <ConfirmationHost gate={services.confirmations} client={services.client} /> : null}
         </StoreProvider>
       </ServicesContext.Provider>
     </StrictMode>,

@@ -367,7 +367,7 @@ async fn read_value(tab: &mut Tab, id: u32, input: Value) -> (Vec<u8>, Value) {
             Kind::Chunk => {
                 assert!(frame.payload.len() < FRAME);
                 out.extend_from_slice(&frame.payload);
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => return (out, serde_json::from_slice(&frame.payload).unwrap()),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
@@ -585,7 +585,7 @@ async fn run_lines(tab: &mut Tab, id: u32) -> (Vec<Value>, Value, usize) {
                 {
                     lines.push(serde_json::from_slice(line).unwrap());
                 }
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => {
                 return (

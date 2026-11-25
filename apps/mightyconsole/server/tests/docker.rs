@@ -835,7 +835,7 @@ async fn drain(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 all.extend(lines(&frame.payload));
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 return (all, serde_json::from_slice(&frame.payload).unwrap());
@@ -888,7 +888,7 @@ async fn containers_are_listed_acted_on_and_their_logs_split_by_stream() {
             .unwrap()
             .contains("page not found")
     );
-    tab.call(
+    tab.confirmed(
         6,
         "docker.containers.remove",
         json!({ "connId": conn_id, "ids": ["stopped", "web"], "force": false, "volumes": true }),
@@ -997,7 +997,7 @@ async fn output_until(tab: &mut Tab, id: u32, needle: &str) -> String {
         let chunk = tab.chunk(id).await;
         assert_eq!(chunk[0], 1, "the stdout channel");
         text.push_str(&String::from_utf8_lossy(&chunk[1..]));
-        tab.client.credit(id, 1).await;
+        tab.credit(id, 1).await;
     }
     text
 }
@@ -1061,7 +1061,7 @@ async fn an_exec_terminal_takes_input_resizes_and_ends_with_the_exit_code() {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 text.push_str(&String::from_utf8_lossy(&frame.payload[1..]));
-                tab.client.credit(3, 1).await;
+                tab.credit(3, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 break serde_json::from_slice::<Value>(&frame.payload).unwrap();
@@ -1314,7 +1314,7 @@ async fn a_containers_files_are_listed_read_and_downloaded_from_its_archive() {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 tar.extend_from_slice(&frame.payload);
-                tab.client.credit(9, 1).await;
+                tab.credit(9, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 break serde_json::from_slice::<Value>(&frame.payload).unwrap();
@@ -1358,7 +1358,7 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
     assert_eq!(tab.result(4).await["inspect"]["Id"], "sha256:b");
 
     // In order: the image a running container uses is refused, the dangling one goes.
-    tab.call(
+    tab.confirmed(
         5,
         "docker.images.remove",
         json!({ "connId": conn_id, "ids": ["busybox:1.37", "sha256:d"], "force": true }),
@@ -1395,7 +1395,7 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
     )
     .await;
     assert_eq!(tab.result(7).await["inspect"]["Name"], "spare");
-    tab.call(
+    tab.confirmed(
         8,
         "docker.volumes.remove",
         json!({ "connId": conn_id, "names": ["spare", "shop_data"] }),
@@ -1423,7 +1423,7 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
     )
     .await;
     assert_eq!(tab.result(10).await["inspect"]["Name"], "shop_default");
-    tab.call(
+    tab.confirmed(
         11,
         "docker.networks.remove",
         json!({ "connId": conn_id, "ids": ["n1", "bridge"] }),
@@ -1439,7 +1439,7 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
     );
 
     // Names that would leave the path are refused before anything is sent.
-    tab.call(
+    tab.confirmed(
         12,
         "docker.images.remove",
         json!({ "connId": conn_id, "ids": ["../containers/web"], "force": false }),
@@ -1449,16 +1449,14 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
         details(&tab.error(12, Code::InvalidArgument).await)["field"],
         "ids"
     );
+    // A destroy that names nothing has nothing to confirm: refused without a challenge.
     tab.call(
         13,
         "docker.volumes.remove",
         json!({ "connId": conn_id, "names": [] }),
     )
     .await;
-    assert_eq!(
-        details(&tab.error(13, Code::InvalidArgument).await)["field"],
-        "names"
-    );
+    assert_eq!(tab.error(13, Code::ApprovalRequired).await.details, None);
     let paths = lab.seen.paths.lock().unwrap().clone();
     assert!(paths.iter().all(|p| !p.contains("..")), "{paths:?}");
     assert!(

@@ -418,6 +418,8 @@ impl TestServer {
         Tab {
             client,
             pending: Vec::new(),
+            wire: std::collections::HashMap::new(),
+            next_wire: 1,
         }
     }
 }
@@ -471,25 +473,64 @@ impl Wire for WsWire {
 
 /// A connected tab. Frames arrive interleaved (events, chunks, results), so it keeps the ones
 /// a test has not asked for yet.
+///
+/// A test names its calls with its own ids; the tab sends each with a **wire id**, the same
+/// number until [`Tab::confirmed`] has used extra ones (call ids strictly increase on a
+/// connection), after which later calls get the next free wire id. Every method of the tab maps
+/// a test id to its wire id; frames sent through `client` directly use their ids as they are.
 pub struct Tab {
     pub client: Client,
     pub pending: Vec<Frame>,
+    wire: std::collections::HashMap<u32, u32>,
+    next_wire: u32,
 }
 
 impl Tab {
+    /// The wire id for a new call named `id`.
+    fn assign(&mut self, id: u32) -> u32 {
+        let wire = id.max(self.next_wire);
+        self.wire.insert(id, wire);
+        self.next_wire = wire + 1;
+        wire
+    }
+
+    /// The wire id of the call named `id`.
+    pub fn wire_of(&self, id: u32) -> u32 {
+        self.wire.get(&id).copied().unwrap_or(id)
+    }
+
     pub async fn call(&mut self, id: u32, procedure: &str, input: Value) {
+        let wire = self.assign(id);
         self.client
-            .send(&[call_frame(id, procedure, input, None)])
+            .send(&[call_frame(wire, procedure, input, None)])
             .await;
     }
 
     pub async fn subscribe_events(&mut self, id: u32) {
+        let wire = self.assign(id);
         self.client
-            .send(&[subscribe_frame(id, "app.events", json!({}), None)])
+            .send(&[subscribe_frame(wire, "app.events", json!({}), None)])
             .await;
     }
 
+    /// Grants `chunks` more chunks to the stream named `id`.
+    pub async fn credit(&mut self, id: u32, chunks: u64) {
+        let wire = self.wire_of(id);
+        self.client.credit(wire, chunks).await;
+    }
+
+    /// Cancels the call named `id`.
+    pub async fn cancel(&mut self, id: u32) {
+        let wire = self.wire_of(id);
+        self.client.cancel(wire).await;
+    }
+
     pub async fn frame(&mut self, id: u32) -> Frame {
+        let wire = self.wire_of(id);
+        self.frame_wire(wire).await
+    }
+
+    async fn frame_wire(&mut self, id: u32) -> Frame {
         if let Some(at) = self.pending.iter().position(|f| f.call_id == id) {
             return self.pending.remove(at);
         }
@@ -504,6 +545,7 @@ impl Tab {
 
     /// `true` when no frame for `id` arrives within `wait`.
     pub async fn quiet(&mut self, id: u32, wait: Duration) -> bool {
+        let id = self.wire_of(id);
         if self.pending.iter().any(|f| f.call_id == id) {
             return false;
         }
@@ -587,9 +629,73 @@ impl Tab {
         out["connId"].as_str().unwrap().to_owned()
     }
 
+    /// A Destructive call answered as a person would (DOC-25 §3.3.6): sent as call `id`, which
+    /// gets `ApprovalRequired`; the challenge's phrase is read and typed; the same call is sent
+    /// again, and `id` then names that call (read its answer with [`Tab::result`] or
+    /// [`Tab::error`]). The extra calls take wire ids of their own (see [`Tab`]).
+    pub async fn confirmed(&mut self, id: u32, procedure: &str, input: Value) -> u32 {
+        self.call(id, procedure, input.clone()).await;
+        let err = self.error(id, Code::ApprovalRequired).await;
+        let approval = err.details.expect("an approval id")["approval_id"]
+            .as_str()
+            .expect("approval_id")
+            .to_owned();
+        let challenge = self
+            .extra_call("app.confirmations.get", json!({ "approvalId": approval }))
+            .await;
+        assert_eq!(challenge["action"], procedure);
+        let phrase = challenge["phrase"].as_str().unwrap().to_owned();
+        self.extra_call(
+            "app.confirmations.confirm",
+            json!({ "approvalId": approval, "typed": phrase }),
+        )
+        .await;
+        // `id` now names the call sent again.
+        let wire = self.next_wire;
+        self.wire.insert(id, wire);
+        self.next_wire = wire + 1;
+        self.client
+            .send(&[call_frame(wire, procedure, input, None)])
+            .await;
+        id
+    }
+
+    /// [`Tab::call`], answering the confirmation first when the procedure is Destructive.
+    pub async fn call_answered(&mut self, id: u32, procedure: &str, input: Value) {
+        if is_destructive(procedure) {
+            self.confirmed(id, procedure, input).await;
+        } else {
+            self.call(id, procedure, input).await;
+        }
+    }
+
+    /// A call on a wire id of its own, answered with a result.
+    async fn extra_call(&mut self, procedure: &str, input: Value) -> Value {
+        let wire = self.next_wire;
+        self.next_wire = wire + 1;
+        self.client
+            .send(&[call_frame(wire, procedure, input, None)])
+            .await;
+        let frame = self.frame_wire(wire).await;
+        assert_eq!(
+            frame.kind,
+            Kind::Result,
+            "{procedure}: {}",
+            String::from_utf8_lossy(&frame.payload)
+        );
+        serde_json::from_slice(&frame.payload).unwrap()
+    }
+
     pub async fn disconnect(self) {
         self.client.disconnect().await;
     }
+}
+
+/// Whether `procedure` is Destructive (it has a confirmation subject).
+pub fn is_destructive(procedure: &str) -> bool {
+    mightyconsole_server::authz::confirm::SUBJECTS
+        .iter()
+        .any(|(name, _, _)| *name == procedure)
 }
 
 pub fn not_found_connection(err: &ErrorPayload) {

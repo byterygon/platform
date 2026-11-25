@@ -24,10 +24,9 @@
 //! 6. No assignment grants the permission → Deny `MissingPermission`; only assignments whose
 //!    scope does not cover the target → Deny `OutOfScope`; a procedure that needs a target and
 //!    has none → Deny ("no target").
-//! 7. Allow.
-//!
-//! The destroy confirmation (§3.3.6) comes with TSK-138's next batch; until then a Destructive
-//! call is decided like any other.
+//! 7. A Destructive call (the caller's own profile included) → Allow when a confirmed challenge
+//!    matches it ([`confirm`]), else `NeedsApproval`.
+//! 8. Allow.
 //!
 //! Until profiles move to the server (TSK-139) there is no stored profile: every connection is
 //! opened with a profile the browser keeps and sends, a [`targets::BROWSER_TARGET`]. It counts as
@@ -36,6 +35,7 @@
 
 pub mod catalogue;
 pub mod completeness;
+pub mod confirm;
 pub mod policy;
 pub mod targets;
 
@@ -44,8 +44,11 @@ use std::sync::Arc;
 
 use ambidex_axum::{LoginSessions, login_session_of};
 use security_types::{
-    Authorizer, AuthzRequest, Decision, PROFILE_TARGET, PrincipalKind, Reason, TargetRef, TenantId,
+    ApprovalSpec, Authorizer, AuthzRequest, Decision, PROFILE_TARGET, PrincipalKind, Reason, Risk,
+    TargetRef, TenantId,
 };
+
+use self::confirm::Confirmations;
 
 use self::catalogue::TargetKind;
 use self::policy::{InForce, Policy, PolicyHandle};
@@ -118,6 +121,7 @@ pub struct RoleAuthorizer {
     sessions: Arc<LoginSessions>,
     policy: PolicyHandle,
     owners: Arc<dyn ProfileOwners>,
+    confirmations: Option<Arc<Confirmations>>,
 }
 
 impl RoleAuthorizer {
@@ -132,6 +136,45 @@ impl RoleAuthorizer {
             sessions,
             policy,
             owners,
+            confirmations: None,
+        }
+    }
+
+    /// Destructive calls are allowed against the challenges confirmed in `confirmations`
+    /// (DOC-25 §3.3.6); without it every Destructive call needs an approval it cannot get.
+    #[must_use]
+    pub fn with_confirmations(mut self, confirmations: Arc<Confirmations>) -> RoleAuthorizer {
+        self.confirmations = Some(confirmations);
+        self
+    }
+
+    /// Step 7: a Destructive call needs a confirmed challenge.
+    fn confirmed(&self, req: &AuthzRequest<'_>) -> Decision {
+        if req.risk < Risk::Destructive {
+            return Decision::Allow;
+        }
+        let now = match &self.confirmations {
+            Some(c) => {
+                if c.consume(
+                    req.principal,
+                    &req.action.name,
+                    req.target,
+                    req.input_digest,
+                ) {
+                    return Decision::Allow;
+                }
+                c.now_ms()
+            }
+            None => security_types::unix_now_ms(),
+        };
+        Decision::NeedsApproval {
+            approval: ApprovalSpec {
+                action: req.action.clone(),
+                target: req.target.cloned(),
+                risk: req.risk,
+                input_digest: req.input_digest,
+                expires_at_unix_ms: now + confirm::PENDING_FOR_MS,
+            },
         }
     }
 
@@ -226,7 +269,7 @@ impl RoleAuthorizer {
         let in_force = policy.in_force(&p.id, &session.groups);
         let own = match self.whose(&policy, &in_force, &p.id, req.target) {
             Whose::Own(tool) if catalogue::belongs_to(perm, &tool) => {
-                return Decision::Allow;
+                return self.confirmed(req);
             }
             Whose::Own(_) => true,
             Whose::Other => {
@@ -242,8 +285,8 @@ impl RoleAuthorizer {
             (TargetKind::Profile, Some(target)) => policy.holds_on(&in_force, perm, target, own),
         };
         if granted {
-            // 7.
-            return Decision::Allow;
+            // 7. and 8.
+            return self.confirmed(req);
         }
         let reason = if policy.holds_anywhere(&in_force, perm) {
             Reason::OutOfScope {
@@ -776,6 +819,50 @@ mod tests {
             kind(&f.check(&change, "app.info", "app.read", None)),
             "allow"
         );
+    }
+
+    #[test]
+    fn a_destroy_needs_a_confirmed_challenge_even_on_ones_own_connection() {
+        let f = fixture(direct("human:account:U", "admin", Scope::everywhere()));
+        let confirmations = Arc::new(Confirmations::new(Arc::new(SystemClock)));
+        let authz = f
+            .authz
+            .clone()
+            .with_confirmations(Arc::clone(&confirmations));
+        let u = f.user("human:account:U", &[]);
+        let action = Action::new("nats.kv.delete", "nats.destroy");
+        for target in [shared("SHARED"), targets::browser("nats")] {
+            let req = AuthzRequest {
+                principal: &u,
+                action: &action,
+                target: Some(&target),
+                risk: Risk::Destructive,
+                input_digest: Digest([7; 32]),
+            };
+            let Decision::NeedsApproval { approval } = authz.decide(&req) else {
+                panic!("a destroy without a confirmation");
+            };
+            assert_eq!(approval.target.as_ref(), Some(&target));
+            let input = serde_json::json!({ "key": "k1" });
+            let id = confirmations.record_for_test(&u, &approval, &input);
+            confirmations.confirm(&u, &id, "k1").unwrap();
+            assert_eq!(authz.decide(&req), Decision::Allow);
+            assert!(
+                matches!(authz.decide(&req), Decision::NeedsApproval { .. }),
+                "used once"
+            );
+        }
+        // Without the permission, no challenge: a refusal.
+        let f = fixture(direct("human:account:V", "operator", Scope::everywhere()));
+        let v = f.user("human:account:V", &[]);
+        let req = AuthzRequest {
+            principal: &v,
+            action: &action,
+            target: Some(&shared("SHARED")),
+            risk: Risk::Destructive,
+            input_digest: Digest::ZERO,
+        };
+        assert_eq!(kind(&f.authz.decide(&req)), "missing");
     }
 
     #[test]

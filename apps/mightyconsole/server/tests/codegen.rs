@@ -77,6 +77,21 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        // The destroy confirmation (DOC-25 §3.3.6, TSK-138).
+        (
+            "app.confirmations.confirm",
+            Mutation,
+            "app.self",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "app.confirmations.get",
+            Query,
+            "app.self",
+            Risk::Read,
+            defaults,
+        ),
         (
             "app.events",
             Subscription,

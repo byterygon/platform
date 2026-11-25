@@ -72,7 +72,7 @@ async fn connect(tab: &mut Tab, id: u32, profile: Value) -> Value {
 }
 
 async fn call(tab: &mut Tab, id: u32, procedure: &str, input: Value) -> Value {
-    tab.call(id, procedure, input).await;
+    tab.call_answered(id, procedure, input).await;
     tab.result(id).await
 }
 
@@ -249,7 +249,7 @@ async fn subscribe_with_wildcards_and_a_queue_group_publish_and_request() {
     .await;
     // The schema comes first: the subscriptions exist from then on.
     let mut ipc = tab.chunk(3).await;
-    tab.client.credit(3, 1).await;
+    tab.credit(3, 1).await;
 
     let published = call(
         &mut tab,
@@ -301,7 +301,7 @@ async fn subscribe_with_wildcards_and_a_queue_group_publish_and_request() {
         match frame.kind {
             Kind::Chunk => {
                 ipc.extend_from_slice(&frame.payload);
-                tab.client.credit(3, 1).await;
+                tab.credit(3, 1).await;
             }
             Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
@@ -413,12 +413,12 @@ async fn a_paused_subscription_drops_the_oldest_and_counts_them() {
     let summary = loop {
         let frame = tab.frame(3).await;
         match frame.kind {
-            Kind::Chunk => tab.client.credit(3, 1).await,
+            Kind::Chunk => tab.credit(3, 1).await,
             Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
         }
         if tab.pending.iter().all(|f| f.call_id != 3) {
-            tab.client.credit(3, 8).await;
+            tab.credit(3, 8).await;
         }
     };
     assert_eq!(summary["endReason"], "limit");
@@ -464,13 +464,13 @@ fn i64s(batches: &[RecordBatch], name: &str) -> Vec<i64> {
 /// Reads a finite message stream to its end: the batches and the summary.
 async fn read_stream(tab: &mut Tab, id: u32) -> (Vec<RecordBatch>, Value) {
     let mut ipc = tab.chunk(id).await;
-    tab.client.credit(id, 1).await;
+    tab.credit(id, 1).await;
     loop {
         let frame = tab.frame(id).await;
         match frame.kind {
             Kind::Chunk => {
                 ipc.extend_from_slice(&frame.payload);
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => {
                 let summary = serde_json::from_slice::<Value>(&frame.payload).unwrap();
@@ -632,7 +632,7 @@ async fn streams_list_info_create_update_purge_and_delete() {
     )
     .await;
     assert_eq!(out["purged"], 3);
-    tab.call(
+    tab.confirmed(
         102,
         "nats.js.streams.purge",
         json!({ "connId": conn, "stream": name, "keep": 1, "upToSequence": 3 }),
@@ -820,7 +820,7 @@ async fn browse_from_first_last_a_sequence_and_a_time_and_follow() {
     )
     .await;
     let mut ipc = tab.chunk(11).await;
-    tab.client.credit(11, 1).await;
+    tab.credit(11, 1).await;
     for i in 0..3u32 {
         call(
             &mut tab,
@@ -835,7 +835,7 @@ async fn browse_from_first_last_a_sequence_and_a_time_and_follow() {
         match frame.kind {
             Kind::Chunk => {
                 ipc.extend_from_slice(&frame.payload);
-                tab.client.credit(11, 1).await;
+                tab.credit(11, 1).await;
             }
             Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
@@ -1212,7 +1212,7 @@ async fn kv_create_put_with_revisions_delete_purge_watch_and_delete_the_bucket()
     )
     .await;
     let mut ipc = tab.chunk(5).await;
-    tab.client.credit(5, 1).await;
+    tab.credit(5, 1).await;
 
     let put = |id: u32, value: &str, expect: Option<u64>| {
         let mut input = json!({ "connId": conn, "bucket": bucket, "key": "feature.x", "payload": { "codec": "json", "text": value } });
@@ -1258,7 +1258,7 @@ async fn kv_create_put_with_revisions_delete_purge_watch_and_delete_the_bucket()
         match frame.kind {
             Kind::Chunk => {
                 ipc.extend_from_slice(&frame.payload);
-                tab.client.credit(5, 1).await;
+                tab.credit(5, 1).await;
             }
             Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
@@ -1334,7 +1334,7 @@ async fn download(tab: &mut Tab, id: u32) -> (Vec<u8>, Value) {
         match frame.kind {
             Kind::Chunk => {
                 out.extend_from_slice(&frame.payload);
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => {
                 return (
@@ -1741,7 +1741,7 @@ async fn object_store_create_upload_in_parts_replace_abort_and_delete() {
         .map(|o| s(&o["name"]))
         .collect();
     assert_eq!(names, ["empty"]);
-    tab.call(
+    tab.confirmed(
         id,
         "nats.obj.delete",
         json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin" }),
@@ -2515,6 +2515,16 @@ async fn a_connect_a_write_a_destroy_and_a_download_are_recorded_in_the_audit_lo
             .any(|r| r.entry.action.name == "nats.obj.info"),
         "an ordinary read is not recorded"
     );
+    // The destroy was refused first with its approval id, then confirmed (DOC-25 §3.3.6).
+    let refused = records
+        .iter()
+        .map(|r| &r.entry)
+        .find(|e| {
+            e.action.name == "nats.kv.buckets.delete" && e.decision == AuditDecision::NeedsApproval
+        })
+        .expect("the destroy's refusal");
+    assert!(refused.approval_id.is_some());
+    done("app.confirmations.confirm");
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains(&password), "a credential reached the log");
 }

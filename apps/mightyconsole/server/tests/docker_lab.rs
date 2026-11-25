@@ -245,7 +245,7 @@ async fn drain(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 all.extend(lines(&frame.payload));
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 return (all, serde_json::from_slice(&frame.payload).unwrap());
@@ -353,7 +353,7 @@ async fn lab_containers_their_logs_and_the_events() {
     .await;
     let first = lines(&tab.chunk(9).await);
     assert!(!first.is_empty());
-    tab.client.cancel(9).await;
+    tab.cancel(9).await;
     tab.error(9, Code::Cancelled).await;
 
     // Events: starting the stopped container gives start and die (it exits at once).
@@ -385,10 +385,10 @@ async fn lab_containers_their_logs_and_the_events() {
             assert_eq!(event["name"], "stopped");
             actions.push(event["action"].as_str().unwrap().to_owned());
         }
-        tab.client.credit(10, 1).await;
+        tab.credit(10, 1).await;
     }
     assert!(actions.contains(&"start".to_owned()), "{actions:?}");
-    tab.client.cancel(10).await;
+    tab.cancel(10).await;
     tab.error(10, Code::Cancelled).await;
 }
 
@@ -398,7 +398,7 @@ async fn output_until(tab: &mut Tab, id: u32, needle: &str) -> String {
     while !text.contains(needle) {
         let chunk = tab.chunk(id).await;
         text.push_str(&String::from_utf8_lossy(&chunk[1..]));
-        tab.client.credit(id, 1).await;
+        tab.credit(id, 1).await;
     }
     text
 }
@@ -470,7 +470,7 @@ async fn lab_an_exec_shell_and_live_stats() {
     let mut samples = Vec::new();
     while samples.len() < 2 {
         samples.extend(lines(&tab.chunk(9).await));
-        tab.client.credit(9, 1).await;
+        tab.credit(9, 1).await;
     }
     assert!(
         samples[1]["memoryUsed"].as_u64().unwrap() > 0,
@@ -478,7 +478,7 @@ async fn lab_an_exec_shell_and_live_stats() {
     );
     assert!(samples[1]["timeMs"].as_u64() > samples[0]["timeMs"].as_u64());
     assert!(samples[1].get("cpuPercent").is_some(), "{samples:?}");
-    tab.client.cancel(9).await;
+    tab.cancel(9).await;
     tab.error(9, Code::Cancelled).await;
     tab.call(
         10,
@@ -497,7 +497,7 @@ async fn drain_bytes(tab: &mut Tab, id: u32) -> (String, Value) {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 text.push_str(&String::from_utf8_lossy(&frame.payload[1..]));
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 return (text, serde_json::from_slice(&frame.payload).unwrap());
@@ -563,7 +563,7 @@ async fn lab_images_volumes_and_networks_with_docker_s_refusals() {
     )
     .await;
     assert_eq!(tab.result(5).await["inspect"]["Id"], image_id);
-    tab.call(
+    tab.confirmed(
         6,
         "docker.images.remove",
         json!({ "connId": conn_id, "ids": [image_id], "force": false }),
@@ -594,7 +594,7 @@ async fn lab_images_volumes_and_networks_with_docker_s_refusals() {
     .await;
     assert_eq!(tab.result(8).await["inspect"]["Name"], "lab-cache");
     // A stopped container's volume is in use too.
-    tab.call(
+    tab.confirmed(
         9,
         "docker.volumes.remove",
         json!({ "connId": conn_id, "names": ["lab-cache"] }),
@@ -628,7 +628,7 @@ async fn lab_images_volumes_and_networks_with_docker_s_refusals() {
     )
     .await;
     assert_eq!(tab.result(11).await["inspect"]["Name"], "lab-net");
-    tab.call(
+    tab.confirmed(
         12,
         "docker.networks.remove",
         json!({ "connId": conn_id, "ids": ["bridge"] }),
@@ -776,10 +776,10 @@ async fn lab_a_projects_containers_log_apart() {
             assert_eq!(event["attributes"]["com.docker.compose.service"], "web");
             seen.push(event["action"].as_str().unwrap().to_owned());
         }
-        tab.client.credit(6, 1).await;
+        tab.credit(6, 1).await;
     }
     assert!(seen.contains(&"die".to_owned()), "{seen:?}");
-    tab.client.cancel(6).await;
+    tab.cancel(6).await;
     tab.error(6, Code::Cancelled).await;
 }
 
@@ -894,7 +894,7 @@ async fn lab_a_containers_files_read_through_its_archive() {
         match frame.kind {
             ambidex::Kind::Chunk => {
                 tar.extend_from_slice(&frame.payload);
-                tab.client.credit(11, 1).await;
+                tab.credit(11, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 break serde_json::from_slice::<Value>(&frame.payload).unwrap();

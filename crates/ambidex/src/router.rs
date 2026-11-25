@@ -203,6 +203,20 @@ pub trait Approvals: Send + Sync + 'static {
         principal: &'a Principal,
         spec: &'a ApprovalSpec,
     ) -> BoxFuture<'a, Option<String>>;
+
+    /// [`Approvals::request`] with the call's input, its `redact` paths replaced, so the request
+    /// can name what the call acts on (DOC-25 §3.3.6: the name a person types to confirm).
+    /// `None` for a re-check from [`Ctx::authorize`], which does not keep the input. The router
+    /// calls this one; by default it forwards to [`Approvals::request`].
+    fn request_for<'a>(
+        &'a self,
+        principal: &'a Principal,
+        spec: &'a ApprovalSpec,
+        input: Option<&'a Value>,
+    ) -> BoxFuture<'a, Option<String>> {
+        let _ = input;
+        self.request(principal, spec)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -275,6 +289,9 @@ struct Check<'a> {
     input_digest: Digest,
     correlation_id: &'a str,
     parent_correlation_id: Option<&'a str>,
+    /// The input as the audit sees it (`redact` paths replaced), for an approval request; `None`
+    /// in a handler's re-check.
+    input: Option<&'a Value>,
 }
 
 /// The admission entry records exactly what was checked.
@@ -319,7 +336,11 @@ impl Guard {
             },
             Decision::NeedsApproval { approval } => {
                 let approval_id = match &self.approvals {
-                    Some(approvals) => approvals.request(check.principal, approval).await,
+                    Some(approvals) => {
+                        approvals
+                            .request_for(check.principal, approval, check.input)
+                            .await
+                    }
                     None => None,
                 };
                 Rejected {
@@ -558,6 +579,7 @@ impl Ctx {
             input_digest: self.input_digest,
             correlation_id: self.scope.correlation_id(),
             parent_correlation_id: self.scope.parent_correlation_id(),
+            input: None,
         };
         if let Err(rejected) = self.guard.enforce(&check).await {
             if let Some(id) = &rejected.approval_id {
@@ -962,11 +984,9 @@ async fn admit(
     // The digest covers the input with its `redact` paths replaced (DOC-25 §3.5.3): the audit
     // log and the approval of a call never hold something a guess at a secret could be checked
     // against.
-    let digest = if meta.redact.is_empty() {
-        input_digest(&call.input)
-    } else {
-        input_digest(&meta.redacted_input(&call.input))
-    };
+    let redacted = (!meta.redact.is_empty()).then(|| meta.redacted_input(&call.input));
+    let seen = redacted.as_ref().unwrap_or(&call.input);
+    let digest = input_digest(seen);
     // The target is built on the server, never named by the client (see [`Targets`]).
     let target = match &guard.targets {
         Some(targets) => targets.target(&session, &meta, &call.input)?,
@@ -980,6 +1000,7 @@ async fn admit(
         input_digest: digest,
         correlation_id: scope.correlation_id(),
         parent_correlation_id: scope.parent_correlation_id(),
+        input: Some(seen),
     };
     guard
         .enforce(&check)
