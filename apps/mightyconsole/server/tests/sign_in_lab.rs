@@ -49,6 +49,13 @@ fn user(idp: &Value, name: &str) -> (String, String) {
 }
 
 async fn lab_server() -> TestServer {
+    lab_server_with(|_| {}).await
+}
+
+/// The lab server, its configuration changed by `change` after `[auth.oidc]` is set.
+async fn lab_server_with(
+    change: impl FnOnce(&mut mightyconsole_server::ServeConfig),
+) -> TestServer {
     let idp = idp();
     let oidc = OidcSettings {
         issuer: idp["issuer"].as_str().unwrap().into(),
@@ -70,6 +77,17 @@ async fn lab_server() -> TestServer {
     };
     start_configured(None, StartOptions::default(), |config| {
         config.auth.oidc = Some(oidc);
+        change(config);
+    })
+    .await
+}
+
+/// A tab of a signed-in lab user.
+async fn tab_of(t: &TestServer, session: &str) -> Tab {
+    let page = t.http("/", HOST, Some(session)).await;
+    t.tab(&Browser {
+        cookie: session.to_owned(),
+        csrf: page.csrf(),
     })
     .await
 }
@@ -257,4 +275,63 @@ async fn each_lab_user_gets_their_own_groups_and_session() {
     assert!(all[0].groups.is_empty());
     assert_eq!(all[1].groups, ["mc-viewers"]);
     assert_ne!(all[0].user, all[1].user);
+}
+
+/// Roles from the IdP's groups (DOC-25 §3.3.5, TSK-138): pinned mappings give Alice
+/// (`mc-admins`) `admin` and Bob (`mc-viewers`) `viewer`; with no default role, Carol (no group)
+/// can only see who she is. An administrator sees the OIDC users who signed in, with the groups
+/// of their last sign-in.
+#[tokio::test]
+async fn the_idp_groups_decide_what_each_lab_user_may_do() {
+    use mightyconsole_server::authz::policy::GroupMapping;
+    use security_types::Scope;
+    let t = lab_server_with(|config| {
+        config.auth.default_role = None;
+        for (group, role) in [("idp:mc-admins", "admin"), ("idp:mc-viewers", "viewer")] {
+            config.auth.group_roles.push(GroupMapping {
+                group: group.into(),
+                role: role.into(),
+                scope: Scope::everywhere(),
+            });
+        }
+    })
+    .await;
+    let (carol, _) = sign_in(&t, "carol", "%2F").await;
+    let mut c = tab_of(&t, &carol).await;
+    c.call(1, "app.me", json!({})).await;
+    assert_eq!(c.result(1).await["roles"], json!([]));
+    c.call(2, "app.info", json!({})).await;
+    c.error(2, Code::PermissionDenied).await;
+
+    let (bob, _) = sign_in(&t, "bob", "%2F").await;
+    let mut b = tab_of(&t, &bob).await;
+    b.call(1, "app.me", json!({})).await;
+    assert_eq!(
+        b.result(1).await["roles"],
+        json!([{ "role": "viewer", "scope": null, "via": "pinned" }])
+    );
+    b.call(2, "app.info", json!({})).await;
+    b.result(2).await;
+    b.call(3, "admin.users.list", json!({})).await;
+    let err = b.error(3, Code::PermissionDenied).await;
+    assert_eq!(err.details.unwrap()["perm"], "admin.users.read");
+
+    let (alice, _) = sign_in(&t, "alice", "%2F").await;
+    let mut a = tab_of(&t, &alice).await;
+    a.call(1, "admin.users.list", json!({ "text": "bob" }))
+        .await;
+    let users = a.result(1).await;
+    assert_eq!(users["total"], 1);
+    assert_eq!(users["users"][0]["groups"], json!(["mc-viewers"]));
+    assert_eq!(users["users"][0]["kind"], "oidc");
+    // A pinned administrator group: nobody can remove the last administrator, and Alice may end
+    // Bob's sessions.
+    a.call(
+        2,
+        "admin.sessions.revoke",
+        json!({ "userId": users["users"][0]["id"] }),
+    )
+    .await;
+    assert_eq!(a.result(2).await["revoked"], 1);
+    assert_eq!(b.client.expect_goaway().await.code, Code::Unauthenticated);
 }

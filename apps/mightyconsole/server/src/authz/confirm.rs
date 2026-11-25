@@ -49,7 +49,10 @@ pub const SHORT_PHRASE: usize = 12;
 /// field that names it. A list (Docker removes several at once) is confirmed by its one name, or
 /// by its count (`3 containers`). The completeness test fails for a Destructive procedure
 /// missing here.
-pub const SUBJECTS: [(&str, &str, &str); 19] = [
+pub const SUBJECTS: [(&str, &str, &str); 22] = [
+    ("admin.groups.delete", "group", "name"),
+    ("admin.roles.delete", "role", "roleId"),
+    ("admin.users.delete", "user", "username"),
     ("docker.containers.remove", "container", "ids"),
     ("docker.images.remove", "image", "ids"),
     ("docker.networks.remove", "network", "ids"),

@@ -15,6 +15,10 @@ const ME: Me = {
   mustEnrolTotp: false,
   idleExpiresMs: 0,
   absoluteExpiresMs: 0,
+  email: null,
+  tenant: "default",
+  roles: [{ role: "admin", scope: null, via: "pinned" }],
+  permissions: [],
 };
 
 function api(me: Partial<Me>, calls: string[]): GateApi {

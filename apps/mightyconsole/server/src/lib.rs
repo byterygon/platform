@@ -27,12 +27,14 @@
 #![allow(clippy::result_large_err)]
 
 pub mod admin;
+pub mod admin_api;
 pub mod api;
 pub mod audit;
 pub mod authz;
 pub mod cli;
 pub mod config;
 pub mod core;
+pub mod management;
 pub mod sessions;
 pub mod static_ui;
 pub mod store;
@@ -120,6 +122,22 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(ConfirmationsApi(Arc::clone(state)))
         .expect("app.confirmations API registers");
+    let m = state.management.clone();
+    router
+        .mount(admin_api::OwnSessionsApi(m.clone()))
+        .expect("app.sessions API registers");
+    router
+        .mount(admin_api::AdminApi(m.clone()))
+        .expect("admin.users API registers");
+    router
+        .mount(admin_api::AdminRolesApi(m.clone()))
+        .expect("admin.roles API registers");
+    router
+        .mount(admin_api::AdminGroupsApi(m.clone()))
+        .expect("admin.groups API registers");
+    router
+        .mount(admin_api::AdminSessionsApi(m))
+        .expect("admin.sessions API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -141,6 +159,7 @@ pub fn codegen_router() -> Router {
         )),
         accounts: None,
         confirmations: Arc::new(Confirmations::new(Arc::new(SystemClock))),
+        management: None,
     });
     let router = Router::new(RoleAuthorizer::new(
         "codegen",
@@ -785,6 +804,12 @@ impl Server {
             sessions: Arc::clone(&login_sessions),
             accounts: Some(accounts.clone()),
             confirmations: Arc::clone(&confirmations),
+            management: Some(Arc::new(management::Management::new(
+                Arc::clone(&store),
+                policy.clone(),
+                Arc::clone(&login_sessions),
+                Some(accounts.clone()),
+            ))),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
