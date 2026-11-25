@@ -169,6 +169,29 @@ fn under_base<'p>(base: &str, path: &'p str) -> Option<&'p str> {
     }
 }
 
+/// What every answer of the server carries when its handler set nothing else (TSK-141): error
+/// answers, redirects, `healthz`, the codec endpoint's JSON and the sign-in routes are never
+/// sniffed into a document, never framed and never send a referrer. The page sets its own,
+/// fuller policy ([`content_security_policy`]).
+pub async fn baseline_headers(mut response: axum::response::Response) -> axum::response::Response {
+    let headers = response.headers_mut();
+    headers
+        .entry(header::X_CONTENT_TYPE_OPTIONS)
+        .or_insert(HeaderValue::from_static("nosniff"));
+    headers
+        .entry(header::REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("no-referrer"));
+    headers
+        .entry(header::CONTENT_SECURITY_POLICY)
+        .or_insert(HeaderValue::from_static(
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        ));
+    headers
+        .entry(header::X_FRAME_OPTIONS)
+        .or_insert(HeaderValue::from_static("DENY"));
+    response
+}
+
 /// The policy of spec §2.3. `connect-src` names the WebSocket explicitly for browsers that do
 /// not count `wss:` as `'self'`; `blob:` workers and images are for Monaco and downloads.
 pub fn content_security_policy(public_origin: &str) -> String {

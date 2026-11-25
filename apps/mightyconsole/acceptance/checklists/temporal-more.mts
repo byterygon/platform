@@ -263,7 +263,7 @@ export default {
           const id = await run<string>(`__mc.item("lab-s3").querySelector("[data-profile-id]").getAttribute("data-profile-id")`);
           const endpoint = `${codecOrigin}/codec/${id}`;
           const binary = temporalCli();
-          const cli = (args: string[]) => execFileSync(binary, [...args, "--address", "127.0.0.1:7233", "--namespace", "lab", "--codec-endpoint", endpoint], { encoding: "utf8", timeout: 120_000 });
+          const cli = (args: string[]) => execFileSync(binary, [...args, "--address", "127.0.0.1:7233", "--namespace", "lab", "--codec-endpoint", endpoint, "--codec-auth", "Bearer lab-walk"], { encoding: "utf8", timeout: 120_000 });
           const shown = cli(["workflow", "show", "--workflow-id", "big-payload-1", "--detailed"]);
           if (!shown.includes("big") || !shown.includes("input xxxx")) throw new Error(`the CLI did not show the decoded input:\n${shown.slice(0, 2000)}`);
           // Encode: a 300 KiB input started from the CLI goes through the endpoint, the worker reads it.

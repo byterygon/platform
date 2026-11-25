@@ -167,6 +167,11 @@ pub struct CodecServerOptions {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub allowed_origins: Option<Vec<String>>,
+    /// Whether a caller without `Authorization` is served (DOC-25 Open question 9): off, so a
+    /// Temporal without auth is not opened to anyone who can reach this server.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub allow_anonymous: Option<bool>,
 }
 
 /// The Temporal profile as `toConnect` builds it (spec §9.1).

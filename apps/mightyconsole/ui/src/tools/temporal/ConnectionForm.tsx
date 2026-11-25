@@ -263,7 +263,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
             <FieldLabel>
               <Switch checked={codec.enabled} onCheckedChange={(enabled) => setCodec({ enabled })} disabled={disabled} /> Serve as a codec endpoint
             </FieldLabel>
-            <FieldDescription>The Temporal Web UI and the temporal CLI read payloads stored outside through this server, while this profile is connected. Temporal decides who may: the caller's token must be allowed to read the namespace.</FieldDescription>
+            <FieldDescription>The Temporal Web UI and the temporal CLI read payloads stored outside through this server, while this profile is connected. Temporal decides who may: the caller's token must be allowed to read the namespace, and a caller without a token is refused.</FieldDescription>
             {errors["codecServer"] ? <FieldError match>{errors["codecServer"]}</FieldError> : null}
           </Field>
           {codec.enabled ? (
@@ -273,6 +273,12 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
                 <Input value={codec.allowedOrigins} onValueChange={(v) => setCodec({ allowedOrigins: v })} placeholder={DEFAULT_CODEC_ORIGINS} disabled={disabled} autoComplete="off" spellCheck={false} />
                 <FieldDescription>The Web UI's address; other web pages are refused. The CLI sends no origin and is accepted.</FieldDescription>
                 {errors["codecServer.allowedOrigins"] ? <FieldError match>{errors["codecServer.allowedOrigins"]}</FieldError> : null}
+              </Field>
+              <Field>
+                <FieldLabel>
+                  <Switch checked={codec.allowAnonymous} onCheckedChange={(allowAnonymous) => setCodec({ allowAnonymous })} disabled={disabled} /> Allow callers without a token
+                </FieldLabel>
+                <FieldDescription>Only for a Temporal without authentication: anyone who can reach this server could then read the namespace's stored payloads.</FieldDescription>
               </Field>
               {endpoint && loopbackEndpoint ? (
                 <div aria-label="Codec endpoint" className="flex flex-col gap-stack-xs rounded-md bg-inset p-inset-sm text-caption-1 text-fg-muted">
