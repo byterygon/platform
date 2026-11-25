@@ -187,6 +187,19 @@ export default {
       ],
     },
     {
+      id: "filter-worker",
+      text: "TSK-143 (DOC-21 §5.4, Open questions 35 and 65 (f)): the filter's jq runs in a worker per stream, never in the server: a program that never ends on a message is stopped at the per-message time limit (Settings, 1 s by default), a stack overflow or the memory cap (Linux) ends only the worker; that message is a decode error with the reason and the next messages are evaluated in order; three in a row end the stream with an error that says why; the server stays responsive; the worker dies with its stream (cancel, Stop, the connection released); the worker decides as the filter does in process.",
+      checks: [
+        codecs("message-codecs: the filter worker's answers, as the filter decides", "--lib", "--", "jq::tests::the_filter_worker"),
+        cargo("a_runaway_message_is_stopped_and_the_next_ones_are_evaluated"),
+        cargo("three_failures_in_a_row_end_the_stream_and_an_answer_between_resets_the_count"),
+        cargo("dropping_the_filter_kills_its_worker"),
+        cargo("the_filter_s_jq_runs_in_a_worker_per_stream"),
+        cargo("a_filter_limit_and_max_scan_end_a_scan_with_counts", { label: "the existing filter tests, unchanged" }),
+        vitest("test/messaging.test.tsx", "the status line says why the filter's jq failed"),
+      ],
+    },
+    {
       id: "procedures",
       text: "The messaging.* procedures of 5.8 exist; CI green.",
       checks: [

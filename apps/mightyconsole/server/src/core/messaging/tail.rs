@@ -11,6 +11,12 @@
 //! **Chunks.** Matching messages are coalesced into Arrow batches of 500 rows, 1 MiB or 100 ms,
 //! whichever comes first (spec §2.5). Each chunk waits for a credit: that wait is the pause.
 //!
+//! **Filter.** Every part of the filter but jq is evaluated here. A jq program runs in the
+//! stream's own worker process ([`super::jq_filter`], spec §5.4, TSK-143): each feed batch is
+//! decoded, the messages the other parts let through are sent to the worker at once, and its
+//! answers are read back in order as the batch is processed, so a program that never ends,
+//! overflows its stack or runs out of memory costs one message (a decode error), not the server.
+//!
 //! **End.** The stream ends with a [`TailSummary`] when the source ends, `limit` messages
 //! matched, or `maxScan` messages were read; `lastPositions` lets Restart continue from there.
 
@@ -21,7 +27,7 @@ use std::time::Duration;
 
 use ambidex::arrow::ArrowSink;
 use ambidex::{BinarySink, RpcError};
-use message_codecs::filter::{CompiledFilter, Filter, FilterInput, Outcome};
+use message_codecs::filter::{CompiledFilter, Filter, FilterInput, jq_input_line};
 use message_codecs::{Codecs, DecodeOptions, Message, Target};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -32,6 +38,7 @@ use ts_rs::TS;
 
 use super::arrow::{BatchBuilder, MESSAGE_SCHEMA, Row};
 use super::decode_row;
+use super::jq_filter::{Answer, JqFilter};
 use crate::core::{Progress, ToolError};
 
 /// Rows per chunk, at most (spec §2.5).
@@ -88,6 +95,11 @@ pub struct TailSummary {
     pub decode_errors: u64,
     pub end_reason: EndReason,
     pub last_positions: Vec<LastPosition>,
+    /// Why the filter's jq last failed on a message (its error, or the limit that stopped it);
+    /// such a message counts in `decodeErrors`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub filter_error: Option<String>,
 }
 
 /// A source that can wait: it reads the next messages when asked. `Ok(None)` is the end.
@@ -252,6 +264,8 @@ pub struct TailRequest<'a> {
     pub max_scan: Option<u64>,
     /// Stop after this many matches.
     pub limit: Option<u64>,
+    /// The filter's jq time budget per message ([`super::jq_filter::budget`]).
+    pub jq_budget: Duration,
     /// The mapping target of a message (its topic, subject or bucket).
     pub target: &'a (dyn Fn(&Message) -> Option<Target> + Send + Sync),
     /// The tool, for errors.
@@ -296,6 +310,11 @@ pub async fn run(
     cancel: &CancellationToken,
 ) -> Result<TailSummary, RpcError<ToolError>> {
     let filter = compile_filter(req.system, req.filter)?;
+    let mut jq = match filter.as_ref().and_then(CompiledFilter::jq_code) {
+        Some(code) => Some(JqFilter::start(req.system, code, req.jq_budget)?),
+        None => None,
+    };
+    let mut filter_error = None;
     let max_scan = match req.max_scan {
         Some(0) => None,
         Some(n) => Some(n),
@@ -339,38 +358,80 @@ pub async fn run(
             }
             Some(Ok(m)) => m,
         };
-        for message in messages {
+        // Messages past `maxScan` are never read.
+        let room = max_scan.map_or(usize::MAX, |m| {
+            usize::try_from(m.saturating_sub(c.scanned)).unwrap_or(usize::MAX)
+        });
+        let mut rows = Vec::with_capacity(messages.len().min(room));
+        for message in messages.into_iter().take(room) {
+            let target = (req.target)(&message);
+            rows.push(decode_row(req.codecs, message, req.decode, target.as_ref(), row_id).await);
+            row_id += 1;
+        }
+        // The parts without jq decide here; the rest go to the worker together, and its answers
+        // are read in order below.
+        let pass: Vec<Pass> = rows
+            .iter()
+            .map(|row| match &filter {
+                None => Pass::Match,
+                Some(f) if !f.evaluate_without_jq(&filter_input(row)) => Pass::NoMatch,
+                Some(_) if jq.is_some() => Pass::Jq,
+                Some(_) => Pass::Match,
+            })
+            .collect();
+        if let Some(jq) = &mut jq {
+            jq.send(
+                rows.iter()
+                    .zip(&pass)
+                    .filter(|(_, p)| **p == Pass::Jq)
+                    .map(|(row, _)| jq_input_line(&filter_input(row)))
+                    .collect(),
+            );
+        }
+        for (row, pass) in rows.into_iter().zip(pass) {
             c.scanned += 1;
             progress.scanned(1);
-            let key = (message.source.clone(), message.partition);
+            let m = &row.message;
+            let key = (m.source.clone(), m.partition);
             positions.insert(
                 key.clone(),
                 LastPosition {
                     source: key.0,
                     partition: key.1,
-                    offset: message.offset.map(|o| o.to_string()),
-                    sequence: message.sequence.map(|s| s.to_string()),
-                    timestamp_us: message.timestamp_us,
+                    offset: m.offset.map(|o| o.to_string()),
+                    sequence: m.sequence.map(|s| s.to_string()),
+                    timestamp_us: m.timestamp_us,
                 },
             );
-            let target = (req.target)(&message);
-            let row = decode_row(req.codecs, message, req.decode, target.as_ref(), row_id).await;
-            row_id += 1;
             if row.value.error.is_some() || row.key.as_ref().is_some_and(|k| k.error.is_some()) {
                 c.decode_errors += 1;
                 progress.decode_error();
             }
-            let matched = match &filter {
-                None => true,
-                Some(f) => match f.evaluate(&filter_input(&row)) {
-                    Outcome::Match => true,
-                    Outcome::NoMatch => false,
-                    Outcome::JqError(_) => {
-                        c.decode_errors += 1;
-                        progress.decode_error();
-                        false
+            let matched = match pass {
+                Pass::NoMatch => false,
+                Pass::Match => true,
+                Pass::Jq => {
+                    let jq = jq.as_mut().expect("a jq worker");
+                    let answer = tokio::select! {
+                        biased;
+                        () = cancel.cancelled() => return Err(RpcError::new(ambidex::Code::Cancelled, "the connection was closed")),
+                        answer = jq.next() => answer,
+                    };
+                    match answer {
+                        Ok(Answer::Match) => true,
+                        Ok(Answer::NoMatch) => false,
+                        Ok(Answer::Failed(reason)) => {
+                            c.decode_errors += 1;
+                            progress.decode_error();
+                            filter_error = Some(reason);
+                            false
+                        }
+                        Err(e) => {
+                            flush(&mut out, &mut builder, progress).await?;
+                            return Err(e.into());
+                        }
                     }
-                },
+                }
             };
             if matched {
                 c.matched += 1;
@@ -399,7 +460,17 @@ pub async fn run(
         decode_errors: c.decode_errors,
         end_reason,
         last_positions: positions.into_values().collect(),
+        filter_error,
     })
+}
+
+/// What the filter's parts without jq decided for a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    NoMatch,
+    Match,
+    /// The other parts match; the jq worker decides.
+    Jq,
 }
 
 async fn sleep_until(deadline: Option<Instant>) {

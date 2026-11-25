@@ -11,7 +11,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ArrowExport, ArrowImport, Delete, Flash, type IconDefinition, List, Server, Star, TextT, Window } from "@/lib/icons";
+import { ArrowExport, ArrowImport, Delete, Filter, Flash, type IconDefinition, List, Server, Star, TextT, Window } from "@/lib/icons";
 import { PRESETS, PRESET_LABELS, type Preset } from "../presets";
 import type { Settings } from "../store";
 
@@ -107,6 +107,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </SettingRow>
               <SettingRow icon={Server} label="Time limit of a jq query, in seconds" description="The server stops a query that runs longer (0.5 to 30 s).">
                 <NumberInput aria-label="Time limit of a jq query, in seconds" value={settings.jqTimeoutMs / 1000} min={0.5} max={30} step={0.5} onValueChange={(v) => v !== null && onChange({ jqTimeoutMs: Math.round(Math.min(30, Math.max(0.5, v)) * 1000) })} className="w-panel-xs" />
+              </SettingRow>
+              <SettingRow icon={Filter} label="Time limit of the filter's jq on one message, in seconds" description="A live view's filter is stopped on a message it runs on longer; the message counts as a decode error (0.5 to 30 s).">
+                <NumberInput aria-label="Time limit of the filter's jq on one message, in seconds" value={settings.jqFilterTimeoutMs / 1000} min={0.5} max={30} step={0.5} onValueChange={(v) => v !== null && onChange({ jqFilterTimeoutMs: Math.round(Math.min(30, Math.max(0.5, v)) * 1000) })} className="w-panel-xs" />
               </SettingRow>
             </TabsContent>
             <TabsContent value="profiles" className="flex flex-col gap-stack-sm">

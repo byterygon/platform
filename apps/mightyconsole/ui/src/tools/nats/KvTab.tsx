@@ -402,6 +402,7 @@ function KeysView({ bucket, profile, connId, client, note, refreshKey, onPut }: 
 function WatchView({ bucket, connId, client, note, onLive, registerActions, decoding, active }: { active: boolean; bucket: string; connId: string; client: MightyClient; note(e: unknown): DescribedError; onLive(live: LiveState | null): void; registerActions(a: { primary: () => void; stop: () => void; pause: () => void }): void; decoding: ViewDecoding }) {
   const services = useServices();
   const { state } = useStore();
+  const jqTimeoutMs = state.settings.jqFilterTimeoutMs;
   const [keys, setKeys] = useState(">");
   const [history, setHistory] = useState(false);
   const [decode, setDecode] = useState<api.DecodeOptions>({ value: { codec: "auto" } });
@@ -414,11 +415,11 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
         : (streamId: string, resume: readonly api.LastPosition[] | null) => {
             const last = resume?.find((p) => p.sequence !== undefined)?.sequence;
             return client.nats.kv.watch(
-              { connId, streamId, bucket, keys: keys.trim() || ">", includeHistory: history, fromRevision: last !== undefined ? Number(BigInt(last) + 1n) : null, decode, filter },
+              { connId, streamId, bucket, keys: keys.trim() || ">", includeHistory: history, fromRevision: last !== undefined ? Number(BigInt(last) + 1n) : null, decode, filter, jqTimeoutMs },
               liveTimeout(api.procedures.nats.kv.watch),
             );
           },
-    [client, connId, bucket, keys, history, decode, filter, problem],
+    [client, connId, bucket, keys, history, decode, filter, jqTimeoutMs, problem],
   );
   const tail = useLiveTail(services, open, note, onLive, active);
   registerActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });

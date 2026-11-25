@@ -12,8 +12,12 @@
 //!   `false` nor `null`; a program that fails on a message is no match, reported as an error.
 //!
 //! jq programs are compiled by [`crate::jq`], which refuses the builtins that reach outside the
-//! value (spec §5.4.1). They run to completion: one that never ends (`[range(1e18)]`) stalls its
-//! stream until the stream is stopped (spec Open questions 35 and 65 (f)).
+//! value (spec §5.4.1). [`CompiledFilter::evaluate`] runs one in this process, to completion: one
+//! that never ends (`def f: f; f`) never returns and one that overflows the stack (`def f: 1 + f;
+//! f`) aborts the process. A server therefore evaluates the parts without jq here
+//! ([`CompiledFilter::evaluate_without_jq`]) and sends [`jq_input_line`] to a worker that runs
+//! [`crate::jq::serve_filter_worker`] (Mightyconsole's per-stream jq worker, spec §5.4, TSK-143);
+//! both ends decide a match with the same function, so a program means the same in either.
 
 use std::ops::ControlFlow;
 
@@ -246,6 +250,8 @@ pub struct CompiledFilter {
     time: (Option<i64>, Option<i64>),
     position: (Option<i128>, Option<i128>),
     jq: Option<JqProgram>,
+    /// The jq program's text, trimmed, for a worker to compile again.
+    jq_code: Option<String>,
 }
 
 impl CompiledFilter {
@@ -287,12 +293,12 @@ impl CompiledFilter {
             position.0 = parse_position(p.from.as_deref(), "position.from", &mut issues);
             position.1 = parse_position(p.to.as_deref(), "position.to", &mut issues);
         }
-        let jq = match filter
+        let jq_code = filter
             .jq
             .as_deref()
             .map(str::trim)
-            .filter(|j| !j.is_empty())
-        {
+            .filter(|j| !j.is_empty());
+        let jq = match jq_code {
             None => None,
             Some(code) => match JqProgram::compile(code) {
                 Ok(program) => Some(program),
@@ -315,6 +321,7 @@ impl CompiledFilter {
                 time,
                 position,
                 jq,
+                jq_code: jq_code.map(str::to_owned),
             })
         } else {
             Err(issues)
@@ -326,17 +333,35 @@ impl CompiledFilter {
         self.text.is_some() || self.jq.is_some()
     }
 
-    /// Evaluates the filter on one message; the cheap parts first, jq last.
+    /// The jq program's text (trimmed), when the filter has one.
+    pub fn jq_code(&self) -> Option<&str> {
+        self.jq_code.as_deref()
+    }
+
+    /// Evaluates the filter on one message in this process; the cheap parts first, jq last. See
+    /// the module's notes on what jq can do to the process that runs it.
     pub fn evaluate(&self, m: &FilterInput<'_>) -> Outcome {
+        if !self.evaluate_without_jq(m) {
+            return Outcome::NoMatch;
+        }
+        match &self.jq {
+            Some(jq) => run_jq(jq, m),
+            None => Outcome::Match,
+        }
+    }
+
+    /// Whether every part but jq matches: when false the message is no match; when true it
+    /// matches if the filter has no jq program, and otherwise as the program decides.
+    pub fn evaluate_without_jq(&self, m: &FilterInput<'_>) -> bool {
         if let Some(k) = &self.key
             && !m.key.is_some_and(|key| k.matches(key))
         {
-            return Outcome::NoMatch;
+            return false;
         }
         if let Some(p) = &self.subject
             && !m.subject.is_some_and(|s| subject_matches(p, s))
         {
-            return Outcome::NoMatch;
+            return false;
         }
         for (name, matcher) in &self.headers {
             let values = m
@@ -351,21 +376,21 @@ impl CompiledFilter {
                     .any(|h| h.text().is_some_and(|v| t.matches(v))),
             };
             if !ok {
-                return Outcome::NoMatch;
+                return false;
             }
         }
         if self.time.0.is_some_and(|from| m.timestamp_us < from)
             || self.time.1.is_some_and(|to| m.timestamp_us > to)
         {
-            return Outcome::NoMatch;
+            return false;
         }
         if self.position.0.is_some() || self.position.1.is_some() {
             let Some(pos) = m.offset.map(i128::from).or(m.sequence.map(i128::from)) else {
-                return Outcome::NoMatch;
+                return false;
             };
             if self.position.0.is_some_and(|f| pos < f) || self.position.1.is_some_and(|t| pos > t)
             {
-                return Outcome::NoMatch;
+                return false;
             }
         }
         if let Some(t) = &self.text
@@ -373,12 +398,9 @@ impl CompiledFilter {
                 .text
                 .is_some_and(|s| s.to_lowercase().contains(t.as_str()))
         {
-            return Outcome::NoMatch;
+            return false;
         }
-        if let Some(jq) = &self.jq {
-            return run_jq(jq, m);
-        }
-        Outcome::Match
+        true
     }
 }
 
@@ -473,11 +495,21 @@ fn jq_input(m: &FilterInput<'_>) -> serde_json::Value {
     })
 }
 
+/// The object a jq program reads, as one line of JSON text (no newline), for a worker.
+pub fn jq_input_line(m: &FilterInput<'_>) -> Vec<u8> {
+    serde_json::to_vec(&jq_input(m)).unwrap_or_else(|_| b"null".to_vec())
+}
+
 fn run_jq(program: &JqProgram, m: &FilterInput<'_>) -> Outcome {
-    let input: Val = match serde::Deserialize::deserialize(jq_input(m)) {
-        Ok(v) => v,
-        Err(e) => return Outcome::JqError(format!("jq input: {e}")),
-    };
+    match serde::Deserialize::deserialize(jq_input(m)) {
+        Ok(input) => jq_outcome(program, input),
+        Err(e) => Outcome::JqError(format!("jq input: {e}")),
+    }
+}
+
+/// Whether a jq program matches one input: it yields a value that is neither `false` nor `null`.
+/// The one rule, in process and in a worker.
+pub(crate) fn jq_outcome(program: &JqProgram, input: Val) -> Outcome {
     let mut matched = false;
     let run = program.run(input, |v| {
         if matches!(v, Val::Null | Val::Bool(false)) {

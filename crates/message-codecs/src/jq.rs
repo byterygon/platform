@@ -9,10 +9,12 @@
 //! What this module cannot stop on its own: a program that never ends (`def f: f; f`), one that
 //! overflows the stack (`def f: 1 + f; f` aborts the process) or one that grows without bound.
 //! A query on a value therefore runs in a child process with a deadline and limits (the server's
-//! `jq-worker`, spec §5.4.1); the filter still runs in process (spec Open question 65 (f)).
+//! `jq-worker`, spec §5.4.1, [`serve_worker`]), and so does the filter's program: one long-lived
+//! worker per stream that evaluates the stream's messages in order ([`serve_filter_worker`], spec
+//! §5.4, TSK-143).
 
 use std::fmt;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::ops::ControlFlow;
 
 use jaq_core::load::{Arena, File, Loader};
@@ -20,7 +22,7 @@ use jaq_core::{Ctx, Vars, data};
 use jaq_json::Val;
 
 use crate::error::Position;
-use crate::filter::FilterIssue;
+use crate::filter::{FilterIssue, Outcome, jq_outcome};
 
 /// Builtins a program may not use, with the reason the compiler gives. Read from `jaq-core`
 /// 3.1.2, `jaq-std` 3.0.4 and `jaq-json` 2.0.3 (TSK-113): these are the ones that read or write
@@ -108,12 +110,95 @@ impl JqProgram {
 /// One line the worker writes (spec §5.4.1): `R <json>` per result, `E <issues>` when the program
 /// does not compile, `F <message>` when it fails, `S` when the next result would pass the
 /// output cap, and `D` at the end of a run that was not stopped by the server.
+///
+/// The filter's worker ([`crate::jq::serve_filter_worker`]) writes `E <issues>` or `K` (compiled,
+/// ready) first, then one line per message, in order: `M` (match), `N` (no match) or
+/// `F <message>` (the program failed on it).
 pub mod wire {
     pub const RESULT: &str = "R ";
     pub const ISSUES: &str = "E ";
     pub const FAILED: &str = "F ";
     pub const CUT: &str = "S";
     pub const DONE: &str = "D";
+    pub const READY: &str = "K";
+    pub const MATCH: &str = "M";
+    pub const NO_MATCH: &str = "N";
+}
+
+/// The worker's side of a stream's filter (TSK-143): reads the program as a JSON string on the
+/// first line of `input`, compiles it and answers `K` (or `E <issues>` and ends), then reads one
+/// message per line (the object of [`crate::filter::jq_input_line`]) and answers each, in order,
+/// with a [`wire`] line, until `input` ends. Every answer is flushed at once: the server times
+/// each message from the previous answer, so an answer held in a buffer would be blamed on the
+/// next message. A message is decided exactly as [`crate::filter::CompiledFilter::evaluate`]
+/// decides it in process.
+pub fn serve_filter_worker(input: impl Read, out: impl Write) -> io::Result<()> {
+    let mut input = io::BufReader::with_capacity(256 * 1024, input);
+    let mut out = io::BufWriter::with_capacity(4096, out);
+    let mut line = Vec::new();
+    let answer = |out: &mut io::BufWriter<_>, tag: &str, body: &str| -> io::Result<()> {
+        out.write_all(tag.as_bytes())?;
+        out.write_all(body.as_bytes())?;
+        out.write_all(b"\n")?;
+        out.flush()
+    };
+    if input.read_until(b'\n', &mut line)? == 0 {
+        return Ok(());
+    }
+    let code: String = match serde_json::from_slice(trim_newline(&line)) {
+        Ok(code) => code,
+        Err(e) => {
+            return answer(
+                &mut out,
+                wire::FAILED,
+                &json_string(&format!("bad request: {e}")),
+            );
+        }
+    };
+    let program = match JqProgram::compile(code.trim()) {
+        Ok(p) => p,
+        Err(issues) => {
+            let body = serde_json::to_string(&issues).unwrap_or_else(|_| "[]".into());
+            return answer(&mut out, wire::ISSUES, &body);
+        }
+    };
+    answer(&mut out, wire::READY, "")?;
+    loop {
+        line.clear();
+        if input.read_until(b'\n', &mut line)? == 0 {
+            return Ok(());
+        }
+        let outcome = match serde_json::from_slice::<Val>(trim_newline(&line)) {
+            Ok(value) => jq_outcome(&program, value),
+            Err(e) => Outcome::JqError(format!("jq input: {e}")),
+        };
+        match outcome {
+            Outcome::Match => answer(&mut out, wire::MATCH, "")?,
+            Outcome::NoMatch => answer(&mut out, wire::NO_MATCH, "")?,
+            Outcome::JqError(message) => answer(
+                &mut out,
+                wire::FAILED,
+                &json_string(&cut(&message, MAX_REASON_CHARS)),
+            )?,
+        }
+    }
+}
+
+/// The longest error the filter's worker sends for a message, in characters. jq's errors quote
+/// the value they failed on (`cannot index "<a 1 MiB string>" with "a"`), and the error is only
+/// the reason a message counted as a decode error: the start of it says what went wrong.
+pub const MAX_REASON_CHARS: usize = 500;
+
+/// `text` cut to at most `max` characters, with an ellipsis when it was cut.
+fn cut(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(max) {
+        None => text.into(),
+        Some((end, _)) => format!("{}…", &text[..end]).into(),
+    }
+}
+
+fn trim_newline(line: &[u8]) -> &[u8] {
+    line.strip_suffix(b"\n").unwrap_or(line)
 }
 
 /// The worker's side of a query (the server's `jq-worker`): reads the program as a JSON string on
@@ -465,6 +550,115 @@ mod tests {
             lines[0].starts_with("F \"the value is not JSON"),
             "{lines:?}"
         );
+    }
+
+    fn filter_worker(code: &str, messages: &[&str]) -> Vec<String> {
+        let mut input = format!("{}\n", json_string(code));
+        for m in messages {
+            input.push_str(m);
+            input.push('\n');
+        }
+        let mut out = Vec::new();
+        serve_filter_worker(input.as_bytes(), &mut out).unwrap();
+        String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn the_filter_worker_answers_each_message_in_order() {
+        let lines = filter_worker(
+            ".value.n > 1",
+            &[
+                r#"{"value":{"n":1}}"#,
+                r#"{"value":{"n":2}}"#,
+                r#"{"value":{"n":"x"}}"#,
+                r#"{"value":null}"#,
+                "{nope",
+            ],
+        );
+        assert_eq!(lines[..3], ["K", "N", "M"]);
+        // A string is greater than a number in jq; null > 1 is false.
+        assert_eq!(lines[3..5], ["M", "N"]);
+        assert!(lines[5].starts_with("F \"jq input: "), "{lines:?}");
+        assert_eq!(lines.len(), 6);
+        // A failure on one message is that message's answer; the next is evaluated.
+        let lines = filter_worker(
+            ".value | tonumber > 1",
+            &[r#"{"value":"x"}"#, r#"{"value":"5"}"#],
+        );
+        assert_eq!(lines[0], "K");
+        assert!(lines[1].starts_with("F \"jq: "), "{lines:?}");
+        assert_eq!(lines[2], "M");
+        // A program that does not compile (or is refused) is the only answer.
+        let lines = filter_worker("env", &[r#"{"value":1}"#]);
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].starts_with("E [") && lines[0].contains("not available"),
+            "{lines:?}"
+        );
+        // No messages: ready, then the end.
+        assert_eq!(filter_worker(".", &[]), ["K"]);
+        // An error quoting a large value is cut: it is a reason, not a copy of the message.
+        let big = format!(r#"{{"value":"{}"}}"#, "é".repeat(1 << 20));
+        let lines = filter_worker(".value.a", &[&big]);
+        let reason: String = serde_json::from_str(lines[1].strip_prefix("F ").unwrap()).unwrap();
+        assert!(reason.starts_with("jq: "), "{reason}");
+        assert!(reason.ends_with('…'));
+        assert_eq!(reason.chars().count(), MAX_REASON_CHARS + 1);
+    }
+
+    #[test]
+    fn the_filter_worker_decides_as_the_filter_does() {
+        use crate::filter::{CompiledFilter, Filter, FilterInput, jq_input_line};
+        let value = serde_json::json!({ "total": 12.5, "items": [{ "qty": 0 }, { "qty": 2 }], "big": 18446744073709551615u64, "note": null });
+        let headers = [
+            crate::message::Header::new("tag", "a"),
+            crate::message::Header::new("tag", "b"),
+        ];
+        let m = FilterInput {
+            source: "orders",
+            subject: Some("orders.eu.created"),
+            partition: Some(2),
+            offset: Some(41),
+            sequence: None,
+            timestamp_us: 1_794_960_000_123_456,
+            headers: Some(&headers),
+            key: Some("k-1"),
+            text: None,
+            value: &value,
+        };
+        let line = String::from_utf8(jq_input_line(&m)).unwrap();
+        for code in [
+            ".value.total > 12",
+            ".value.total == 12.5",
+            ".value.items | any(.qty > 1)",
+            ".value.big > 1e19",
+            ".value.big | tostring | length > 5",
+            ".value.note",
+            ".headers.tag | length == 2",
+            ".timestamp | endswith(\"Z\")",
+            ".partition == 2 and .offset == \"41\" and .sequence == null",
+            "false, null",
+            "empty",
+            ".key | tonumber",
+            "error(\"no\")",
+        ] {
+            let filter = CompiledFilter::compile(&Filter {
+                jq: Some(code.into()),
+                ..Filter::default()
+            })
+            .unwrap();
+            let answer = filter_worker(code, &[&line]).remove(1);
+            let want = match filter.evaluate(&m) {
+                Outcome::Match => "M".to_owned(),
+                Outcome::NoMatch => "N".to_owned(),
+                Outcome::JqError(e) => format!("F {}", json_string(&e)),
+            };
+            assert_eq!(answer, want, "{code}");
+        }
     }
 
     #[test]

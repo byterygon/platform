@@ -383,6 +383,10 @@ pub struct EchoTailInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub filter: Option<Filter>,
+    /// The filter's jq time limit per message, in milliseconds (0.5 to 30 s; 1 s when absent).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub jq_timeout_ms: Option<u64>,
     /// Messages read before a filtered scan stops; 0 for no limit, 100,000 with a filter.
     #[serde(default)]
     #[ts(optional = nullable)]
@@ -526,6 +530,7 @@ impl EchoMessagesApi {
             decode: &decode,
             filter: input.filter.as_ref(),
             max_scan: input.max_scan,
+            jq_budget: crate::core::messaging::jq_filter::budget(input.jq_timeout_ms),
             limit: input.limit,
             target: &target,
             system: TOOL,

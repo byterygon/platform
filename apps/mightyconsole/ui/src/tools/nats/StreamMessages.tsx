@@ -84,6 +84,7 @@ export interface StreamMessagesProps {
 export function StreamMessages({ stream, lastSequence, connId, client, note, onLive, subject: initialSubject, registerActions, decoding, active }: StreamMessagesProps) {
   const services = useServices();
   const { state } = useStore();
+  const jqTimeoutMs = state.settings.jqFilterTimeoutMs;
   const [draft, setDraft] = useState<BrowseDraft>({ ...DEFAULT_BROWSE, subject: initialSubject ?? "" });
   const [decode, setDecode] = useState<api.DecodeOptions>({ value: { codec: "auto" } });
   const [filter, setFilter] = useState<api.Filter>({});
@@ -106,13 +107,14 @@ export function StreamMessages({ stream, lastSequence, connId, client, note, onL
                 follow: draft.follow,
                 decode,
                 filter,
+                jqTimeoutMs,
               },
               draft.follow ? liveTimeout(api.procedures.nats.js.streams.browse) : { timeoutMs: BROWSE_TIMEOUT_MS },
             );
           },
     // `start` is derived from the draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- start follows draft
-    [client, connId, stream, draft, decode, filter, subjectProblem],
+    [client, connId, stream, draft, decode, filter, jqTimeoutMs, subjectProblem],
   );
   const tail = useLiveTail(services, open, note, onLive, active);
   registerActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });

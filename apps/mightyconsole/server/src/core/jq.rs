@@ -11,6 +11,9 @@
 //! Every query on a value goes through [`run`]: `messaging.query`, `temporal.payload.query` and
 //! `langgraph.values.query`. The compiler that refuses the builtins reaching outside the value is
 //! `message_codecs::jq`, shared with the filter.
+//!
+//! The same binary is the filter's long-lived worker per stream (`jq-worker filter`, spec §5.4,
+//! TSK-143): the stream's side is [`crate::core::messaging::jq_filter`].
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -47,6 +50,8 @@ pub const MAX_RUNNING: usize = 2;
 
 /// The argument that makes the server a worker.
 pub const WORKER_ARG: &str = "jq-worker";
+/// After [`WORKER_ARG`]: the worker of a stream's filter, not of one query.
+pub const FILTER_ARG: &str = "filter";
 
 /// The server's engine: its slots are shared by every caller.
 static ENGINE: LazyLock<JqEngine> = LazyLock::new(|| JqEngine::new(MAX_RUNNING));
@@ -98,7 +103,7 @@ pub fn set_worker_program(path: PathBuf) {
 /// another. On Linux that is `/proc/self/exe`, the running image, which still works after the
 /// file on disk was replaced (an upgrade in place, or a rebuild while it runs). Unit tests run
 /// inside the test harness, so they use the server binary Cargo builds next to it.
-fn worker_program() -> std::io::Result<PathBuf> {
+pub(crate) fn worker_program() -> std::io::Result<PathBuf> {
     if let Some(path) = WORKER
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -416,7 +421,7 @@ impl Reader<'_> {
     }
 }
 
-fn human(d: Duration) -> String {
+pub(crate) fn human(d: Duration) -> String {
     if d.subsec_millis() == 0 {
         format!("{} s", d.as_secs())
     } else {
@@ -424,7 +429,7 @@ fn human(d: Duration) -> String {
     }
 }
 
-fn worker_failed(system: &str, why: &str) -> ToolError {
+pub(crate) fn worker_failed(system: &str, why: &str) -> ToolError {
     ToolError::new(
         ToolErrorKind::Remote,
         system,
@@ -432,44 +437,63 @@ fn worker_failed(system: &str, why: &str) -> ToolError {
     )
 }
 
-/// Words for a worker that ended without finishing: a stack overflow, the memory limit, or
-/// something else.
-fn ended_early(system: &str, status: Option<std::process::ExitStatus>, stderr: &str) -> ToolError {
+/// Why a worker ended before it was done, read from its exit and its last words.
+pub(crate) enum Ended {
+    StackOverflow,
+    Memory,
+    /// Killed by a signal that left no words (a build without them).
+    Signal(i32),
+    /// Something else: the exit status.
+    Other(String),
+}
+
+pub(crate) fn why_ended(status: Option<std::process::ExitStatus>, stderr: &str) -> Ended {
     if stderr.contains("has overflowed its stack") {
-        return jq_error(
-            system,
-            "the program recursed too deeply and was stopped (it overflowed its stack)",
-        );
+        return Ended::StackOverflow;
     }
     if stderr.contains("memory allocation of") {
-        return jq_error(
-            system,
-            format!(
-                "the program needed more than {} MiB of memory and was stopped",
-                MAX_MEMORY_BYTES / (1024 * 1024)
-            ),
-        );
+        return Ended::Memory;
     }
     #[cfg(unix)]
     if let Some(signal) = status.and_then(|s| std::os::unix::process::ExitStatusExt::signal(&s)) {
+        return Ended::Signal(signal);
+    }
+    Ended::Other(status.map_or_else(|| "unknown".to_owned(), |s| s.to_string()))
+}
+
+/// Words for a worker that ended without finishing: a stack overflow, the memory limit, or
+/// something else.
+fn ended_early(system: &str, status: Option<std::process::ExitStatus>, stderr: &str) -> ToolError {
+    let mib = MAX_MEMORY_BYTES / (1024 * 1024);
+    match why_ended(status, stderr) {
+        Ended::StackOverflow => jq_error(
+            system,
+            "the program recursed too deeply and was stopped (it overflowed its stack)",
+        ),
+        Ended::Memory => jq_error(
+            system,
+            format!("the program needed more than {mib} MiB of memory and was stopped"),
+        ),
         // A stack overflow or a failed allocation that left no words (a build without them).
-        return jq_error(
+        Ended::Signal(signal) => jq_error(
             system,
             format!(
                 "the program was stopped by the system (signal {signal}): it may have recursed \
-                 too deeply or needed more than {} MiB of memory",
-                MAX_MEMORY_BYTES / (1024 * 1024)
+                 too deeply or needed more than {mib} MiB of memory"
             ),
-        );
+        ),
+        Ended::Other(how) => worker_failed(system, &format!("it ended early ({how})")),
     }
-    let how = status.map_or_else(|| "unknown".to_owned(), |s| s.to_string());
-    worker_failed(system, &format!("it ended early ({how})"))
 }
 
 /// The worker's main (`mightyconsole-server jq-worker <max output bytes> <max memory bytes>
 /// <max cpu seconds>`): limits itself where the OS allows it, then serves one run on stdin and
-/// stdout. Returns the process's exit code.
+/// stdout. `jq-worker filter <max memory bytes>` is a stream filter's worker instead
+/// (`filter_worker_main`). Returns the process's exit code.
 pub fn worker_main(args: &[String]) -> u8 {
+    if args.first().map(String::as_str) == Some(FILTER_ARG) {
+        return filter_worker_main(&args[1..]);
+    }
     let num = |i: usize| args.get(i).and_then(|a| a.parse::<u64>().ok());
     let (Some(max_output), Some(memory), Some(cpu)) = (num(0), num(1), num(2)) else {
         eprintln!(
@@ -490,6 +514,56 @@ pub fn worker_main(args: &[String]) -> u8 {
     }
 }
 
+/// A stream filter's worker (`jq-worker filter <max memory bytes>`, TSK-143): caps its memory
+/// where the OS allows it, ends itself when the server is gone, then answers the stream's
+/// messages on stdin and stdout until stdin ends.
+///
+/// It runs as long as its stream, so a CPU-time limit would end a busy tail that is working
+/// as it should: the server bounds each message with its time budget instead, and should the
+/// server die without killing the worker, the worker notices it has a new parent and exits
+/// ([`watch_parent`]).
+fn filter_worker_main(args: &[String]) -> u8 {
+    let Some(memory) = args.first().and_then(|a| a.parse::<u64>().ok()) else {
+        eprintln!(
+            "mightyconsole-server {WORKER_ARG} {FILTER_ARG}: the server starts this itself; it \
+             expects the memory limit"
+        );
+        return 2;
+    };
+    if let Err(e) = limit_memory(memory) {
+        eprintln!("mightyconsole-server {WORKER_ARG} {FILTER_ARG}: cannot set its limits: {e}");
+        return 2;
+    }
+    watch_parent();
+    let stdin = std::io::stdin().lock();
+    let stdout = std::io::stdout().lock();
+    match message_codecs::jq::serve_filter_worker(stdin, stdout) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Unix: a thread that exits the process once its parent is gone (it is then adopted, so its
+/// parent's id changes). The main thread may be inside a program that never ends and never
+/// reads stdin again, so the closed pipe alone would not end it.
+#[cfg(unix)]
+fn watch_parent() {
+    let parent = std::os::unix::process::parent_id();
+    let _ = std::thread::Builder::new()
+        .name("parent-watch".into())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                if std::os::unix::process::parent_id() != parent {
+                    std::process::exit(3);
+                }
+            }
+        });
+}
+
+#[cfg(not(unix))]
+fn watch_parent() {}
+
 /// Linux: the data segment (every heap allocation, since Linux 4.7) and CPU seconds as a backstop
 /// should the server die before it kills the worker. Other systems have no limit reachable from
 /// safe Rust; the deadline bounds them (spec Open question 65 (d)).
@@ -500,13 +574,32 @@ fn limit_self(memory: u64, cpu: u64) -> std::io::Result<()> {
         current: Some(n),
         maximum: Some(n),
     };
-    setrlimit(Resource::Data, limit(memory))?;
+    limit_memory(memory)?;
     setrlimit(Resource::Cpu, limit(cpu))?;
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
 fn limit_self(_memory: u64, _cpu: u64) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Linux: the data segment, as [`limit_self`].
+#[cfg(target_os = "linux")]
+fn limit_memory(memory: u64) -> std::io::Result<()> {
+    use rustix::process::{Resource, Rlimit, setrlimit};
+    setrlimit(
+        Resource::Data,
+        Rlimit {
+            current: Some(memory),
+            maximum: Some(memory),
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn limit_memory(_memory: u64) -> std::io::Result<()> {
     Ok(())
 }
 

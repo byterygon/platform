@@ -115,6 +115,22 @@ describe("MessageViewer (spec §5.6)", () => {
     await waitFor(() => byText("0 records shown") !== null, "the cleared view");
   });
 
+  test("the status line says why the filter's jq failed on a message (TSK-143)", async () => {
+    const reason = "the filter's jq ran for more than 1 s on this message and was stopped (the time limit is in Settings)";
+    const built = messageCall(messageTable(orders.slice(0, 2), 100), summary({ scanned: 3, matched: 2, decodeErrors: 1, filterError: reason }));
+    render(<Viewer open={() => built.call} />);
+    await start();
+    await waitFor(() => byText(/Ended/) !== null, "the end");
+    const status = document.querySelector("[data-slot=message-viewer-status]")!;
+    expect(status.textContent).toContain(`Filter: ${reason}`);
+    // Without one, nothing is said.
+    cleanup();
+    render(<Viewer open={() => messageCall(messageTable(orders.slice(0, 2), 100), summary()).call} />);
+    await start();
+    await waitFor(() => byText(/Ended/) !== null, "the end");
+    expect(document.querySelector("[data-slot=message-viewer-status]")!.textContent).not.toContain("Filter:");
+  });
+
   test("Pause stops pulling chunks (no credit reaches the server) and Resume goes on", async () => {
     const many = Array.from({ length: 2000 }, (_, i): TestMessage => ({ partition: 0, offset: BigInt(i), value: `{"n":${i}}` }));
     const built = messageCall(messageTable(many, 100), summary(), { endless: true, delayMs: 20 });
