@@ -123,6 +123,20 @@ accept or trust the certificate. To avoid the warning, give your own certificate
   `~/Library/Application Support/mightyconsole` (macOS), `%APPDATA%\mightyconsole` (Windows), or
   the `/data` volume in the container. `--data DIR` chooses another one. One server uses a data
   directory at a time.
+- **The secret key.** Secrets the server stores are encrypted with a key that the first start
+  generates in `keys/kek-<id>.key` in the data directory (the server prints where). **Losing
+  every copy of the key loses those secrets.** A key beside the data protects copies of
+  `store.redb` (backups) but not a compromise of the machine: move it to a separate mount (a
+  container or Kubernetes secret, a tmpfs, removable media) and name it in `DATA/config.toml`:
+
+  ```toml
+  [[secrets.keys]]
+  file = "/run/secrets/mightyconsole-kek"   # mode 0600, owned by the server's user
+  ```
+
+  `mightyconsole-server keys generate --out FILE` makes a new key file. A passphrase or a command
+  (Vault, a KMS, an HSM) can provide the key instead: `mightyconsole-server --help`, SECRETS.
+  The server does not start when a key does not load or a stored secret's key is missing.
 - Live connections are held in the server's memory for the browser tab that opened them and are
   released when the tab closes, on Disconnect, or after 10 minutes without use.
 

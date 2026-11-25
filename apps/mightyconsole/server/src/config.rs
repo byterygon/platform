@@ -38,6 +38,18 @@
 //! min_retention_days = 30
 //! max_bytes = "10GiB"
 //!
+//! # The keys of the secret store (DOC-25 §3.4.4), the active one first. Without any, the key
+//! # the server generated in DATA/keys is used.
+//! [[secrets.keys]]
+//! source = "file"            # the default: 32 bytes in base64, mode 0400 or 0600
+//! file = "/run/secrets/mightyconsole-kek"
+//! [[secrets.keys]]
+//! source = "passphrase"      # passphrase_file, else $MIGHTYCONSOLE_SECRET_PASSPHRASE, else a prompt
+//! passphrase_file = "/run/secrets/mightyconsole-passphrase"
+//! [[secrets.keys]]
+//! source = "command"         # stdout is the key in base64; no shell, 30 s
+//! command = ["vault", "kv", "get", "-field=kek", "secret/mightyconsole"]
+//!
 //! [auth.oidc]
 //! issuer = "https://idp.example.com/dex"
 //! client_id = "mightyconsole"
@@ -64,6 +76,7 @@ use security_types::{Scope, ScopeEntry};
 use crate::audit::{AuditSettings, Reads};
 use crate::authz::catalogue;
 use crate::authz::policy::{GroupMapping, is_group, is_role_id};
+use crate::secrets::keys::{KeySource, PASSPHRASE_ENV, SecretsSettings};
 
 /// The environment variable naming the configuration file.
 pub const CONFIG_ENV: &str = "MIGHTYCONSOLE_CONFIG";
@@ -82,6 +95,26 @@ pub struct FileConfig {
     pub auth: AuthSection,
     #[serde(default)]
     pub audit: AuditSection,
+    #[serde(default)]
+    pub secrets: SecretsSection,
+}
+
+/// `[secrets]` (DOC-25 §3.4.4, §3.6.1).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SecretsSection {
+    pub keys: Option<Vec<KeySection>>,
+}
+
+/// One `[[secrets.keys]]`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeySection {
+    /// `file` (the default), `passphrase` or `command`.
+    pub source: Option<String>,
+    pub file: Option<PathBuf>,
+    pub passphrase_file: Option<PathBuf>,
+    pub command: Option<Vec<String>>,
 }
 
 /// `[audit]` (DOC-25 §3.5, §3.6.1). Segments, retention and size come with the rotation.
@@ -347,6 +380,55 @@ pub fn relative_to(file: &Path, path: &Path) -> PathBuf {
     }
 }
 
+/// Resolves the `[secrets]` section: paths relative to the file's directory.
+pub fn secrets_settings(section: SecretsSection, file: &Path) -> Result<SecretsSettings, String> {
+    let mut keys = Vec::new();
+    for (i, key) in section.keys.unwrap_or_default().into_iter().enumerate() {
+        let at = format!("[[secrets.keys]] #{}", i + 1);
+        let source = key.source.as_deref().unwrap_or("file");
+        let source = match source {
+            "file" => {
+                if key.passphrase_file.is_some() || key.command.is_some() {
+                    return Err(format!("{at}: a file key takes only `file`"));
+                }
+                let path = key
+                    .file
+                    .ok_or_else(|| format!("{at}: a file key needs `file`"))?;
+                KeySource::File(relative_to(file, &path))
+            }
+            "passphrase" => {
+                if key.file.is_some() || key.command.is_some() {
+                    return Err(format!(
+                        "{at}: a passphrase key takes only `passphrase_file` (or ${PASSPHRASE_ENV})"
+                    ));
+                }
+                KeySource::Passphrase {
+                    file: key.passphrase_file.map(|p| relative_to(file, &p)),
+                }
+            }
+            "command" => {
+                if key.file.is_some() || key.passphrase_file.is_some() {
+                    return Err(format!("{at}: a command key takes only `command`"));
+                }
+                let command = key.command.unwrap_or_default();
+                if command.first().is_none_or(|p| p.is_empty()) {
+                    return Err(format!(
+                        "{at}: a command key needs `command = [\"program\", \"arg\", …]`"
+                    ));
+                }
+                KeySource::Command(command)
+            }
+            other => {
+                return Err(format!(
+                    "{at}: source {other:?}: file, passphrase or command"
+                ));
+            }
+        };
+        keys.push(source);
+    }
+    Ok(SecretsSettings { keys })
+}
+
 /// Resolves the `[audit]` section.
 pub fn audit_settings(section: AuditSection) -> Result<AuditSettings, String> {
     let reads = match section.reads.as_deref() {
@@ -574,6 +656,61 @@ mod tests {
         for bad in ["", "60", "m", "5x", "1.5h"] {
             assert!(duration(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_secrets_section_resolves_paths_and_refuses_mixed_keys() {
+        let file: FileConfig = toml::from_str(
+            r#"
+            [[secrets.keys]]
+            file = "keys/active.key"
+            [[secrets.keys]]
+            source = "passphrase"
+            passphrase_file = "/run/pass"
+            [[secrets.keys]]
+            source = "passphrase"
+            [[secrets.keys]]
+            source = "command"
+            command = ["vault", "read", "-field=kek"]
+            "#,
+        )
+        .unwrap();
+        let settings = secrets_settings(file.secrets, Path::new("/etc/mc/config.toml")).unwrap();
+        assert_eq!(
+            settings.keys,
+            [
+                KeySource::File("/etc/mc/keys/active.key".into()),
+                KeySource::Passphrase {
+                    file: Some("/run/pass".into())
+                },
+                KeySource::Passphrase { file: None },
+                KeySource::Command(vec!["vault".into(), "read".into(), "-field=kek".into()]),
+            ]
+        );
+        assert!(
+            secrets_settings(SecretsSection::default(), Path::new("c.toml"))
+                .unwrap()
+                .keys
+                .is_empty()
+        );
+        for (bad, says) in [
+            ("source = \"file\"", "needs `file`"),
+            ("file = \"k\"\ncommand = [\"x\"]", "takes only `file`"),
+            (
+                "source = \"passphrase\"\nfile = \"k\"",
+                "takes only `passphrase_file`",
+            ),
+            ("source = \"command\"", "needs `command"),
+            ("source = \"command\"\ncommand = [\"\"]", "needs `command"),
+            ("source = \"keychain\"", "file, passphrase or command"),
+        ] {
+            let file: FileConfig = toml::from_str(&format!("[[secrets.keys]]\n{bad}\n")).unwrap();
+            let e = secrets_settings(file.secrets, Path::new("c.toml")).unwrap_err();
+            assert!(e.contains(says), "{bad}: {e}");
+            assert!(e.contains("[[secrets.keys]] #1"), "{e}");
+        }
+        // The key itself is never in the file.
+        assert!(toml::from_str::<FileConfig>("[[secrets.keys]]\nkey = \"AAAA\"\n").is_err());
     }
 
     #[test]

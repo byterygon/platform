@@ -20,6 +20,8 @@ USAGE
   mightyconsole-server config check [--online] [OPTIONS]
   mightyconsole-server audit verify [--data DIR | FILE...]
   mightyconsole-server reset-admin [--print] [--data DIR] [--config FILE]
+  mightyconsole-server keys generate --out FILE
+  mightyconsole-server secrets status [--data DIR] [--config FILE]
   mightyconsole-server --version | --help
 
 OPTIONS
@@ -80,6 +82,20 @@ THE DEFAULT ADMINISTRATOR
   running it asks it through DATA/reset-admin.request and waits up to 30 s. --print also
   prints the new password on this command's output.
 
+SECRETS
+  Secrets are encrypted in DATA/store.redb (AES-256-GCM, a data key per secret, wrapped by a
+  key-encryption key) and never returned. The keys are listed in [[secrets.keys]], the active
+  one first: source = \"file\" (file = PATH: 32 bytes in base64, mode 0400 or 0600, owned by the
+  server's user), \"passphrase\" (passphrase_file = PATH, else $MIGHTYCONSOLE_SECRET_PASSPHRASE,
+  else a prompt on the terminal; 16 characters or more; Argon2id) or \"command\" (command =
+  [program, args...]: run without a shell, a clean environment and 30 s; its output is the key
+  in base64). Without any, a first start generates DATA/keys/kek-<id>.key: it protects copies
+  of the store, not a compromise of the machine, so move it to a separate mount.
+  A key that does not load, or a stored secret whose key is not configured, stops the start.
+  Losing every copy of a key loses the secrets under it.
+  `keys generate --out FILE` writes a new key file (mode 0600) and prints its id.
+  `secrets status` (server stopped) counts the stored secrets by key.
+
 The server keeps no connection settings: profiles live in the browser.
 ";
 
@@ -102,6 +118,14 @@ pub enum Command {
     ResetAdmin {
         config: ServeConfig,
         print: bool,
+    },
+    /// `keys generate --out FILE`: a new key file (DOC-25 §3.6.4).
+    KeysGenerate {
+        out: PathBuf,
+    },
+    /// `secrets status`: the stored secrets by key (DOC-25 §3.4.5).
+    SecretsStatus {
+        config: ServeConfig,
     },
     Help,
     Version,
@@ -223,6 +247,39 @@ pub fn parse(args: impl IntoIterator<Item = String>, env: &Env) -> Result<Comman
                 );
             }
             return Ok(Command::ResetAdmin { config, print });
+        }
+        Some("keys") => {
+            args.next();
+            if args.next().as_deref() != Some("generate") {
+                return Err("keys: the only subcommand is `keys generate --out FILE`".into());
+            }
+            let mut out = None;
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--out" => {
+                        out = Some(PathBuf::from(
+                            args.next().ok_or("keys generate: --out needs a file")?,
+                        ));
+                    }
+                    other => return Err(format!("keys generate: unknown option {other:?}")),
+                }
+            }
+            let out = out.ok_or("keys generate: give --out FILE")?;
+            return Ok(Command::KeysGenerate { out });
+        }
+        Some("secrets") => {
+            args.next();
+            if args.next().as_deref() != Some("status") {
+                return Err("secrets: the only subcommand is `secrets status`".into());
+            }
+            let config = parse_serve(args, env)?;
+            if config.data.is_none() {
+                return Err(
+                    "secrets status: no data directory: give --data or set MIGHTYCONSOLE_DATA"
+                        .into(),
+                );
+            }
+            return Ok(Command::SecretsStatus { config });
         }
         Some("config") => {
             args.next();
@@ -410,6 +467,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         _ => return Err("--tls-cert and --tls-key go together".into()),
     };
     let auth: AuthSettings = config::auth_settings(file.auth, &file_path)?;
+    let secrets = config::secrets_settings(file.secrets, &file_path)?;
     let mut audit = config::audit_settings(file.audit)?;
     audit.new_chain = flags.audit_new_chain;
     Ok(ServeConfig {
@@ -424,6 +482,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         data,
         auth,
         audit,
+        secrets,
     })
 }
 
@@ -651,6 +710,36 @@ mod tests {
         write(dir.path(), "bad.toml", "[server]\nlisten = 1\n");
         let bad = format!("--config {}", dir.path().join("bad.toml").display());
         assert!(parse(args(&bad), &Env::default()).is_err());
+    }
+
+    #[test]
+    fn keys_generate_and_secrets_status_parse() {
+        assert_eq!(
+            parse(args("keys generate --out /k/new.key"), &Env::default()).unwrap(),
+            Command::KeysGenerate {
+                out: "/k/new.key".into()
+            }
+        );
+        for bad in [
+            "keys",
+            "keys generate",
+            "keys generate --out",
+            "keys make --out x",
+        ] {
+            assert!(parse(args(bad), &Env::default()).is_err(), "{bad}");
+        }
+        let Command::SecretsStatus { config } =
+            parse(args("secrets status --data /d"), &Env::default()).unwrap()
+        else {
+            panic!("secrets status");
+        };
+        assert_eq!(config.data, Some("/d".into()));
+        assert!(
+            parse(args("secrets status"), &Env::default())
+                .unwrap_err()
+                .contains("no data directory")
+        );
+        assert!(parse(args("secrets list"), &Env::default()).is_err());
     }
 
     #[test]
