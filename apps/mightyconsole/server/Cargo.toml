@@ -45,6 +45,8 @@ hyper = { version = "1.12.0", default-features = false, features = ["client", "h
 hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "ring", "tls12"] }
 hyper-util = { version = "0.1.21", default-features = false, features = ["client-legacy", "http1", "tokio"] }
 prost = "0.14.6"
+# The server's store, DATA/store.redb (DOC-25 §3.1): accounts now, roles and secrets later.
+redb = "5.0.0"
 prost-reflect = { version = "0.16.5", features = ["serde"] }
 prost-types = "0.14.6"
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }

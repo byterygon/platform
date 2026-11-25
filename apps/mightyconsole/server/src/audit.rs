@@ -269,6 +269,9 @@ pub enum Event {
     },
     /// `server.stop`.
     ServerStop,
+    /// `auth.admin.reset` (DOC-25 §3.2.7): `via` is `stopped` (the command opened the store) or
+    /// `request` (the running server performed it).
+    AdminReset { via: String },
 }
 
 /// Clips `text` to the detail's value limit on a character boundary and replaces control
@@ -298,6 +301,7 @@ impl Event {
             Event::SessionEnd { .. } => "auth.session.end",
             Event::ServerStart { .. } => "server.start",
             Event::ServerStop => "server.stop",
+            Event::AdminReset { .. } => "auth.admin.reset",
         }
     }
 
@@ -392,6 +396,12 @@ impl Event {
                     Outcome::Success,
                     Vec::new(),
                 ),
+                Event::AdminReset { via } => (
+                    vec![system("system:server")],
+                    AuditDecision::Allow,
+                    Outcome::Success,
+                    vec![("via", clip(via))],
+                ),
             };
         let name = self.name();
         AuditEntry {
@@ -454,6 +464,7 @@ impl Event {
                 exposed,
             } => format!("server.start {version} ({mode}, exposed {exposed})"),
             Event::ServerStop => "server.stop".to_owned(),
+            Event::AdminReset { via } => format!("auth.admin.reset (via {via})"),
         };
         format!("mightyconsole-server: {text}")
     }

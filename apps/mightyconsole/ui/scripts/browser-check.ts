@@ -540,7 +540,8 @@ async function main(): Promise<number> {
     // are under it; the place is in the hash; a reload, an edited hash and Back keep it.
     const hashPort = await freePort();
     const hashOrigin = `https://localhost:${hashPort}`;
-    hashServer = spawn(serverBinary, ["--listen", `127.0.0.1:${hashPort}`, ...uiArgs, "--data", data, "--router", "hash", "--base-path", "/tools/mc"], { stdio: ["ignore", "ignore", "pipe"] });
+    // Its own data directory: a store is open in one server at a time.
+    hashServer = spawn(serverBinary, ["--listen", `127.0.0.1:${hashPort}`, ...uiArgs, "--data", join(data, "hash-server"), "--router", "hash", "--base-path", "/tools/mc"], { stdio: ["ignore", "ignore", "pipe"] });
     await waitForLine(hashServer, /[\s\S]*open https:\/\/localhost:\d+\/tools\/mc\//, "mightyconsole-server --router hash");
     const errorsBefore = page.errors.length;
     await page.navigate(`${hashOrigin}/`);

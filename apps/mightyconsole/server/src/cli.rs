@@ -19,6 +19,7 @@ USAGE
   mightyconsole-server [serve] [OPTIONS]
   mightyconsole-server config check [--online] [OPTIONS]
   mightyconsole-server audit verify [--data DIR | FILE...]
+  mightyconsole-server reset-admin [--print] [--data DIR] [--config FILE]
   mightyconsole-server --version | --help
 
 OPTIONS
@@ -66,6 +67,18 @@ AUDIT
   The file's [audit] section: reads, stderr, segment_bytes, retention_days,
   min_retention_days, max_bytes.
 
+THE DEFAULT ADMINISTRATOR
+  A first start makes the account `admin` with a generated password in DATA/admin-password
+  (mode 0600; the log names the file, never the password). In a container:
+  `docker cp <container>:/data/admin-password -`. The first sign-in must change it; the file
+  is then deleted.
+  `reset-admin` (run where the data directory is; in a container `docker exec <container>
+  /mightyconsole-server reset-admin --print`) writes a new password to DATA/admin-password,
+  requires a change at the next sign-in, enables and unlocks the account, removes its TOTP
+  and ends its sessions. With the server stopped it opens the store itself; with the server
+  running it asks it through DATA/reset-admin.request and waits up to 30 s. --print also
+  prints the new password on this command's output.
+
 The server keeps no connection settings: profiles live in the browser.
 ";
 
@@ -84,6 +97,11 @@ pub enum Command {
     },
     /// `audit verify [--data DIR | FILE...]`: check the log and exit.
     AuditVerify(AuditTarget),
+    /// `reset-admin [--print] [OPTIONS]`: reset the default administrator (DOC-25 §3.2.7).
+    ResetAdmin {
+        config: ServeConfig,
+        print: bool,
+    },
     Help,
     Version,
 }
@@ -186,6 +204,24 @@ pub fn parse(args: impl IntoIterator<Item = String>, env: &Env) -> Result<Comman
                         "audit verify: no data directory: give --data, files, or set MIGHTYCONSOLE_DATA".into()
                     }),
             };
+        }
+        Some("reset-admin") => {
+            args.next();
+            let mut print = false;
+            let rest: Vec<String> = args
+                .filter(|a| {
+                    let flag = a == "--print";
+                    print |= flag;
+                    !flag
+                })
+                .collect();
+            let config = parse_serve(rest.into_iter(), env)?;
+            if config.data.is_none() {
+                return Err(
+                    "reset-admin: no data directory: give --data or set MIGHTYCONSOLE_DATA".into(),
+                );
+            }
+            return Ok(Command::ResetAdmin { config, print });
         }
         Some("config") => {
             args.next();
