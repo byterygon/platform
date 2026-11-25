@@ -63,7 +63,7 @@ async fn read_all(tab: &mut Tab, id: u32) -> (Vec<RecordBatch>, Value) {
         match frame.kind {
             Kind::Chunk => {
                 ipc.extend_from_slice(&frame.payload);
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => {
                 let summary = serde_json::from_slice(&frame.payload).unwrap();
@@ -343,7 +343,7 @@ async fn a_jq_query_runs_in_a_worker_and_the_server_stays_responsive() {
         json!({ "text": "null", "jq": "def f: f; f", "timeoutMs": 30000 }),
     )
     .await;
-    tab.client.cancel(7).await;
+    tab.cancel(7).await;
     let started = std::time::Instant::now();
     tab.call(
         8,
@@ -554,7 +554,7 @@ async fn pausing_stops_reading_and_a_push_source_drops_the_oldest() {
     // source stopped reading although 6,000 messages wait.
     assert!(later <= 3000, "scanned {later} while paused");
     assert!(first <= later);
-    tab.client.credit(PULL, 2).await;
+    tab.credit(PULL, 2).await;
     tab.chunk(PULL).await;
 
     // Push-only: new messages only; while the client reads nothing the buffer keeps the newest
@@ -563,7 +563,7 @@ async fn pausing_stops_reading_and_a_push_source_drops_the_oldest() {
     tab.chunk(PUSH).await; // the schema
     let mut next = 50_000;
     produce_json(&mut tab, &mut next, &conn, 13_000).await;
-    tab.client.credit(PUSH, 64).await;
+    tab.credit(PUSH, 64).await;
     let dropped = tab
         .event(1, |e| {
             e["kind"] == "StreamProgress"

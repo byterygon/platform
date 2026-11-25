@@ -32,6 +32,8 @@ pub struct AppState {
     pub sessions: Arc<ambidex_axum::LoginSessions>,
     /// The built-in accounts, for `app.account.*` (`None` only in the codegen router).
     pub accounts: Option<crate::sessions::McAccounts>,
+    /// The destroy confirmations, for `app.confirmations.*`.
+    pub confirmations: Arc<crate::authz::confirm::Confirmations>,
 }
 
 /// A tool built into the server.
@@ -443,6 +445,121 @@ impl TotpApi {
             )
             .await
             .map_err(totp_error)?;
+        Ok(Empty {})
+    }
+}
+
+/// Input of `app.confirmations.get`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmationIdInput {
+    /// From `ApprovalRequired`'s details.
+    pub approval_id: String,
+}
+
+/// Input of `app.confirmations.confirm`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmInput {
+    pub approval_id: String,
+    /// What the person typed; must equal the phrase exactly (case-sensitive, not trimmed).
+    pub typed: String,
+}
+
+/// Output of `app.confirmations.get`: what a destroy needs confirmed (DOC-25 §3.3.6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Confirmation {
+    /// The procedure, e.g. `nats.kv.delete`.
+    pub action: String,
+    pub tool: String,
+    /// The profile's name; absent for a profile the browser keeps (until TSK-139).
+    pub profile_name: Option<String>,
+    pub context: Option<String>,
+    pub namespace: Option<String>,
+    /// `key`, `stream`, `container`, `workflow`, ...
+    pub resource_kind: String,
+    pub resource_name: String,
+    /// What the person types to confirm: the name, its first 12 characters when it is longer
+    /// than 32, or a count (`3 containers`).
+    pub phrase: String,
+    /// When the challenge expires (Unix ms).
+    pub expires_at: u64,
+    /// Whether the confirmation needs a fresh sign-in (`auth.reauth_for_destroy`; not built yet,
+    /// always false).
+    pub reauth: bool,
+}
+
+const CONFIRMATIONS: &str = "app";
+
+fn confirm_error(e: crate::authz::confirm::ConfirmError) -> RpcError<ToolError> {
+    use crate::authz::confirm::ConfirmError as E;
+    use crate::core::ToolErrorKind as K;
+    match e {
+        E::NotFound => ToolError::not_found(
+            CONFIRMATIONS,
+            "confirmation",
+            "this confirmation does not exist or belongs to another session",
+        )
+        .into(),
+        E::Expired => ToolError::new(
+            K::Conflict,
+            CONFIRMATIONS,
+            "this confirmation expired; start the action again",
+        )
+        .into(),
+        E::Answered => ToolError::new(
+            K::Conflict,
+            CONFIRMATIONS,
+            "this confirmation was answered already",
+        )
+        .into(),
+        E::Wrong => {
+            ToolError::invalid(CONFIRMATIONS, "typed", "that is not the name to type").into()
+        }
+        E::Paused { .. } => RpcError::new(
+            ambidex::Code::ResourceExhausted,
+            "too many wrong answers; wait a minute",
+        ),
+    }
+}
+
+/// `app.confirmations.*`: a person answers the server's destroy challenge (DOC-25 §3.3.6).
+pub struct ConfirmationsApi(pub Arc<AppState>);
+
+#[rpc::router(namespace = "app.confirmations")]
+impl ConfirmationsApi {
+    /// The challenge of a refused Destructive call, to this login session only.
+    #[rpc::query(perm = "app.self", risk = Risk::Read)]
+    async fn get(&self, ctx: Ctx, input: ConfirmationIdInput) -> ToolResult<Confirmation> {
+        let login = ambidex_axum::login_session_of(&ctx.session().id);
+        let view = self
+            .0
+            .confirmations
+            .get(login, &input.approval_id)
+            .map_err(confirm_error)?;
+        Ok(Confirmation {
+            action: view.action,
+            tool: view.tool,
+            profile_name: None,
+            context: view.context,
+            namespace: view.namespace,
+            resource_kind: view.subject.kind,
+            resource_name: view.subject.name,
+            phrase: view.subject.phrase,
+            expires_at: view.expires_ms,
+            reauth: false,
+        })
+    }
+
+    /// Confirms the challenge with the typed phrase; the same call sent again within a minute is
+    /// then allowed once.
+    #[rpc::mutation(perm = "app.self", risk = Risk::Write)]
+    async fn confirm(&self, ctx: Ctx, input: ConfirmInput) -> ToolResult<Empty> {
+        self.0
+            .confirmations
+            .confirm(ctx.principal(), &input.approval_id, &input.typed)
+            .map_err(confirm_error)?;
         Ok(Empty {})
     }
 }

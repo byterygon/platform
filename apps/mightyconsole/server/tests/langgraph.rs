@@ -610,7 +610,7 @@ async fn threads_state_history_and_fork() {
     assert_eq!(body["as_node"], "approve");
     assert_eq!(body["checkpoint"]["checkpoint_id"], "c1");
 
-    tab.call(
+    tab.confirmed(
         12,
         "langgraph.threads.delete",
         json!({ "connId": conn, "threadId": THREAD }),
@@ -671,7 +671,7 @@ async fn run_lines(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
                 {
                     lines.push(serde_json::from_slice(line).unwrap());
                 }
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             ambidex::Kind::StreamEnd => {
                 return (lines, serde_json::from_slice(&frame.payload).unwrap());
@@ -802,10 +802,10 @@ async fn a_run_stream_follows_the_credits_and_joins_from_the_last_event() {
         tab.quiet(3, Duration::from_millis(400)).await,
         "no credit, no chunk"
     );
-    tab.client.credit(3, 1).await;
+    tab.credit(3, 1).await;
     tab.chunk(3).await;
     // Stop: the stream ends; the run itself is the server's (cancel is a separate call).
-    tab.client.cancel(3).await;
+    tab.cancel(3).await;
     tab.error(3, Code::Cancelled).await;
 
     // Join after a reconnect, from the last event seen.
@@ -869,7 +869,7 @@ async fn a_run_stream_follows_the_credits_and_joins_from_the_last_event() {
     .await;
     tab.result(7).await;
     assert_eq!(mock.last(&cancel).query, "action=interrupt&wait=true");
-    tab.call(
+    tab.confirmed(
         8,
         "langgraph.runs.rollback",
         json!({ "connId": conn, "threadId": THREAD, "runId": RUN }),
@@ -993,7 +993,7 @@ async fn the_store_lists_searches_puts_and_deletes() {
         "namespace"
     );
 
-    tab.call(
+    tab.confirmed(
         9,
         "langgraph.store.delete",
         json!({ "connId": conn, "namespace": ["lab", "notes"], "key": "n1" }),

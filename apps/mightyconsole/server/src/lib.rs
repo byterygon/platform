@@ -55,10 +55,13 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use crate::api::{AccountApi, AppApi, AppState, MeApi, ServerFacts, TermApi, TotpApi};
+use crate::api::{
+    AccountApi, AppApi, AppState, ConfirmationsApi, MeApi, ServerFacts, TermApi, TotpApi,
+};
 use crate::audit::{
     AuditSettings, Event, EventLog, LineWriter, McAuditSink, SensitiveTable, Stderr,
 };
+use crate::authz::confirm::{Confirmations, SharedConfirmations};
 use crate::authz::policy::{Policy, PolicyHandle};
 use crate::authz::targets::McTargets;
 use crate::authz::{NoStoredProfiles, RoleAuthorizer};
@@ -114,6 +117,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(TotpApi(Arc::clone(state)))
         .expect("app.account.totp API registers");
+    router
+        .mount(ConfirmationsApi(Arc::clone(state)))
+        .expect("app.confirmations API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -134,6 +140,7 @@ pub fn codegen_router() -> Router {
             Arc::new(ambidex_axum::NoSessionEvents),
         )),
         accounts: None,
+        confirmations: Arc::new(Confirmations::new(Arc::new(SystemClock))),
     });
     let router = Router::new(RoleAuthorizer::new(
         "codegen",
@@ -748,12 +755,16 @@ impl Server {
             accounts: Some(accounts.clone()),
             oidc,
         };
+        // The destroy confirmations (DOC-25 §3.3.6): recorded by the router's approval path,
+        // answered through `app.confirmations.*`, used by the Authorizer.
+        let confirmations = Arc::new(Confirmations::new(Arc::clone(&clock)));
         let authorizer = RoleAuthorizer::new(
             &config.auth.tenant,
             Arc::clone(&login_sessions),
             policy.clone(),
             Arc::new(NoStoredProfiles),
-        );
+        )
+        .with_confirmations(Arc::clone(&confirmations));
         auth_tasks.push(reset_watcher(
             &store,
             &data,
@@ -773,11 +784,12 @@ impl Server {
             },
             sessions: Arc::clone(&login_sessions),
             accounts: Some(accounts.clone()),
+            confirmations: Arc::clone(&confirmations),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
         let sensitive = SensitiveTable::default();
-        let router = Router::new(authorizer)
+        let router = Router::with_approvals(authorizer, SharedConfirmations(confirmations))
             .with_audit(McAuditSink::new(
                 sink,
                 sensitive.clone(),

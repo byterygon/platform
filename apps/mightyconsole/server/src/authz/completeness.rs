@@ -14,15 +14,16 @@
 //!   target kind is `profile` and it takes none of them (it could never be allowed). The shared
 //!   codec procedures (`messaging.*`) are the one exception: they work on a handle of any tool,
 //!   which needed `<tool>.read` to open, with `messaging.read` (target kind any, DOC-25 §3.3.1);
+//! - it is Destructive and declares no confirmation subject ([`confirm::SUBJECTS`]), or its
+//!   subject's field is not in its input (the person would have nothing to type);
 //! - it is exposed to agents.
 //!
-//! The destroy confirmation's rule (a Destructive procedure declares its confirmation subject)
-//! comes with it (TSK-138, batch 3); the secret-field rule with the secret store (TSK-139) and
-//! the redaction test (TSK-141).
+//! The secret-field rule comes with the secret store (TSK-139) and the redaction test (TSK-141).
 
 use serde_json::Value;
 
 use super::catalogue::{self, TargetKind};
+use super::confirm;
 
 /// Tool procedures whose permission is a tool permission other than the risk rule's.
 pub const EXCEPTIONS: [(&str, &str); 5] = [
@@ -179,6 +180,19 @@ pub fn problems(manifest: &Value) -> Vec<String> {
             )),
             _ => {}
         }
+        if risk == "Destructive" {
+            match confirm::SUBJECTS.iter().find(|(n, _, _)| *n == name) {
+                None => problem(
+                    "is Destructive but declares no confirmation subject \
+                     (authz::confirm::SUBJECTS)"
+                        .into(),
+                ),
+                Some((_, _, field)) if !fields.iter().any(|f| f == field) => problem(format!(
+                    "its confirmation subject reads {field:?}, which its input does not have"
+                )),
+                Some(_) => {}
+            }
+        }
     }
     out
 }
@@ -192,6 +206,8 @@ mod tests {
         json!({
             "$defs": {
                 "ConnInput": { "properties": { "connId": {}, "id": {} } },
+                "KeyInput": { "properties": { "connId": {}, "bucket": {}, "key": {} } },
+                "WorkflowInput": { "properties": { "connId": {}, "workflowId": {} } },
                 "NsInput": { "properties": { "namespace": {} } },
                 "Empty": { "properties": {} },
             },
@@ -213,7 +229,7 @@ mod tests {
     fn a_complete_fixture_passes() {
         let m = manifest(json!([
             procedure("nats.kv.get", "nats.read", "Read", "ConnInput"),
-            procedure("nats.kv.delete", "nats.destroy", "Destructive", "ConnInput"),
+            procedure("nats.kv.delete", "nats.destroy", "Destructive", "KeyInput"),
             procedure(
                 "docker.containers.exec",
                 "docker.exec",
@@ -242,8 +258,11 @@ mod tests {
                 "temporal.workflows.terminate",
                 "temporal.write",
                 "Destructive",
-                "ConnInput"
+                "WorkflowInput"
             ),
+            // A destroy with no name to type, and one whose name is not in its input.
+            procedure("nats.kv.wipe", "nats.destroy", "Destructive", "KeyInput"),
+            procedure("nats.kv.purge", "nats.destroy", "Destructive", "ConnInput"),
             // A tool procedure with no target: never allowed.
             procedure("nats.server.version", "nats.read", "Read", "Empty"),
             // A namespace without a target check.
@@ -261,6 +280,8 @@ mod tests {
                 "nats.kv.watch",
                 "nats.kv.history",
                 "temporal.workflows.terminate",
+                "nats.kv.wipe",
+                "nats.kv.purge",
                 "nats.server.version",
                 "app.namespaces",
                 "billing.invoices.list",

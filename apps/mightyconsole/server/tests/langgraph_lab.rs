@@ -55,7 +55,7 @@ async fn connect(tab: &mut Tab, id: u32, profile: Value) -> String {
 }
 
 async fn call(tab: &mut Tab, id: u32, procedure: &str, input: Value) -> Value {
-    tab.call(id, procedure, input).await;
+    tab.call_answered(id, procedure, input).await;
     tab.result(id).await
 }
 
@@ -73,7 +73,7 @@ async fn lines(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
                 {
                     out.push(serde_json::from_slice(line).unwrap());
                 }
-                tab.client.credit(id, 1).await;
+                tab.credit(id, 1).await;
             }
             Kind::StreamEnd => return (out, serde_json::from_slice(&frame.payload).unwrap()),
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
@@ -917,7 +917,7 @@ async fn lab_heavy_checkpoints_are_left_out_of_history_and_load_on_request() {
         match frame.kind {
             Kind::Chunk => {
                 streamed.extend_from_slice(&frame.payload);
-                tab.client.credit(9, 1).await;
+                tab.credit(9, 1).await;
             }
             Kind::StreamEnd => break,
             other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),

@@ -238,7 +238,7 @@ async fn the_idle_sweep_releases_unused_handles_but_not_streaming_ones() {
     not_found_connection(&tab.error(6, Code::NotFound).await);
 
     // Once the stream stops, the streaming handle ages like any other.
-    tab.client.cancel(4).await;
+    tab.cancel(4).await;
     loop {
         let frame = tab.frame(4).await;
         if frame.kind == Kind::Error {
@@ -275,7 +275,7 @@ async fn a_stream_follows_the_credits_and_reports_progress() {
         assert_eq!(tick["seq"], seq);
     }
     assert!(tab.quiet(3, Duration::from_millis(300)).await);
-    tab.client.credit(3, 2).await;
+    tab.credit(3, 2).await;
     assert_eq!(
         serde_json::from_slice::<Value>(&tab.chunk(3).await).unwrap()["seq"],
         4
@@ -406,7 +406,7 @@ async fn a_terminal_echoes_its_input_and_reports_its_exit() {
     .await;
     tab.result(9).await;
     assert!(tab.quiet(3, Duration::from_millis(300)).await);
-    tab.client.credit(3, 4).await;
+    tab.credit(3, 4).await;
     // Ctrl+D ended it with exit code 0; later input is NotFound.
     assert_eq!(tab.chunk(3).await, b"\x01bye");
     assert_eq!(tab.stream_end(3).await["exitCode"], 0);

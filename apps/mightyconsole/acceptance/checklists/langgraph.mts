@@ -3,7 +3,7 @@
 // lab-tests) against the lab. The UI's: test/langgraph.test.tsx (jsdom), and a walk through the
 // tool in a browser with screenshots. Run
 // `pnpm --filter @byterygon/mightyconsole acceptance langgraph --lab-up --strict`.
-import { browser, type BrowserContext, cargo, type Checklist, command, manual, vitest } from "../checklist.mts";
+import { browser, type BrowserContext, cargo, type Checklist, command, manual, vitest, confirmDestroy } from "../checklist.mts";
 import { APPEARANCES, appearance, openSuggestions, suggestionRows, suggestionsOnTop, typeInEditor } from "../editors.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
@@ -239,6 +239,7 @@ export default {
           await run(press(menuItem("Delete thread")));
           await until(`[...document.querySelectorAll("[role=alertdialog]")].some((d) => d.textContent.includes("Delete thread"))`, "the delete confirmation");
           await run(`__mc.click([...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === "Delete thread"))`);
+          await confirmDestroy({ run, until }, "the thread deletion");
           await until(`__mc.button("New thread") && ${visibleButton("New thread")}`, "back on the threads list");
           // The threads list's Advanced: sort and rows per page.
           await run(press(`[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim().startsWith("Advanced"))`));

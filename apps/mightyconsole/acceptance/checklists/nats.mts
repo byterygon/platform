@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
-import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
+import { browser, type BrowserContext, cargo, type Checklist, vitest, confirmDestroy } from "../checklist.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
 
@@ -225,6 +225,7 @@ export default {
           await until(vbutton("Purge 2 messages"), "the count");
           await shot("purge keeping the newest");
           await run(`__mc.click(${vbutton("Purge 2 messages")})`);
+          await confirmDestroy({ run, until }, "the purge");
           await until(`__mc.has("Purged 2 messages")`, "the purge");
           await until(`!document.querySelector("[role=alertdialog]") && ${vbutton("Purge…")} && !${vbutton("Purge…")}.disabled`, "the refreshed stream");
           await run(`__mc.click(${vbutton("Purge…")})`);
@@ -232,6 +233,7 @@ export default {
           await run(`__mc.type(${vfield(`Type ${name} to purge all`)}, ${JSON.stringify(name)})`);
           await shot("purge all with the typed name");
           await run(`__mc.click(${vbutton("Purge 1 message")})`);
+          await confirmDestroy({ run, until }, "the purge of all");
           await until(`__mc.has("Purged 1 message")`, "the purge of all");
           await until(`!document.querySelector("[role=alertdialog]")`, "the dialog closed");
           await run(`__mc.click(${vbutton("More: Delete stream, Copy config as JSON")})`);
@@ -241,6 +243,7 @@ export default {
           await run(`__mc.type(${vfield(`Type ${name} to confirm`)}, ${JSON.stringify(name)})`);
           await shot("delete stream with the typed name");
           await run(`__mc.click(${vbutton("Delete stream")})`);
+          await confirmDestroy({ run, until }, "the stream deletion");
           await until(`__mc.has(${JSON.stringify(`Deleted stream ${name}`)})`, "the deleted stream");
         }),
         browser("browse ORDERS and load a large message in full", async ({ page, origin, until, run, shot }) => {
@@ -400,6 +403,7 @@ export default {
           await until(`__mc.has(${JSON.stringify(`Delete consumer ${name} of ORDERS`)})`, "the confirmation");
           await shot("delete consumer");
           await run(`__mc.click(${vbutton("Delete consumer")})`);
+          await confirmDestroy({ run, until }, "the consumer deletion");
           await until(`__mc.has(${JSON.stringify(`${name} was deleted.`)})`, "the deleted consumer");
         }),
       ],
@@ -482,6 +486,7 @@ export default {
           await until(vfield(`Type ${bucket} to confirm`), "the delete dialog");
           await run(`__mc.type(${vfield(`Type ${bucket} to confirm`)}, ${JSON.stringify(bucket)})`);
           await run(`__mc.click(${vbutton("Delete bucket")})`);
+          await confirmDestroy({ run, until }, "the bucket deletion");
           await until(`__mc.has(${JSON.stringify(`Deleted bucket ${bucket}`)})`, "the deleted bucket");
         }),
         cargo("object_names_are_checked"),
@@ -543,6 +548,7 @@ export default {
           await until(`__mc.has("Delete walk-9MiB.bin from")`, "the delete confirmation");
           await shot("delete an object");
           await run(`__mc.click(${vbutton("Delete object")})`);
+          await confirmDestroy({ run, until }, "the object deletion");
           await until(`__mc.has("No objects in this bucket.")`, "the object deleted");
           await run(`__mc.click(${vbutton("More: Delete bucket")})`);
           await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete bucket"))`, "the menu");
@@ -550,6 +556,7 @@ export default {
           await until(vfield(`Type ${bucket} to confirm`), "the delete dialog");
           await run(`__mc.type(${vfield(`Type ${bucket} to confirm`)}, ${JSON.stringify(bucket)})`);
           await run(`__mc.click(${vbutton("Delete bucket")})`);
+          await confirmDestroy({ run, until }, "the bucket deletion");
           await until(`__mc.has(${JSON.stringify(`Deleted object store ${bucket}`)})`, "the deleted object store");
         }),
       ],

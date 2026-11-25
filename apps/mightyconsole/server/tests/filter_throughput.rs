@@ -59,11 +59,11 @@ async fn produce(tab: &mut Tab, next: &mut u32, conn: &str, n: usize) {
 /// Reads a stream to its end, granting credits ahead; the summary and the time it took.
 async fn drain(tab: &mut Tab, id: u32) -> (Value, Duration) {
     let started = Instant::now();
-    tab.client.credit(id, 60).await;
+    tab.credit(id, 60).await;
     loop {
         let frame = tab.frame(id).await;
         match frame.kind {
-            Kind::Chunk => tab.client.credit(id, 1).await,
+            Kind::Chunk => tab.credit(id, 1).await,
             Kind::StreamEnd => {
                 return (
                     serde_json::from_slice(&frame.payload).unwrap(),

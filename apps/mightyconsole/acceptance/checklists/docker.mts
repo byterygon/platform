@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type BrowserContext, type Checklist, browser, cargo, command, manual, vitest } from "../checklist.mts";
+import { type BrowserContext, type Checklist, browser, cargo, command, manual, vitest, confirmDestroy } from "../checklist.mts";
 
 const GENERATED = process.env["MIGHTYCONSOLE_LAB_GENERATED"] ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", "lab", ".generated");
 
@@ -226,6 +226,7 @@ export default {
           await run(`__mc.type(document.querySelector("[role=alertdialog] input"), "lab-scratch")`);
           await shot("remove volume, name typed");
           await run(`__mc.click(${inDialog("Remove volume")})`);
+          await confirmDestroy({ run, until }, "the volume removal");
           await until(`!${row("Volumes", "lab-scratch")}`, "lab-scratch removed");
 
           // Networks: bridge is predefined; lab-scratch-net has nothing attached and goes.
@@ -236,6 +237,7 @@ export default {
           await run(`__mc.click(document.querySelector("button[aria-label='Remove lab-scratch-net']"))`);
           await until(`(document.querySelector("[role=alertdialog]")?.textContent ?? "").includes("Remove network lab-scratch-net?")`, "the confirmation");
           await run(`__mc.click(${inDialog("Remove network")})`);
+          await confirmDestroy({ run, until }, "the network removal");
           await until(`!${row("Networks", "lab-scratch-net")}`, "lab-scratch-net removed");
 
           await run(`__mc.dblclick(__mc.item("Host"))`);

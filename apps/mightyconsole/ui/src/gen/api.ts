@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:c70b8bbc0a101299e7a6f187563da12633cad893f73d4724d6f9aca52ba817c0";
+export const SCHEMA_HASH = "sha256:96ae02d6a30ac3501b4a250ac36d250ca25a51f43d4ada8389e8b75545e90291";
 
 // ---- Types
 
@@ -329,6 +329,55 @@ export type ComposeService = { service: string,
  * The containers' names.
  */
 containers: Array<string>, };
+
+/**
+ * Input of `app.confirmations.confirm`.
+ */
+export type ConfirmInput = { approvalId: string, 
+/**
+ * What the person typed; must equal the phrase exactly (case-sensitive, not trimmed).
+ */
+typed: string, };
+
+/**
+ * Output of `app.confirmations.get`: what a destroy needs confirmed (DOC-25 §3.3.6).
+ */
+export type Confirmation = { 
+/**
+ * The procedure, e.g. `nats.kv.delete`.
+ */
+action: string, tool: string, 
+/**
+ * The profile's name; absent for a profile the browser keeps (until TSK-139).
+ */
+profileName: string | null, context: string | null, namespace: string | null, 
+/**
+ * `key`, `stream`, `container`, `workflow`, ...
+ */
+resourceKind: string, resourceName: string, 
+/**
+ * What the person types to confirm: the name, its first 12 characters when it is longer
+ * than 32, or a count (`3 containers`).
+ */
+phrase: string, 
+/**
+ * When the challenge expires (Unix ms).
+ */
+expiresAt: number, 
+/**
+ * Whether the confirmation needs a fresh sign-in (`auth.reauth_for_destroy`; not built yet,
+ * always false).
+ */
+reauth: boolean, };
+
+/**
+ * Input of `app.confirmations.get`.
+ */
+export type ConfirmationIdInput = { 
+/**
+ * From `ApprovalRequired`'s details.
+ */
+approvalId: string, };
 
 /**
  * The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).
@@ -4074,6 +4123,8 @@ export interface Procedures {
   readonly "app.account.totp.begin": ProcedureDef<"mutation", Empty, TotpEnrolmentOutput, ToolError>;
   readonly "app.account.totp.confirm": ProcedureDef<"mutation", TotpConfirmInput, RecoveryCodes, ToolError>;
   readonly "app.account.totp.remove": ProcedureDef<"mutation", TotpRemoveInput, Empty, ToolError>;
+  readonly "app.confirmations.confirm": ProcedureDef<"mutation", ConfirmInput, Empty, ToolError>;
+  readonly "app.confirmations.get": ProcedureDef<"query", ConfirmationIdInput, Confirmation, ToolError>;
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
   readonly "app.me": ProcedureDef<"query", Empty, Me, ToolError>;
@@ -4260,6 +4311,10 @@ export interface Api {
         readonly confirm: Procedures["app.account.totp.confirm"];
         readonly remove: Procedures["app.account.totp.remove"];
       };
+    };
+    readonly confirmations: {
+      readonly confirm: Procedures["app.confirmations.confirm"];
+      readonly get: Procedures["app.confirmations.get"];
     };
     readonly events: Procedures["app.events"];
     readonly info: Procedures["app.info"];
@@ -4567,6 +4622,28 @@ export const procedures: Api = {
           timeoutDefaultMs: 30000,
           timeoutMaxMs: 300000,
         },
+      },
+    },
+    confirmations: {
+      confirm: {
+        name: "app.confirmations.confirm",
+        kind: "mutation",
+        perm: "app.self",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "app.confirmations.get",
+        kind: "query",
+        perm: "app.self",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
       },
     },
     events: {

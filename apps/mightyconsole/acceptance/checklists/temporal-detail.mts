@@ -2,7 +2,7 @@
 // 45 (r)): a workflow's Relations (its family in the lab: family-root, family-order with three
 // children, one failed, and family-support signalling the order) and the schedule detail tab,
 // against the lab. Each batch of the task wires its item.
-import { browser, cargo, type Checklist, vitest } from "../checklist.mts";
+import { browser, cargo, type Checklist, vitest, confirmDestroy } from "../checklist.mts";
 import { connectLab, openSeededWorkflow, shownButton } from "./temporal-more.mts";
 
 /** One cargo check per test function, against the lab. */
@@ -111,6 +111,7 @@ export default {
           await until(`document.querySelector("[role=dialog] input")`, "the delete dialog");
           await run(`__mc.type(document.querySelector("[role=dialog] input"), ${JSON.stringify(id)})`);
           await run(`__mc.click(${dialogButton("Delete schedule")})`);
+          await confirmDestroy({ run, until }, "the schedule deletion");
           await until(`__mc.has(${JSON.stringify(`${id} was deleted`)})`, "the schedule deleted");
         }),
       ],

@@ -1176,6 +1176,101 @@
       ],
       "type": "object"
     },
+    "ConfirmInput": {
+      "description": "Input of `app.confirmations.confirm`.",
+      "properties": {
+        "approvalId": {
+          "type": "string"
+        },
+        "typed": {
+          "description": "What the person typed; must equal the phrase exactly (case-sensitive, not trimmed).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approvalId",
+        "typed"
+      ],
+      "type": "object"
+    },
+    "Confirmation": {
+      "description": "Output of `app.confirmations.get`: what a destroy needs confirmed (DOC-25 §3.3.6).",
+      "properties": {
+        "action": {
+          "description": "The procedure, e.g. `nats.kv.delete`.",
+          "type": "string"
+        },
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAt": {
+          "description": "When the challenge expires (Unix ms).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "namespace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phrase": {
+          "description": "What the person types to confirm: the name, its first 12 characters when it is longer\nthan 32, or a count (`3 containers`).",
+          "type": "string"
+        },
+        "profileName": {
+          "description": "The profile's name; absent for a profile the browser keeps (until TSK-139).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reauth": {
+          "description": "Whether the confirmation needs a fresh sign-in (`auth.reauth_for_destroy`; not built yet,\nalways false).",
+          "type": "boolean"
+        },
+        "resourceKind": {
+          "description": "`key`, `stream`, `container`, `workflow`, ...",
+          "type": "string"
+        },
+        "resourceName": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "tool",
+        "profileName",
+        "context",
+        "namespace",
+        "resourceKind",
+        "resourceName",
+        "phrase",
+        "expiresAt",
+        "reauth"
+      ],
+      "type": "object"
+    },
+    "ConfirmationIdInput": {
+      "description": "Input of `app.confirmations.get`.",
+      "properties": {
+        "approvalId": {
+          "description": "From `ApprovalRequired`'s details.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approvalId"
+      ],
+      "type": "object"
+    },
     "ConnectDockerProfile": {
       "description": "The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).",
       "properties": {
@@ -13913,6 +14008,48 @@
     {
       "agent": "hidden",
       "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ConfirmInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.confirmations.confirm",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "app.self",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ConfirmationIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "app.confirmations.get",
+      "output": {
+        "$ref": "#/$defs/Confirmation"
+      },
+      "perm": "app.self",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
       "error": false,
       "input": {
         "$ref": "#/$defs/Empty"
@@ -17702,5 +17839,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:c70b8bbc0a101299e7a6f187563da12633cad893f73d4724d6f9aca52ba817c0"
+  "schema_hash": "sha256:96ae02d6a30ac3501b4a250ac36d250ca25a51f43d4ada8389e8b75545e90291"
 }

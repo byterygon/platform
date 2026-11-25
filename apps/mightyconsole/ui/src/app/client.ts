@@ -7,6 +7,7 @@ import type { ArrowDecoderPort } from "@byterygon/ambidex/arrow";
 import { createContext, useContext } from "react";
 import * as api from "@/gen/api";
 import type { AppStorage } from "@/profiles/storage";
+import { ConfirmationGate, withConfirmations } from "./confirmations";
 import { ProgressBus } from "./progress";
 import { type RouterConfig, webSocketUrl } from "./router";
 
@@ -30,6 +31,8 @@ export interface Services {
   readonly progress: ProgressBus;
   /** Closes the connection (on unload). */
   readonly close?: () => void;
+  /** Where Destructive calls ask the person to confirm (DOC-25 §3.3.6); absent in tests. */
+  readonly confirmations?: ConfirmationGate;
 }
 
 export const ServicesContext = createContext<Services | null>(null);
@@ -42,14 +45,17 @@ export function useServices(): Services {
 
 /** The real services: one client over the WebSocket to this page's origin, under its base path. */
 export function createServices(storage: AppStorage, routerConfig: RouterConfig): Services {
-  const client = createClient(api, autoTransport({ force: "websocket", webSocket: { url: webSocketUrl(routerConfig), auth: () => ({ csrf: readCsrf() ?? "" }) } }));
+  const raw = createClient(api, autoTransport({ force: "websocket", webSocket: { url: webSocketUrl(routerConfig), auth: () => ({ csrf: readCsrf() ?? "" }) } }));
+  const confirmations = new ConfirmationGate();
+  const client = withConfirmations(raw, confirmations);
   const decoder = new Worker(new URL("./arrow-worker.ts", import.meta.url), { type: "module" });
   return {
     client,
     storage,
     decoder,
     progress: new ProgressBus(),
-    close: () => client.$close(),
+    close: () => raw.$close(),
+    confirmations,
   };
 }
 
