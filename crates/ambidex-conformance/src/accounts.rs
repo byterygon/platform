@@ -131,7 +131,7 @@ impl AccountServer {
             hasher,
             clock,
         );
-        let router = accounts.routes();
+        let router = accounts.routes().merge(accounts.logout_routes());
         let ws = Ws::start_with(fixture, sessions, move |_| router).await;
         AccountServer {
             ws,
@@ -235,9 +235,25 @@ impl Visitor<'_> {
 
     /// A `POST` with a body and the given headers (nothing added).
     pub async fn raw_post(&mut self, path: &str, headers: &[(&str, &str)], body: &str) -> Answer {
+        self.raw("POST", path, headers, body).await
+    }
+
+    /// A `GET` with the jar's cookies.
+    pub async fn get(&mut self, path: &str) -> Answer {
+        self.raw("GET", path, &[], "").await
+    }
+
+    /// Any request, with the jar's cookies and the given headers.
+    pub async fn raw(
+        &mut self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Answer {
         let stream = self.server.ws.tls().await;
         let mut builder = hyper::Request::builder()
-            .method("POST")
+            .method(method)
             .uri(path)
             .header(header::HOST, HOST);
         if !self.cookies.is_empty() {

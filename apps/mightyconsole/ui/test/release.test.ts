@@ -105,9 +105,9 @@ describe("release", () => {
     expect(text).not.toContain("- Docker over SSH (TSK-81)");
   });
 
-  test("the shipped README covers start, open, the certificate, profiles and exposure", () => {
+  test("the shipped README covers start, open, the certificate, sign-in, profiles and exposure", () => {
     const readme = readFileSync(join(RELEASE_DIR, "README.md"), "utf8");
-    for (const needle of ["no login", "127.0.0.1", "https://localhost:7443/", "fingerprint", "mkcert", "IndexedDB", "Export all profiles", "SHA256SUMS", "-p 127.0.0.1:7443:7443", "AGPL-3.0-only"]) {
+    for (const needle of ["Everyone signs in", "admin-password", "docker cp mightyconsole:/data/admin-password -", "reset-admin --print", "127.0.0.1", "https://localhost:7443/", "fingerprint", "mkcert", "IndexedDB", "Export all profiles", "SHA256SUMS", "-p 127.0.0.1:7443:7443", "AGPL-3.0-only"]) {
       expect(readme, needle).toContain(needle);
     }
     const dockerfile = readFileSync(join(RELEASE_DIR, "Dockerfile"), "utf8");

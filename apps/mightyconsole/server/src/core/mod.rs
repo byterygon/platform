@@ -7,7 +7,7 @@
 //! - [`error`]: [`ToolError`], the typed details of every tool error.
 //! - [`types`]: the wire types every tool shares.
 //!
-//! **One Ambidex session per WebSocket.** [`crate::sessions::LocalSessions`] gives every
+//! **One Ambidex session per WebSocket.** The login sessions (`ambidex_axum::LoginSessions`) give every
 //! upgrade its own session id, so a handle belongs to one browser tab's connection: another tab,
 //! or the same tab after a reconnect, gets `NotFound` for it and connects again (spec §2.2,
 //! "Recovery after a lost WebSocket").

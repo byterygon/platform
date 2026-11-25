@@ -208,7 +208,7 @@ async fn a_lab_user_signs_in_through_dex_and_out_again() {
         "{}",
         done.body
     );
-    let sessions = t.server.login_sessions().unwrap();
+    let sessions = t.server.login_sessions();
     let info = sessions.list().pop().unwrap();
     assert!(info.user.starts_with("human:oidc:"), "{}", info.user);
     assert_eq!(info.groups, ["mc-admins", "ops"]);
@@ -251,7 +251,7 @@ async fn each_lab_user_gets_their_own_groups_and_session() {
     let (bob, _) = sign_in(&t, "bob", "%2F").await;
     let (carol, _) = sign_in(&t, "carol", "%2F").await;
     assert_ne!(bob, carol);
-    let mut all = t.server.login_sessions().unwrap().list();
+    let mut all = t.server.login_sessions().list();
     all.sort_by(|a, b| a.groups.len().cmp(&b.groups.len()));
     assert_eq!(all.len(), 2);
     assert!(all[0].groups.is_empty());

@@ -24,10 +24,12 @@
 //! [`EMBEDDED`] and serves it when no `--ui` directory is given; the same segment checks apply,
 //! and a path is looked up by name in the sorted list, so nothing outside it can be named.
 //!
-//! **Signed in or out** (DOC-25 §3.2.5). With OIDC sign-in, the page loads either way: a live
-//! session cookie gets that session's anti-CSRF token and counts as activity; without one the
-//! page carries `<meta name="mightyconsole-auth" content="signed-out">` and the IdP's display
-//! name in `<meta name="mightyconsole-idp">`, and no token. `GET <base>/healthz` answers `ok`.
+//! **Signed in or out** (DOC-25 §3.2.5). The page loads either way: a live session cookie gets
+//! that session's anti-CSRF token and counts as activity; without one the page carries
+//! `<meta name="mightyconsole-auth" content="signed-out">`, the pre-session token of the
+//! built-in accounts in `<meta name="mightyconsole-pre">` (and its `__Host-` cookie), whether
+//! sign-up is open in `<meta name="mightyconsole-signup">`, the IdP's display name in
+//! `<meta name="mightyconsole-idp">` when OIDC is configured, and no session token. `GET <base>/healthz` answers `ok`.
 //!
 //! **Headers.** The Content-Security-Policy of spec §2.3 (with `base-uri` and `form-action`
 //! closed as well), `nosniff`, no referrer, HSTS, same-origin opener.
@@ -109,6 +111,11 @@ impl StaticUi {
 pub const AUTH_META: &str = "mightyconsole-auth";
 /// The IdP's display name for the sign-in link.
 pub const IDP_META: &str = "mightyconsole-idp";
+/// The signed-out page's pre-session token (DOC-25 §3.2.6), echoed in `X-Mightyconsole-Csrf`
+/// by every `POST /auth/*`.
+pub const PRE_META: &str = "mightyconsole-pre";
+/// Whether the sign-in page offers sign-up: `open` or `off`.
+pub const SIGNUP_META: &str = "mightyconsole-signup";
 
 /// The `<meta>` names the UI reads its history and base path from (DOC-21 §3.7).
 pub const ROUTER_META: &str = "mightyconsole-router";
@@ -273,31 +280,33 @@ async fn page(
     let html = absolute_assets(&html, &page.base_path);
     let html = inject_meta(&html, ROUTER_META, page.router.as_str());
     let html = inject_meta(&html, BASE_META, &page.base_path);
-    let (html, set_cookie) = match &shared.sessions {
-        ServerSessions::Local(local) => {
-            let credentials = local.for_page(cookie);
-            let html = inject_csrf(&html, &credentials.csrf_token);
-            // `__Host-` needs `Path=/`: the cookie does not follow the base path, its name does.
-            let set_cookie = credentials.new.then(|| {
-                HeaderValue::from_str(&format!(
-                    "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
-                    page.cookie_name, credentials.cookie
-                ))
-                .expect("hex cookie value")
-            });
+    let sessions = &shared.sessions;
+    let (html, set_cookie) = match cookie.and_then(|c| sessions.sessions.page(c)) {
+        Some(session) => {
+            let html = inject_meta(&html, AUTH_META, "signed-in");
+            (inject_csrf(&html, &session.csrf_token), None)
+        }
+        None => {
+            // Signed out (DOC-25 §3.2.5, §3.2.6): the pre-session token every POST /auth/*
+            // carries, whether sign-up is open, and the IdP when there is one.
+            let mut html = inject_meta(&html, AUTH_META, "signed-out");
+            let mut set_cookie = None;
+            if let Some(accounts) = &sessions.accounts {
+                let pre = accounts.pre_session(headers);
+                html = inject_meta(&html, PRE_META, &pre.token);
+                let signup = match accounts.signup() {
+                    ambidex_axum::accounts::Signup::Open => "open",
+                    ambidex_axum::accounts::Signup::Off => "off",
+                };
+                html = inject_meta(&html, SIGNUP_META, signup);
+                set_cookie = pre.set_cookie;
+            }
+            if let Some(login) = &sessions.oidc {
+                let idp = ambidex_axum::web::html_escape(login.display_name());
+                html = inject_meta(&html, IDP_META, &idp);
+            }
             (html, set_cookie)
         }
-        ServerSessions::SignIn(signed) => match cookie.and_then(|c| signed.sessions.page(c)) {
-            Some(session) => {
-                let html = inject_meta(&html, AUTH_META, "signed-in");
-                (inject_csrf(&html, &session.csrf_token), None)
-            }
-            None => {
-                let html = inject_meta(&html, AUTH_META, "signed-out");
-                let idp = ambidex_axum::web::html_escape(signed.login.display_name());
-                (inject_meta(&html, IDP_META, &idp), None)
-            }
-        },
     };
     respond(
         shared,

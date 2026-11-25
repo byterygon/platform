@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findBrowser } from "../../../../packages/ui/scripts/browser-check.ts";
-import { type Cdp, type Page, freePort, launchBrowser, openPage, run, sleep, waitForLine, waitUntil } from "./cdp.ts";
+import { type Cdp, type Page, freePort, launchBrowser, openPage, run, signIn, sleep, waitForLine, waitUntil } from "./cdp.ts";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 const REPO = join(APP, "..", "..", "..");
@@ -99,6 +99,7 @@ async function main(): Promise<number> {
       if (bytes > 4 * 1048576) frames.over4MiB += 1;
     });
     const page = await openPage(cdp);
+    await signIn(page, origin);
     await page.navigate(`${origin}/`);
     if (cpu > 1) await page.send("Emulation.setCPUThrottlingRate", { rate: cpu });
     await page.send("Performance.enable");

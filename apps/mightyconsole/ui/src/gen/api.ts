@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:8ba05636beb06f7ea4f85d0a04c58325456ead7539ca83182c1f9ffa9a1c523f";
+export const SCHEMA_HASH = "sha256:9d23d845cd072628d243bae01f8bcd67d3c79faf5931f7e4d3eac4530549827f";
 
 // ---- Types
 
@@ -243,6 +243,11 @@ export type CalendarForm = { second?: string | null, minute?: string | null, hou
  * 0 is Sunday.
  */
 dayOfWeek?: string | null, comment?: string | null, };
+
+/**
+ * Input of `app.account.changePassword`.
+ */
+export type ChangePasswordInput = { current: string, new: string, };
 
 /**
  * Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
@@ -1473,6 +1478,47 @@ text?: string, error?: string, };
 export type MatchOp = "equals" | "contains" | "prefix" | "regex";
 
 /**
+ * Output of `app.me`: who is signed in on this connection, and what the session still needs.
+ */
+export type Me = { 
+/**
+ * `human:account:<id>` or `human:oidc:<sub>`.
+ */
+user: string, 
+/**
+ * The login session (`ls_…`), as the session lists show it.
+ */
+session: string, 
+/**
+ * `password`, `totp` or `oidc`.
+ */
+method: string, 
+/**
+ * A built-in account (it has a password, and may have TOTP).
+ */
+account: boolean, 
+/**
+ * The user name of a built-in account.
+ */
+username: string | null, displayName: string | null, 
+/**
+ * The account has TOTP.
+ */
+totp: boolean, 
+/**
+ * Only `app.account.changePassword` and `app.me` work until the password is changed.
+ */
+mustChangePassword: boolean, 
+/**
+ * Only the TOTP enrolment and `app.me` work until it is done (`auth.require_totp`).
+ */
+mustEnrolTotp: boolean, 
+/**
+ * When the session ends without activity, and at the latest (Unix ms).
+ */
+idleExpiresMs: number, absoluteExpiresMs: number, };
+
+/**
  * One §5.1 row as JSON.
  */
 export type MessageRecord = { 
@@ -2536,6 +2582,11 @@ export type RecordHeader = { name: string, value: string, encoding: RecordHeader
  * How a header value travels: as text when it is valid UTF-8, else as base64.
  */
 export type RecordHeaderEncoding = "text" | "base64";
+
+/**
+ * Output of `app.account.totp.confirm`: the recovery codes, shown once.
+ */
+export type RecoveryCodes = { codes: Array<string>, };
 
 /**
  * How the server authenticates to the registry.
@@ -3609,6 +3660,37 @@ id: string,
 version: string, };
 
 /**
+ * Input of `app.account.totp.confirm`.
+ */
+export type TotpConfirmInput = { 
+/**
+ * The six-digit code the authenticator shows.
+ */
+code: string, };
+
+/**
+ * Output of `app.account.totp.begin`: shown once.
+ */
+export type TotpEnrolmentOutput = { 
+/**
+ * The `otpauth://totp/…` URI an authenticator app reads.
+ */
+uri: string, 
+/**
+ * Its QR code as an SVG image (no script), made on the server.
+ */
+qrSvg: string, };
+
+/**
+ * Input of `app.account.totp.remove`.
+ */
+export type TotpRemoveInput = { 
+/**
+ * The current password.
+ */
+current: string, };
+
+/**
  * Why a listing stopped early.
  */
 export type Truncated = "entries" | "bytes";
@@ -3988,8 +4070,13 @@ export interface ProcedureDef<
 
 /** Every procedure by full name. */
 export interface Procedures {
+  readonly "app.account.changePassword": ProcedureDef<"mutation", ChangePasswordInput, Empty, ToolError>;
+  readonly "app.account.totp.begin": ProcedureDef<"mutation", Empty, TotpEnrolmentOutput, ToolError>;
+  readonly "app.account.totp.confirm": ProcedureDef<"mutation", TotpConfirmInput, RecoveryCodes, ToolError>;
+  readonly "app.account.totp.remove": ProcedureDef<"mutation", TotpRemoveInput, Empty, ToolError>;
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
+  readonly "app.me": ProcedureDef<"query", Empty, Me, ToolError>;
   readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
   readonly "docker.containers.exec": ProcedureDef<"stream", ContainersExecInput, ContainersExecSummary, ToolError>;
@@ -4166,8 +4253,17 @@ export interface Procedures {
 /** The procedures nested by name segment, as the client exposes them. */
 export interface Api {
   readonly app: {
+    readonly account: {
+      readonly changePassword: Procedures["app.account.changePassword"];
+      readonly totp: {
+        readonly begin: Procedures["app.account.totp.begin"];
+        readonly confirm: Procedures["app.account.totp.confirm"];
+        readonly remove: Procedures["app.account.totp.remove"];
+      };
+    };
     readonly events: Procedures["app.events"];
     readonly info: Procedures["app.info"];
+    readonly me: Procedures["app.me"];
   };
   readonly docker: {
     readonly compose: {
@@ -4429,6 +4525,50 @@ export interface Api {
 /** The procedure table to pass to the runtime's `createClient`. */
 export const procedures: Api = {
   app: {
+    account: {
+      changePassword: {
+        name: "app.account.changePassword",
+        kind: "mutation",
+        perm: "app.account",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      totp: {
+        begin: {
+          name: "app.account.totp.begin",
+          kind: "mutation",
+          perm: "app.account",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        confirm: {
+          name: "app.account.totp.confirm",
+          kind: "mutation",
+          perm: "app.account",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        remove: {
+          name: "app.account.totp.remove",
+          kind: "mutation",
+          perm: "app.account",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+    },
     events: {
       name: "app.events",
       kind: "subscription",
@@ -4441,6 +4581,16 @@ export const procedures: Api = {
     },
     info: {
       name: "app.info",
+      kind: "query",
+      perm: "app.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    me: {
+      name: "app.me",
       kind: "query",
       perm: "app.read",
       risk: "Read",

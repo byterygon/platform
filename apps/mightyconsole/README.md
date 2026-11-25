@@ -4,12 +4,14 @@ Byterygon's developer console: one offline web app for NATS, Kafka with Schema R
 Kubernetes, Temporal, Docker over SSH and LangGraph. The spec is the Notion page "Mightyconsole
 web v0.1 spec" (DOC-21); the plan is DOC-20. Licence: AGPL-3.0-only (`LICENSE`).
 
-v0.1 is for one person on their own machine: **there is no login**. Never expose the server on a
-shared network; anyone who reaches its port can use every connection opened through it.
+Everyone signs in (DOC-25, TSK-136 and TSK-142): built-in accounts (sign-up open by default, an
+optional TOTP second factor) and OIDC; a first start makes the default administrator `admin` with
+its password in `DATA/admin-password`, and `mightyconsole-server reset-admin` resets it. Roles
+are not built yet (TSK-138): every signed-in person may do everything.
 
 | Path | What |
 | --- | --- |
-| `server/` | `mightyconsole-server`: axum + `ambidex-axum` at `/rpc/ws` over TLS, the local browser session, the tool contract, the tools (`src/tools/<tool>/`), the static UI |
+| `server/` | `mightyconsole-server`: axum + `ambidex-axum` at `/rpc/ws` over TLS, sign-in and sessions, the store (`store.redb`), the tool contract, the tools (`src/tools/<tool>/`), the static UI |
 | `rpc-gen/` | `mightyconsole-rpc-gen`: writes `ui/src/gen/api.ts` and `api.manifest.json` (drift-checked by `cargo test -p mightyconsole-server`) |
 | `ui/` | `@byterygon/mightyconsole`: the React UI (TSK-79 batch 2) |
 | `lab/` | the docker compose test lab (TSK-79 batch 3) |

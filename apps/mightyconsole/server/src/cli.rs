@@ -25,10 +25,9 @@ USAGE
 OPTIONS
   --config FILE            the configuration file (TOML; default $MIGHTYCONSOLE_CONFIG, then
                            DATA/config.toml when it exists). Flags win over it.
-  --listen ADDR:PORT       TLS listener (default 127.0.0.1:7443). Without [auth.oidc] in the
-                           configuration there is no login yet: any address other than
-                           loopback lets every machine that reaches the port use every
-                           connection you open.
+  --listen ADDR:PORT       TLS listener (default 127.0.0.1:7443). Everyone signs in; beyond
+                           loopback, give --tls-cert and --tls-key (a self-signed certificate
+                           starts with a warning).
   --host HOST[:PORT]       another accepted Host header value; repeatable. localhost:PORT
                            and 127.0.0.1:PORT are always accepted.
   --public-origin ORIGIN   lowercase https://host[:port] the browser shows; the page is
@@ -52,9 +51,11 @@ OPTIONS
                            the prefix unchanged.
 
 SIGN-IN
-  Configured in the file's [auth] and [auth.oidc] sections (OIDC with PKCE; the IdP's CA
-  from ca_file only; the client secret from client_secret_file or
-  $MIGHTYCONSOLE_OIDC_CLIENT_SECRET). `config check` validates the configuration without
+  Everyone signs in. Built-in accounts (user name, password, optional TOTP) are on unless
+  [auth] accounts = false; [auth] signup = open (default) lets people make their own
+  account, off leaves it to an administrator; require_totp = none, admins or all.
+  OIDC is configured in [auth.oidc] (PKCE; the IdP's CA from ca_file only; the client secret
+  from client_secret_file or $MIGHTYCONSOLE_OIDC_CLIENT_SECRET). `config check` validates the configuration without
   starting; with --online it also fetches the IdP's discovery document and keys.
 
 AUDIT

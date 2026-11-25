@@ -99,7 +99,11 @@ async fn a_session_leaves_the_calls_the_spec_lists_and_never_a_value() {
         security_types::PrincipalKind::Human
     );
     assert!(!connect_done.principal_chain[0].session.as_str().is_empty());
-    assert_eq!(connect_done.tenant.as_str(), "local");
+    assert_eq!(
+        connect_done.tenant.as_str(),
+        "default",
+        "the server's auth.tenant"
+    );
     let detail = serde_json::to_value(&connect_done.detail).unwrap();
     assert_eq!(detail, json!({ "tool": "echo" }));
     let produce = records

@@ -68,6 +68,8 @@ pub struct TestServer {
     /// The base path (`--base-path`) and the session cookie's name under it.
     pub prefix: String,
     pub cookie_name: String,
+    /// `auth.tenant`.
+    pub tenant: String,
 }
 
 pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
@@ -138,6 +140,7 @@ async fn start_inner(
     change(&mut config);
     let prefix = config.base_path.clone();
     let cookie_name = config.session_cookie();
+    let tenant = config.auth.tenant.clone();
     let server = Server::start_with(config, options)
         .await
         .expect("server starts");
@@ -151,6 +154,7 @@ async fn start_inner(
         _dir: dir,
         prefix,
         cookie_name,
+        tenant,
     }
 }
 
@@ -249,29 +253,115 @@ impl TestServer {
         host: &str,
         headers: &[(&str, &str)],
     ) -> HttpResponse {
+        self.request_with_body(method, path, host, headers, "")
+            .await
+    }
+
+    /// A request with a body (sent with its `Content-Length`).
+    pub async fn request_with_body(
+        &self,
+        method: &str,
+        path: &str,
+        host: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> HttpResponse {
         let mut tls = self.tls().await;
         let extra: String = headers
             .iter()
             .map(|(name, value)| format!("{name}: {value}\r\n"))
             .collect();
         let length = if method == "POST" {
-            "Content-Length: 0\r\n"
+            format!("Content-Length: {}\r\n", body.len())
         } else {
-            ""
+            String::new()
         };
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{extra}{length}Connection: close\r\n\r\n"
+            "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{extra}{length}Connection: close\r\n\r\n{body}"
         );
         tls.write_all(request.as_bytes()).await.unwrap();
         read_response(&mut tls).await
     }
 
-    /// Loads the page as a new browser.
+    /// The signed-out page's pre-session token (its meta; the cookie holds the same value).
+    pub async fn pre_token(&self) -> String {
+        let page = self.http(&format!("{}/", self.prefix), HOST, None).await;
+        let marker = r#"<meta name="mightyconsole-pre" content=""#;
+        let start = page.body.find(marker).expect("a pre-session token") + marker.len();
+        page.body[start..start + 64].to_owned()
+    }
+
+    /// A `POST /auth/*` of the built-in accounts as the sign-in page sends it (Origin, JSON, the
+    /// pre-session token); the answer and the session cookie it set.
+    pub async fn post_auth(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> (HttpResponse, Option<String>) {
+        let pre = self.pre_token().await;
+        let cookie = format!("__Host-mc_pre{}={pre}", self.prefix.replace('/', "_"));
+        let answer = self
+            .request_with_body(
+                "POST",
+                &format!("{}{path}", self.prefix),
+                HOST,
+                &[
+                    ("Origin", ORIGIN),
+                    ("Content-Type", "application/json"),
+                    ("X-Mightyconsole-Csrf", &pre),
+                    ("Cookie", &cookie),
+                ],
+                &body.to_string(),
+            )
+            .await;
+        let session = answer.cookie();
+        (answer, session)
+    }
+
+    /// The default administrator's generated password (`DATA/admin-password`).
+    pub fn admin_password(&self) -> String {
+        std::fs::read_to_string(self._dir.path().join("admin-password"))
+            .expect("the default administrator's password")
+            .trim()
+            .to_owned()
+    }
+
+    /// A new browser, signed in as a new built-in account (`human:account:test-<n>`): the session
+    /// is made in the store, as a sign-in would make it (the sign-in itself is tested on its own,
+    /// and sign-up is limited per address), then the page is loaded for its token.
     pub async fn browser(&self) -> Browser {
-        let page = self.http("/", HOST, None).await;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let user = format!("human:account:test-{n}");
+        let issued = self
+            .server
+            .login_sessions()
+            .create(ambidex_axum::NewSession {
+                user: user.clone(),
+                principal: security_types::Principal {
+                    kind: security_types::PrincipalKind::Human,
+                    id: user,
+                    tenant: security_types::TenantId::new(&self.tenant),
+                    on_behalf_of: None,
+                    roles: vec![],
+                    session: security_types::SessionId::new("set per connection"),
+                },
+                groups: vec![],
+                method: ambidex_axum::LoginMethod::Password,
+                auth_time_ms: 0,
+                id_token: None,
+                client: None,
+                must_change_password: false,
+                must_enrol_totp: false,
+            })
+            .expect("below the session cap");
+        let cookie = issued.cookie.to_string();
+        let page = self
+            .http(&format!("{}/", self.prefix), HOST, Some(&cookie))
+            .await;
         assert_eq!(page.status, 200);
         Browser {
-            cookie: page.cookie().expect("a new browser gets a cookie"),
+            cookie,
             csrf: page.csrf(),
         }
     }

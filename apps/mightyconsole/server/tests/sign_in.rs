@@ -149,9 +149,14 @@ async fn the_signed_out_page_has_no_token_and_names_the_idp() {
         !page.body.contains("mightyconsole-csrf"),
         "no token signed out"
     );
+    let set_cookie = page.header("set-cookie").unwrap_or("");
     assert!(
-        page.header("set-cookie").is_none(),
-        "no session without sign-in"
+        set_cookie.starts_with("__Host-mc_pre=") && !set_cookie.contains("ambidex_session"),
+        "only the pre-session cookie, no session without sign-in: {set_cookie}"
+    );
+    assert!(
+        page.body
+            .contains("<meta name=\"mightyconsole-pre\" content=\"")
     );
     let health = t.http("/healthz", HOST, None).await;
     assert_eq!((health.status, health.body.as_str()), (200, "ok"));
@@ -186,8 +191,8 @@ async fn a_person_signs_in_uses_the_console_and_signs_out() {
     let page = t.http("/", HOST, Some(&session)).await;
     assert!(page.body.contains("content=\"signed-in\""));
     let csrf = page.csrf();
-    assert_eq!(t.server.login_sessions().unwrap().len(), 1);
-    let info = &t.server.login_sessions().unwrap().list()[0];
+    assert_eq!(t.server.login_sessions().len(), 1);
+    let info = &t.server.login_sessions().list()[0];
     assert_eq!(info.user, "human:oidc:alice");
     assert_eq!(info.groups, ["ops"]);
 
@@ -232,7 +237,7 @@ async fn a_person_signs_in_uses_the_console_and_signs_out() {
     );
     let goaway = tab.client.expect_goaway().await;
     assert_eq!(goaway.code, Code::Unauthenticated);
-    assert!(t.server.login_sessions().unwrap().is_empty());
+    assert!(t.server.login_sessions().is_empty());
     let page = t.http("/", HOST, Some(&session)).await;
     assert!(page.body.contains("content=\"signed-out\""));
 }
@@ -248,7 +253,7 @@ async fn a_failed_sign_in_returns_to_the_page_with_its_code() {
     let answer = t.request("GET", &callback, HOST, &[]).await;
     assert_eq!(answer.status, 303);
     assert_eq!(answer.header("location"), Some("/?login_error=invalid"));
-    assert!(t.server.login_sessions().unwrap().is_empty());
+    assert!(t.server.login_sessions().is_empty());
 }
 
 #[tokio::test]
@@ -277,6 +282,31 @@ async fn under_a_base_path_the_routes_and_cookies_follow_it() {
     assert_eq!(done.status, 200, "{}", done.body);
     assert!(done.body.contains("content=\"0;url=/tools/mc\""));
     assert!(set_cookie_value(&done, &t.cookie_name).is_some());
+}
+
+/// The IdP down gives `login_error=unreachable`, and the default administrator still signs in
+/// with its password (DOC-25 §3.2.1, §3.2.7, §6).
+#[tokio::test]
+async fn the_default_administrator_signs_in_while_the_idp_is_down() {
+    let (t, idp, _dir) = signed_in_server().await;
+    idp.shutdown();
+    let login = t.http("/auth/login?next=/", HOST, None).await;
+    assert_eq!(login.status, 303, "{}", login.body);
+    assert!(
+        login
+            .header("location")
+            .is_some_and(|l| l.contains("login_error=unreachable")),
+        "{:?}",
+        login.header("location")
+    );
+    let (answer, cookie) = t
+        .post_auth(
+            "/auth/password",
+            &serde_json::json!({ "username": "admin", "password": t.admin_password() }),
+        )
+        .await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert!(cookie.is_some(), "signed in with the password");
 }
 
 #[tokio::test]

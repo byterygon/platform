@@ -1208,7 +1208,10 @@ async fn logout<H: SignInHooks>(
         client,
     });
     let mut location = format!("{}{}", inner.routes.public_origin, home);
+    // A session signed in with a built-in account has no ID token: it is not signed out at the
+    // IdP.
     if inner.config.idp_logout
+        && ended.id_token.is_some()
         && let Some(loaded) = inner.provider.current()
         && let Some(end) = loaded.discovery.end_session_endpoint.as_ref()
     {

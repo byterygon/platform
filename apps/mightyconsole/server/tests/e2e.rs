@@ -17,33 +17,56 @@ use serde_json::{Value, json};
 use support::*;
 
 #[tokio::test]
-async fn the_page_gives_a_session_with_its_headers() {
+async fn the_page_signed_out_and_signed_in_with_its_headers() {
     let t = start().await;
+    // Signed out (DOC-25 §3.2.5, §3.2.6): no session token; the pre-session token in a meta and
+    // its Strict `__Host-` cookie; sign-up open.
     let page = t.http("/", HOST, None).await;
     assert_eq!(page.status, 200);
-    let set_cookie = page.header("set-cookie").unwrap();
     assert!(
-        set_cookie.starts_with(&format!("{COOKIE}=")),
-        "{set_cookie}"
+        page.body
+            .contains(r#"<meta name="mightyconsole-auth" content="signed-out">"#)
     );
+    assert!(
+        page.body
+            .contains(r#"<meta name="mightyconsole-signup" content="open">"#)
+    );
+    assert!(!page.body.contains("mightyconsole-csrf"));
+    assert!(
+        !page.body.contains("mightyconsole-idp"),
+        "no IdP configured"
+    );
+    let set_cookie = page.header("set-cookie").unwrap();
+    assert!(set_cookie.starts_with("__Host-mc_pre="), "{set_cookie}");
     for attribute in ["Path=/", "Secure", "HttpOnly", "SameSite=Strict"] {
         assert!(set_cookie.contains(attribute), "{set_cookie}");
     }
+    let marker = r#"<meta name="mightyconsole-pre" content=""#;
+    let start = page.body.find(marker).unwrap() + marker.len();
+    assert_eq!(
+        set_cookie[14..78],
+        page.body[start..start + 64],
+        "the meta is the cookie"
+    );
     assert_eq!(page.header("cache-control"), Some("no-store"));
     let csp = page.header("content-security-policy").unwrap();
     assert!(csp.contains("connect-src 'self' wss://mc.test;"), "{csp}");
     assert!(csp.contains("worker-src 'self' blob:"), "{csp}");
     assert_eq!(page.header("x-content-type-options"), Some("nosniff"));
-    let csrf = page.csrf();
-    assert!(csrf.bytes().all(|b| b.is_ascii_hexdigit()));
 
-    // The same browser keeps its session on the next load: no new cookie, the same token.
-    let cookie = page.cookie().unwrap();
-    let again = t.http("/workflows/abc", HOST, Some(&cookie)).await;
+    // Signed in: the session's token, no new cookie, a load counts as activity.
+    let browser = t.browser().await;
+    let again = t.http("/workflows/abc", HOST, Some(&browser.cookie)).await;
     assert_eq!(again.status, 200);
     assert!(again.header("set-cookie").is_none());
-    assert_eq!(again.csrf(), csrf);
-    assert_eq!(t.server.local_sessions().unwrap().len(), 1);
+    assert_eq!(again.csrf(), browser.csrf);
+    assert!(
+        again
+            .body
+            .contains(r#"<meta name="mightyconsole-auth" content="signed-in">"#)
+    );
+    assert!(browser.csrf.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(t.server.login_sessions().len(), 1);
 
     // Another accepted Host is sent to the public origin; an unknown Host is refused.
     let alias = t.http("/x?y=1", ALIAS, None).await;
@@ -53,7 +76,7 @@ async fn the_page_gives_a_session_with_its_headers() {
     assert_eq!(t.http("/", "evil.test", None).await.status, 421);
     // A file that is not there is 404, not the page.
     assert_eq!(t.http("/missing.js", HOST, None).await.status, 404);
-    assert_eq!(t.server.local_sessions().unwrap().len(), 1);
+    assert_eq!(t.server.login_sessions().len(), 1);
 }
 
 #[tokio::test]
@@ -411,7 +434,8 @@ async fn the_ui_directory_is_served_with_the_session_in_its_page() {
     .unwrap();
     std::fs::write(ui.path().join("assets/app-1.js"), "console.log(1)").unwrap();
     let t = start_with(Some(ui.path().to_path_buf()), StartOptions::default()).await;
-    let page = t.http("/", HOST, None).await;
+    let browser = t.browser().await;
+    let page = t.http("/", HOST, Some(&browser.cookie)).await;
     assert_eq!(page.status, 200);
     assert!(page.body.contains("<title>Mightyconsole</title>"));
     assert!(page.body.contains("<meta name=\"mightyconsole-csrf\""));
@@ -489,20 +513,14 @@ async fn hash_mode_under_a_base_path_serves_only_under_it() {
     );
     assert!(page.body.contains("src=\"/tools/mc/assets/app-1.js\""));
     assert_eq!(t.http("/tools/mc", HOST, None).await.status, 200);
-    // The cookie keeps `__Host-` and `Path=/`; its name carries the base path.
+    // The cookies keep `__Host-` and `Path=/`; their names carry the base path.
     let set_cookie = page.header("set-cookie").unwrap().to_owned();
     assert!(
-        set_cookie.starts_with("__Host-ambidex_session_tools_mc="),
+        set_cookie.starts_with("__Host-mc_pre_tools_mc="),
         "{set_cookie}"
     );
     assert!(set_cookie.contains("; Path=/;"), "{set_cookie}");
-    let cookie = set_cookie
-        .split(';')
-        .next()
-        .and_then(|pair| pair.split_once('='))
-        .unwrap()
-        .1
-        .to_owned();
+    assert_eq!(t.cookie_name, "__Host-ambidex_session_tools_mc");
 
     // The assets under the base path; nothing outside it; the routes live in the hash.
     let asset = t.http("/tools/mc/assets/app-1.js", HOST, None).await;
@@ -517,10 +535,7 @@ async fn hash_mode_under_a_base_path_serves_only_under_it() {
     assert_eq!(t.http("/tools/mcx/", HOST, None).await.status, 404);
 
     // The WebSocket is at <base>/rpc/ws with the same checks: the exact Origin and the cookie.
-    let browser = Browser {
-        cookie,
-        csrf: page.csrf(),
-    };
+    let browser = t.browser().await;
     let mut tab = t.tab(&browser).await;
     tab.call(1, "app.info", json!({})).await;
     assert_eq!(tab.result(1).await["publicOrigin"], ORIGIN);

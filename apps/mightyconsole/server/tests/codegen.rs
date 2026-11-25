@@ -37,6 +37,35 @@ fn the_procedures_of_the_spec() {
     );
     use ProcedureKind::{Mutation, Query, Stream, Subscription};
     let expected = [
+        // A built-in account's own password and second factor (DOC-25 §3.2.6, TSK-142).
+        (
+            "app.account.changePassword",
+            Mutation,
+            "app.account",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "app.account.totp.begin",
+            Mutation,
+            "app.account",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "app.account.totp.confirm",
+            Mutation,
+            "app.account",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "app.account.totp.remove",
+            Mutation,
+            "app.account",
+            Risk::Write,
+            defaults,
+        ),
         (
             "app.events",
             Subscription,
@@ -45,6 +74,7 @@ fn the_procedures_of_the_spec() {
             (None, None),
         ),
         ("app.info", Query, "app.read", Risk::Read, defaults),
+        ("app.me", Query, "app.read", Risk::Read, defaults),
         // Docker over SSH (TSK-81, spec §10.6): connect waits for SSH, the login and the ping.
         (
             "docker.compose.projects",
@@ -1174,6 +1204,10 @@ fn the_procedures_of_the_spec() {
             .clone()
     };
     assert_eq!(redact("term.write"), ["data"]);
+    // Passwords and codes never reach the audit digest or a log.
+    assert_eq!(redact("app.account.changePassword"), ["current", "new"]);
+    assert_eq!(redact("app.account.totp.confirm"), ["code"]);
+    assert_eq!(redact("app.account.totp.remove"), ["current"]);
     assert_eq!(redact("echo.connect"), ["profile.token"]);
     // The SSH secrets of a Docker profile are never logged.
     assert_eq!(

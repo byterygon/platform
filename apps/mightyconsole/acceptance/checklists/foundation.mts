@@ -21,19 +21,21 @@ export default {
     },
     {
       id: "listen",
-      text: "With no flags the server listens on 127.0.0.1:7443 only, makes its certificate once and reuses it, prints the URL and the fingerprint; another address prints the exposure warning.",
+      text: "With no flags the server listens on 127.0.0.1:7443 only, makes its certificate once and reuses it, prints the URL and the fingerprint; another address with the generated certificate prints the self-signed certificate warning.",
       checks: [
         cargo("cli::tests::no_flags_means_loopback_7443_and_a_generated_certificate"),
         cargo("tls::tests::the_certificate_is_made_once_and_reused"),
         server("loopback: the address, the fingerprint and the URL", ["--listen", "127.0.0.1:0"], [/listening on 127\.0\.0\.1:\d+/, /certificate SHA-256 (?:[0-9A-F]{2}:){31}[0-9A-F]{2}/, /open https:\/\/localhost:\d+\//]),
-        server("another address: the exposure warning", ["--listen", "0.0.0.0:0"], [/WARNING: listening beyond loopback/]),
+        // Everyone signs in (DOC-25 §3.6.2 point 3): beyond loopback the warning is about the
+        // generated certificate.
+        server("another address: the self-signed certificate warning", ["--listen", "0.0.0.0:0"], [/WARNING: the certificate is self-signed: give --tls-cert and --tls-key/]),
       ],
     },
     {
       id: "session",
       text: "Loading the page through an allowed Host gives a session; an upgrade with another Origin or Host is rejected; a second browser tab gets its own session and cannot use the first one's connId.",
       checks: [
-        cargo("the_page_gives_a_session_with_its_headers"),
+        cargo("the_page_signed_out_and_signed_in_with_its_headers"),
         cargo("the_upgrade_needs_the_host_the_origin_the_cookie_and_the_token"),
         cargo("a_handle_belongs_to_the_connection_that_opened_it"),
       ],

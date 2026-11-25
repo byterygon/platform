@@ -1,9 +1,10 @@
 // Security acceptance (DOC-25 §6), run on the lab with the identity provider (the `idp` profile:
 // Dex). Each build task wires its own items; TSK-141 attaches the evidence. Wired so far: "Login and
-// sessions" (TSK-136) and "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
-// rotation; the checkpoint waits for the key of TSK-139). The parts other tasks own are `manual` checks naming them;
-// the built-in accounts item (TSK-142) and the Start, Authorization, Destroy and Secrets sections
-// come with their tasks.
+// sessions" (TSK-136), "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
+// rotation; the checkpoint waits for the key of TSK-139), the built-in accounts and the default
+// administrator (TSK-142). The parts other tasks own are `manual` checks naming them; the rest of
+// the Start section (TSK-141) and the Authorization, Destroy and Secrets sections come with their
+// tasks.
 import { cargo, command, manual } from "../checklist.mts";
 import type { Checklist } from "../checklist.mts";
 
@@ -11,6 +12,10 @@ import type { Checklist } from "../checklist.mts";
  * the WebSocket harness only: the default `tauri` harness needs GTK, which the lab runner lacks. */
 const conformance = (label: string, filter: string) =>
   command(`conformance: ${label}`, ["cargo", "test", "-p", "ambidex-conformance", "--no-default-features", "--features", "ws", "--test", "oidc", "--", filter], { requires: ["cargo"] });
+
+/** One of the built-in account cases (`crates/ambidex-conformance/tests/accounts.rs`, TSK-142). */
+const accounts = (label: string, filter: string) =>
+  command(`conformance: ${label}`, ["cargo", "test", "-p", "ambidex-conformance", "--no-default-features", "--features", "ws", "--test", "accounts", "--", filter], { requires: ["cargo"] });
 
 export default {
   id: "security",
@@ -49,7 +54,7 @@ export default {
         conformance("key rotation", "key_rotation_keeps_sign_in_working"),
         conformance("the IdP down", "the_idp_down_gives_unreachable"),
         conformance("a sign-in during the first fetch", "a_sign_in_during_the_first_fetch_waits_for_it"),
-        manual("the default administrator signs in with its password while the IdP is down: TSK-142"),
+        cargo("the_default_administrator_signs_in_while_the_idp_is_down", { label: "the default administrator signs in with its password while the IdP is down" }),
       ],
     },
     {
@@ -79,7 +84,35 @@ export default {
     {
       id: "fixation",
       text: "(TSK-136) A cookie from before the sign-in is not accepted after it (fixation).",
-      checks: [conformance("fixation", "no_session_fixation")],
+      checks: [conformance("fixation", "no_session_fixation"), accounts("fixation, a password sign-in", "signing_in_replaces_the_previous_session")],
+    },
+    {
+      id: "accounts",
+      text: "(TSK-142) Built-in accounts: sign-up gives a member who can add and use a personal profile and sees no shared one until added to a group; a wrong password and an unknown user get the same answer; five failures lock the account and the audit says so; TOTP sign-in works, a reused code is refused, a recovery code works once; a setup link works once and expires; a sign-in POST from another origin is refused; auth.signup = off hides and refuses sign-up.",
+      checks: [
+        cargo("sign_up_signs_in_a_member_who_can_work", { label: "sign-up through the page's token, the session, app.me, sign-out; auth.signup, auth.login, auth.logout in the log without the password" }),
+        manual("a member adds and uses a personal profile and sees no shared one until added to a group: TSK-138 and TSK-139 (roles, server-side profiles)"),
+        accounts("the same answer and the same cost", "wrong_password_and_unknown_user_look_the_same"),
+        accounts("five failures lock the account (the lockout event), and it ends", "five_failures_lock_the_account_for_fifteen_minutes"),
+        cargo("a_session_leaves_the_calls_the_spec_lists_and_never_a_value", { label: "the audit entries' format (auth.lockout and auth.signup go through the same event log)" }),
+        accounts("TOTP: the code once, drift", "totp_sign_in_needs_the_code_once"),
+        accounts("a recovery code works once", "a_recovery_code_works_once"),
+        accounts("wrong codes lock; pending sign-ins end", "wrong_codes_lock_and_pending_sign_ins_end"),
+        accounts("a setup link works once and expires", "setup_links_work_once_and_expire"),
+        accounts("a cross-site POST is refused", "cross_site_posts_are_refused"),
+        cargo("signup_off_hides_and_refuses_sign_up", { label: "auth.signup = off on the server" }),
+        cargo("the_default_administrator_must_change_its_password_first", { label: "mustChangePassword: only the change and app.me, then everything" }),
+      ],
+    },
+    {
+      id: "default-admin",
+      text: "(TSK-142, Start) A first start creates the default administrator and DATA/admin-password (0600); the log names the path and not the password; the first sign-in forces a new password and the file disappears. reset-admin works with the server stopped and running, ends the administrator's sessions and unlocks it.",
+      checks: [
+        cargo("first_start_then_reset_admin_running_and_stopped", { label: "the built binary: first start, reset-admin running and stopped, auth.admin.reset in the log" }),
+        cargo("the_default_administrator_must_change_its_password_first", { label: "the forced change deletes the file" }),
+        cargo("a_reset_sets_a_new_password_and_lifts_everything", { label: "unlock, enable, remove TOTP" }),
+        cargo("default_admin_off_refuses_the_start_and_the_reset", { label: "auth.default_admin = false" }),
+      ],
     },
     {
       id: "audit-events",

@@ -394,6 +394,9 @@ async function openBrowser(run: Run): Promise<BrowserSession | { skipped: string
   }
   writeFileSync(join(run.logs, "browser-server.log"), startup ?? "");
   const { chrome, cdp } = await cdpModule.launchBrowser(chromePath, data);
+  // Everyone signs in (DOC-25 §3.1): one account for the whole run, through the page's sign-up;
+  // every page of this browser then has its session.
+  await cdpModule.signIn(await cdpModule.openPage(cdp), origin);
   return {
     async context(item, record) {
       const page = await cdpModule.openPage(cdp);

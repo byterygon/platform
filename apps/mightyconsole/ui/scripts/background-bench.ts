@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findBrowser } from "../../../../packages/ui/scripts/browser-check.ts";
-import { type Cdp, type Page, freePort, launchBrowser, openPage, run, sleep, waitForLine, waitUntil } from "./cdp.ts";
+import { type Cdp, type Page, freePort, launchBrowser, openPage, run, signIn, sleep, waitForLine, waitUntil } from "./cdp.ts";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 const REPO = join(APP, "..", "..", "..");
@@ -96,6 +96,7 @@ async function main(): Promise<number> {
     await waitForLine(server, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
     ({ chrome, cdp } = await launchBrowser(browser, data));
     const page = await openPage(cdp);
+    await signIn(page, origin);
     await page.navigate(`${origin}/`);
     if (cpu > 1) await page.send("Emulation.setCPUThrottlingRate", { rate: cpu });
     const until = async (expression: string, what: string, timeoutMs = 30_000) => {

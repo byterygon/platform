@@ -42,7 +42,7 @@ import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { findBrowser } from "../../../../packages/ui/scripts/browser-check.ts";
-import { type Cdp, type Page, freePort, launchBrowser, openPage, run, sleep, waitForLine, waitUntil } from "./cdp.ts";
+import { type Cdp, type Page, freePort, launchBrowser, openPage, run, signIn, sleep, waitForLine, waitUntil } from "./cdp.ts";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 const REPO = join(APP, "..", "..", "..");
@@ -233,7 +233,9 @@ async function main(): Promise<number> {
     const page = await openPage(cdp);
     const started = Date.now();
 
-    // 1. The page, its session and the WebSocket.
+    // 1. The page, its session and the WebSocket. Everyone signs in (DOC-25 §3.1): a new account
+    // through the page's sign-up.
+    check((await signIn(page, origin)) !== null, "the page was not signed out at first");
     await page.navigate(`${origin}/`);
     // The navigation opens on its first tool (TSK-91); this check uses Echo.
     await until(page, `__mc.button("Echo")`, "the tool navigation");
@@ -544,6 +546,7 @@ async function main(): Promise<number> {
     hashServer = spawn(serverBinary, ["--listen", `127.0.0.1:${hashPort}`, ...uiArgs, "--data", join(data, "hash-server"), "--router", "hash", "--base-path", "/tools/mc"], { stdio: ["ignore", "ignore", "pipe"] });
     await waitForLine(hashServer, /[\s\S]*open https:\/\/localhost:\d+\/tools\/mc\//, "mightyconsole-server --router hash");
     const errorsBefore = page.errors.length;
+    await signIn(page, hashOrigin, "/tools/mc");
     await page.navigate(`${hashOrigin}/`);
     await until(page, `location.pathname === "/tools/mc/" && __mc.button("Echo")`, "the page under the base path");
     await run(page, `__mc.click(__mc.button("Echo"))`);
