@@ -295,6 +295,18 @@ pub enum Event {
         backup_seq: String,
         backup_hash: String,
     },
+    /// `codec.decode` or `codec.encode` (DOC-25 §3.5.1, Open question 9), by `system:codec`: one
+    /// request to the codec endpoint. `token` is the first 8 bytes, hex, of the SHA-256 of the
+    /// caller's `Authorization` (none without one); `status` is the HTTP status answered.
+    Codec {
+        operation: String,
+        profile: String,
+        namespace: String,
+        origin: Option<String>,
+        count: usize,
+        token: Option<String>,
+        status: u16,
+    },
 }
 
 /// Clips `text` to the detail's value limit on a character boundary and replaces control
@@ -329,6 +341,11 @@ impl Event {
             Event::Lockout { .. } => "auth.lockout",
             Event::SecretsRewrap { .. } => "secrets.rewrap",
             Event::ServerRestore { .. } => "server.restore",
+            Event::Codec { operation, .. } => match operation.as_str() {
+                "decode" => "codec.decode",
+                "encode" => "codec.encode",
+                _ => "codec.request",
+            },
         }
     }
 
@@ -473,6 +490,36 @@ impl Event {
                         ("backup_hash", clip(backup_hash)),
                     ],
                 ),
+                Event::Codec {
+                    profile,
+                    namespace,
+                    origin,
+                    count,
+                    token,
+                    status,
+                    ..
+                } => (
+                    vec![system("system:codec")],
+                    AuditDecision::Allow,
+                    if (200..300).contains(status) {
+                        Outcome::Success
+                    } else {
+                        Outcome::Error {
+                            code: status.to_string(),
+                        }
+                    },
+                    vec![
+                        ("profile", clip(profile)),
+                        (
+                            "namespace",
+                            clip(if namespace.is_empty() { "-" } else { namespace }),
+                        ),
+                        ("origin", clip(origin.as_deref().unwrap_or("-"))),
+                        ("count", count.to_string()),
+                        ("token", token.clone().unwrap_or_else(|| "-".to_owned())),
+                        ("status", status.to_string()),
+                    ],
+                ),
             };
         let name = self.name();
         AuditEntry {
@@ -555,6 +602,19 @@ impl Event {
                 backup_seq,
                 backup_hash,
             } => format!("server.restore from a backup ending at seq {backup_seq} ({backup_hash})"),
+            Event::Codec {
+                operation,
+                profile,
+                namespace,
+                origin,
+                count,
+                status,
+                ..
+            } => format!(
+                "codec {operation} profile={profile} namespace={} origin={} payloads={count} -> {status}",
+                if namespace.is_empty() { "-" } else { namespace },
+                origin.as_deref().unwrap_or("-"),
+            ),
         };
         format!("mightyconsole-server: {text}")
     }
@@ -924,6 +984,53 @@ mod tests {
         assert!(reason.len() <= AuditDetail::MAX_VALUE_BYTES);
         assert!(reason.starts_with("state mismatch xxx"), "{reason}");
         assert_eq!(detail["ip"], "-");
+    }
+
+    /// A codec endpoint request (DOC-25 §3.5.1, Open question 9): by `system:codec`, with the
+    /// detail keys of the spec, the token only as its hash prefix, and the HTTP status.
+    #[test]
+    fn a_codec_request_is_by_system_codec_with_the_documented_detail() {
+        let served = Event::Codec {
+            operation: "decode".into(),
+            profile: "01P".into(),
+            namespace: "lab".into(),
+            origin: Some("http://localhost:8233".into()),
+            count: 3,
+            token: Some("0123456789abcdef".into()),
+            status: 200,
+        };
+        let entry = served.entry(&tenant(), "c-9".into(), 5);
+        assert_eq!(entry.action.name, "codec.decode");
+        assert_eq!(entry.principal_chain[0].id, "system:codec");
+        assert_eq!(entry.outcome, Outcome::Success);
+        let detail = fields(&entry);
+        for (key, value) in [
+            ("profile", "01P"),
+            ("namespace", "lab"),
+            ("origin", "http://localhost:8233"),
+            ("count", "3"),
+            ("token", "0123456789abcdef"),
+            ("status", "200"),
+        ] {
+            assert_eq!(detail[key], value, "{key}");
+        }
+        let refused = Event::Codec {
+            operation: "encode".into(),
+            profile: "01P".into(),
+            namespace: String::new(),
+            origin: None,
+            count: 0,
+            token: None,
+            status: 401,
+        };
+        let entry = refused.entry(&tenant(), "c-10".into(), 5);
+        assert_eq!(entry.action.name, "codec.encode");
+        assert_eq!(entry.outcome, Outcome::Error { code: "401".into() });
+        let detail = fields(&entry);
+        assert_eq!(
+            (detail["token"].as_str(), detail["origin"].as_str()),
+            (Some("-"), Some("-"))
+        );
     }
 
     #[test]

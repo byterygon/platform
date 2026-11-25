@@ -3,7 +3,9 @@
 //! Temporal Web UI, the `temporal` CLI and anything else that speaks it.
 //!
 //! - A profile is served while Mightyconsole has it connected with "Serve as a codec endpoint" on;
-//!   otherwise 503. Profiles and their secrets live in the browser; the server keeps nothing.
+//!   otherwise 503. The connection is a person's, opened with the stored profile's secrets.
+//! - A caller without `Authorization` is refused (401) unless the profile allows callers without
+//!   a token (`codecServer.allowAnonymous`, off; DOC-25 Open question 9).
 //! - Every request names its namespace (`X-Namespace`). Temporal decides who may use it:
 //!   `DescribeNamespace` goes to the profile's frontend over the profile's connection with the
 //!   caller's `Authorization` header (none when the caller sent none) in place of the profile's
@@ -12,8 +14,9 @@
 //!   are accepted. CORS answers only those origins.
 //! - Decode swaps External Storage references for the stored payloads; encode stores payloads at
 //!   or over the threshold. Anything else passes unchanged. Limits: a 4 MiB request, 100 payloads.
-//! - One line per call on stderr: profile, operation, namespace, origin, count, outcome, time.
-//!   Never payload data, keys or tokens.
+//! - One audit entry per request (`codec.decode`, `codec.encode`, by `system:codec`, DOC-25
+//!   §3.5.1) and one line on stderr: profile, operation, namespace, origin, count, outcome, time.
+//!   The token only as the first 8 bytes of its SHA-256; never payload data or keys.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
@@ -46,14 +49,17 @@ const AUTH_TTL: Duration = Duration::from_secs(60);
 pub struct CodecProfile {
     pub name: String,
     pub allowed_origins: Vec<String>,
+    /// Whether a caller without `Authorization` is served (`codecServer.allowAnonymous`).
+    pub allow_anonymous: bool,
     /// `(token hash, namespace)` → when Temporal last allowed it.
     allowed: Mutex<HashMap<(String, String), Instant>>,
 }
 
 impl CodecProfile {
-    pub fn new(name: String, allowed_origins: Vec<String>) -> CodecProfile {
+    pub fn new(name: String, allowed_origins: Vec<String>, allow_anonymous: bool) -> CodecProfile {
         CodecProfile {
             name,
+            allow_anonymous,
             allowed_origins: allowed_origins
                 .into_iter()
                 .map(|o| o.trim().trim_end_matches('/').to_ascii_lowercase())
@@ -83,6 +89,23 @@ fn lookup(profile_id: &str) -> Option<Arc<TemporalClient>> {
         .expect("the codec registry lock")
         .get(profile_id)
         .and_then(Weak::upgrade)
+}
+
+/// Where the endpoint's audit entries go: the running server's log (set at each start).
+static EVENTS: Mutex<Option<crate::audit::EventLog>> = Mutex::new(None);
+
+/// The audit log of the codec endpoint's requests (at start).
+pub fn set_events(events: crate::audit::EventLog) {
+    *EVENTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(events);
+}
+
+/// The first 8 bytes, hex, of the SHA-256 of a token: the audit's `token` (DOC-25 §3.5.1).
+fn token_prefix(authorization: Option<&str>) -> Option<String> {
+    authorization
+        .filter(|a| !a.trim().is_empty())
+        .map(|a| super::s3::hex(&Sha256::digest(a.as_bytes())[..8]))
 }
 
 /// The codec routes, for the TLS listener and the optional plain loopback one.
@@ -164,6 +187,27 @@ async fn handle(
         .get("payloads")
         .and_then(Value::as_array)
         .map_or(0, Vec::len);
+    let events = EVENTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    if method != Method::OPTIONS
+        && let Some(events) = events
+    {
+        events.record(&crate::audit::Event::Codec {
+            operation: operation.clone(),
+            profile: profile_id.clone(),
+            namespace: namespace.clone(),
+            origin: origin.clone(),
+            count,
+            token: token_prefix(
+                headers
+                    .get(header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok()),
+            ),
+            status: outcome.status.as_u16(),
+        });
+    }
     eprintln!(
         "mightyconsole-server: codec {} {operation} namespace={} origin={} payloads={count} -> {} in {} ms",
         codec.map_or("(not connected)", |c| c.name.as_str()),
@@ -226,7 +270,15 @@ async fn serve(
     };
     let authorization = headers
         .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok());
+        .and_then(|v| v.to_str().ok())
+        .filter(|a| !a.trim().is_empty());
+    if authorization.is_none() && !codec.allow_anonymous {
+        return fail(
+            401,
+            "send the caller's Temporal token in Authorization; this profile does not serve callers \
+             without one (Allow callers without a token)",
+        );
+    }
     if let Err(e) = authorize(client, codec, namespace, authorization).await {
         return e;
     }
@@ -450,6 +502,15 @@ mod tests {
     }
 
     #[test]
+    fn the_audit_names_a_token_by_its_hash_prefix_only() {
+        let prefix = token_prefix(Some("Bearer s3cr3t-token")).unwrap();
+        assert_eq!(prefix.len(), 16);
+        assert!(!prefix.contains("s3cr3t"));
+        assert_eq!(token_prefix(Some("  ")), None);
+        assert_eq!(token_prefix(None), None);
+    }
+
+    #[test]
     fn bad_bodies_are_400_and_too_many_413() {
         let status = |body: &str| match parse(body.as_bytes()) {
             Ok(_) => 200,
@@ -471,7 +532,9 @@ mod tests {
         let c = CodecProfile::new(
             "lab".into(),
             vec!["http://LOCALHOST:8233/".into(), " ".into()],
+            false,
         );
+        assert!(!c.allow_anonymous);
         assert_eq!(c.allowed_origins, vec!["http://localhost:8233".to_owned()]);
     }
 }

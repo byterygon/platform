@@ -38,12 +38,17 @@ fn s3() -> Value {
 }
 
 async fn lab_client() -> Arc<TemporalClient> {
+    lab_client_with(false).await
+}
+
+/// The lab profile, serving callers without a token when `anonymous` (DOC-25 Open question 9).
+async fn lab_client_with(anonymous: bool) -> Arc<TemporalClient> {
     let s3 = s3();
     let profile: ConnectTemporalProfile = serde_json::from_value(json!({
         "name": "lab", "address": "127.0.0.1:7233", "namespace": "lab",
         "externalStorage": { "enabled": true, "bucket": s3["bucket"], "endpoint": s3["endpoint"], "region": s3["region"], "pathStyle": true },
         "s3AccessKeyId": s3["accessKeyId"], "s3SecretAccessKey": s3["secretAccessKey"],
-        "codecServer": { "enabled": true, "allowedOrigins": [WEB_UI] },
+        "codecServer": { "enabled": true, "allowedOrigins": [WEB_UI], "allowAnonymous": anonymous },
     }))
     .unwrap();
     Arc::new(
@@ -69,7 +74,20 @@ struct Reply {
     body: Value,
 }
 
+/// A request with a caller's token (the lab's Temporal has no auth, so any token is allowed).
 async fn call(method: Method, url: &str, headers: &[(&str, &str)], body: Option<&Value>) -> Reply {
+    let mut with_token = vec![("authorization", "Bearer lab-caller")];
+    with_token.extend_from_slice(headers);
+    call_as(method, url, &with_token, body).await
+}
+
+/// A request with exactly `headers`.
+async fn call_as(
+    method: Method,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&Value>,
+) -> Reply {
     let http = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let mut request = Request::builder().method(method).uri(url);
     for (k, v) in headers {
@@ -155,6 +173,32 @@ async fn encode_stores_a_large_payload_and_decode_reads_it_back() {
     .await;
     assert_eq!(decoded.status, 200, "{}", decoded.body);
     assert_eq!(text(&decoded.body["payloads"][0]["data"]), big);
+}
+
+#[tokio::test]
+async fn a_caller_without_a_token_is_served_only_when_the_profile_allows_it() {
+    let empty = json!({ "payloads": [] });
+    let client = lab_client().await;
+    codec::register("lab-codec-anon-off", &client);
+    let base = serve().await;
+    let url = format!("{base}/codec/lab-codec-anon-off/decode");
+    let refused = call_as(Method::POST, &url, &[("x-namespace", "lab")], Some(&empty)).await;
+    assert_eq!(refused.status, 401, "{}", refused.body);
+    let blank = call_as(
+        Method::POST,
+        &url,
+        &[("x-namespace", "lab"), ("authorization", " ")],
+        Some(&empty),
+    )
+    .await;
+    assert_eq!(blank.status, 401, "{}", blank.body);
+    let with_token = call(Method::POST, &url, &[("x-namespace", "lab")], Some(&empty)).await;
+    assert_eq!(with_token.status, 200, "{}", with_token.body);
+    let open = lab_client_with(true).await;
+    codec::register("lab-codec-anon-on", &open);
+    let url = format!("{base}/codec/lab-codec-anon-on/decode");
+    let served = call_as(Method::POST, &url, &[("x-namespace", "lab")], Some(&empty)).await;
+    assert_eq!(served.status, 200, "{}", served.body);
 }
 
 #[tokio::test]
