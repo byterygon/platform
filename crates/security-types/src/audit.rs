@@ -645,6 +645,12 @@ impl Encoder {
                         self.u8(3);
                         self.str(message);
                     }
+                    // Added with Mightyconsole's scoped roles (DOC-25 §3.3.4); records written
+                    // before it never carry tag 4, so their hashes are unchanged.
+                    Reason::OutOfScope { perm } => {
+                        self.u8(4);
+                        self.str(perm.as_str());
+                    }
                 }
             }
             AuditDecision::NeedsApproval => self.u8(2),

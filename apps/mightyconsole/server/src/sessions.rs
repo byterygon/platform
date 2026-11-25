@@ -23,11 +23,14 @@ use ambidex_axum::oidc::{
 use ambidex_axum::{
     EndReason, EndedSession, LoginSessions, SessionEvents, WebSession, WebSessions,
 };
-use security_types::{Principal, PrincipalKind, SessionId, TenantId};
+use security_types::{Principal, PrincipalKind, RoleId, SessionId, TenantId};
 
 use crate::admin;
 use crate::audit::{Event, EventLog, LineWriter};
+use crate::authz;
+use crate::authz::policy::PolicyHandle;
 use crate::store::McAccountStore;
+use crate::store::Store;
 
 /// The built-in accounts as the server runs them.
 pub type McAccounts = Accounts<McAccountStore, Arc<McSignIn>>;
@@ -59,8 +62,9 @@ impl WebSessions for ServerSessions {
 }
 
 /// Mightyconsole's side of both sign-ins (DOC-25 §3.2.3): the principal is `human:oidc:<sub>`
-/// or `human:account:<id>` in the server's tenant. Roles come with TSK-138 (until then every
-/// signed-in person may do everything, as v0.1's one user could; the server warns at start).
+/// or `human:account:<id>` in the server's tenant, its `roles` the role ids in force at the
+/// sign-in (for the audit log; every call is decided on the live policy, [`crate::authz`]). An
+/// OIDC sign-in makes or updates the user's record in the store; a disabled user is refused.
 /// Sign-ins, sign-outs, failed sign-ins, sign-ups and lockouts go to the audit log (DOC-25
 /// §3.5.1) as [`Event`]s: names, addresses, counts and reasons, never a password, token, code or
 /// secret. The operational warnings (groups not kept, the IdP unreachable, a rate limit) are not
@@ -73,6 +77,10 @@ pub struct McSignIn {
     data: Option<PathBuf>,
     /// `auth.accounts`: off, only the default administrator signs in with a password.
     accounts: bool,
+    /// `auth.default_admin`: off, the account `admin` is refused (DOC-25 §3.2.7).
+    default_admin: bool,
+    /// The store (OIDC user records) and the policy (roles, disabled users).
+    policy: Option<(Arc<Store>, PolicyHandle)>,
 }
 
 impl McSignIn {
@@ -83,7 +91,40 @@ impl McSignIn {
             events,
             data: None,
             accounts: true,
+            default_admin: true,
+            policy: None,
         }
+    }
+
+    /// `auth.default_admin = false`: the account `admin` cannot sign in.
+    pub fn default_admin_enabled(mut self, enabled: bool) -> McSignIn {
+        self.default_admin = enabled;
+        self
+    }
+
+    /// Records OIDC users in `store` and reads roles and disabled users from `policy`.
+    pub fn with_policy(mut self, store: Arc<Store>, policy: PolicyHandle) -> McSignIn {
+        self.policy = Some((store, policy));
+        self
+    }
+
+    /// The role ids in force for `user` with the IdP groups `groups`.
+    fn roles(&self, user: &str, groups: &[String]) -> Vec<RoleId> {
+        match &self.policy {
+            Some((_, policy)) => policy
+                .current()
+                .role_ids(user, groups)
+                .into_iter()
+                .map(RoleId::new)
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    fn disabled(&self, user: &str) -> bool {
+        self.policy
+            .as_ref()
+            .is_some_and(|(_, policy)| policy.current().is_disabled(user))
     }
 
     /// `auth.accounts = false`: only the default administrator signs in with a password.
@@ -98,13 +139,13 @@ impl McSignIn {
         self
     }
 
-    fn principal(&self, user: &str) -> Principal {
+    fn principal(&self, user: &str, groups: &[String]) -> Principal {
         Principal {
             kind: PrincipalKind::Human,
             id: user.to_owned(),
             tenant: self.tenant.clone(),
             on_behalf_of: None,
-            roles: vec![],
+            roles: self.roles(user, groups),
             session: SessionId::new("set per connection"),
         }
     }
@@ -197,8 +238,42 @@ impl SignInHooks for McSignIn {
         identity: &'a OidcIdentity,
     ) -> BoxFuture<'a, Result<SignedIn, SignInRefusal>> {
         let user = identity.principal_id();
-        let principal = self.principal(&user);
-        Box::pin(async move { Ok(SignedIn { user, principal }) })
+        Box::pin(async move {
+            if let Some((store, _)) = &self.policy {
+                let store = Arc::clone(store);
+                let (id, sub, name, email, groups) = (
+                    user.clone(),
+                    identity.subject.clone(),
+                    identity.display_name.clone(),
+                    identity.email.clone(),
+                    identity.groups.clone(),
+                );
+                let now = security_types::unix_now_ms();
+                let record = tokio::task::spawn_blocking(move || {
+                    store.record_oidc_user(&id, &sub, &name, email.as_deref(), &groups, now)
+                })
+                .await;
+                match record {
+                    Ok(Ok(record)) if record.disabled => return Err(SignInRefusal::Disabled),
+                    Ok(Ok(_)) => {}
+                    // A store that cannot record the user refuses the sign-in: the user record
+                    // is what an administrator assigns roles to and disables.
+                    Ok(Err(e)) => {
+                        self.out.line(&format!(
+                            "mightyconsole-server: WARNING: recording the OIDC user {user}: {}",
+                            e.0
+                        ));
+                        return Err(SignInRefusal::Disabled);
+                    }
+                    Err(_) => return Err(SignInRefusal::Disabled),
+                }
+            }
+            if self.disabled(&user) {
+                return Err(SignInRefusal::Disabled);
+            }
+            let principal = self.principal(&user, &identity.groups);
+            Ok(SignedIn { user, principal })
+        })
     }
 
     fn record(&self, event: AuthEvent) {
@@ -211,12 +286,13 @@ impl AccountHooks for McSignIn {
         &'a self,
         account: &'a Account,
     ) -> BoxFuture<'a, Result<SignedIn, SignInRefusal>> {
-        let off = !self.accounts && account.username != admin::ADMIN_USERNAME;
-        let result = if account.disabled || off {
+        let is_admin = account.username == admin::ADMIN_USERNAME;
+        let off = (!self.accounts && !is_admin) || (is_admin && !self.default_admin);
+        let user = account.principal_id();
+        let result = if account.disabled || off || self.disabled(&user) {
             Err(SignInRefusal::Disabled)
         } else {
-            let user = account.principal_id();
-            let principal = self.principal(&user);
+            let principal = self.principal(&user, &[]);
             Ok(SignedIn { user, principal })
         };
         Box::pin(async move { result })
@@ -234,9 +310,14 @@ impl AccountHooks for McSignIn {
         }
     }
 
-    /// Until roles (TSK-138), the default administrator is the one administrator.
+    /// Holds `admin` everywhere (DOC-25 §3.3.2), for `auth.require_totp = "admins"`.
     fn is_administrator(&self, account: &Account) -> bool {
-        account.username == admin::ADMIN_USERNAME
+        match &self.policy {
+            Some((_, policy)) => {
+                authz::is_administrator(&policy.current().in_force(&account.principal_id(), &[]))
+            }
+            None => account.username == admin::ADMIN_USERNAME,
+        }
     }
 }
 

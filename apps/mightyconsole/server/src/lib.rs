@@ -9,12 +9,13 @@
 //! - [`config`]: the configuration file (DOC-25 §3.6.1) behind the flags.
 //! - [`sessions`]: everyone signs in (DOC-25 §3.2, through `ambidex-axum`): built-in accounts,
 //!   and OIDC when `[auth.oidc]` is configured.
-//! - [`authz`]: the Authorizer until roles (every signed-in person, within the restrictions of a
-//!   session that must change its password or set up TOTP, may do
-//!   everything until roles land).
+//! - [`authz`]: the role-based Authorizer (DOC-25 §3.3): the permission catalogue, the built-in
+//!   and custom roles, assignments and group mappings with scopes, and the targets the server
+//!   builds for every call.
 //! - [`audit`]: the durable audit log (DOC-25 §3.5, `audit-jsonl`): the filter in front of it
 //!   (Write and Destructive calls, sensitive reads, refusals), and the sign-in and server events.
-//! - [`store`]: `DATA/store.redb`, the accounts (DOC-25 §3.1); [`admin`]: the default
+//! - [`store`]: `DATA/store.redb`: the accounts, OIDC users, roles, assignments and groups
+//!   (DOC-25 §3.1); [`admin`]: the default
 //!   administrator and `reset-admin` (DOC-25 §3.2.7).
 //! - [`core`]: live handles per connection, events, terminals, stream progress, `ToolError`.
 //! - [`api`]: `app.info`, `app.events`, `term.*`.
@@ -58,7 +59,9 @@ use crate::api::{AccountApi, AppApi, AppState, MeApi, ServerFacts, TermApi, Totp
 use crate::audit::{
     AuditSettings, Event, EventLog, LineWriter, McAuditSink, SensitiveTable, Stderr,
 };
-use crate::authz::SignedInAuthorizer;
+use crate::authz::policy::{Policy, PolicyHandle};
+use crate::authz::targets::McTargets;
+use crate::authz::{NoStoredProfiles, RoleAuthorizer};
 use crate::config::{AuthSettings, OIDC_CLIENT_SECRET_ENV};
 use crate::core::{Hub, IDLE_TIMEOUT, SWEEP_INTERVAL};
 use crate::sessions::{McAccounts, McSignIn, ServerSessions, SessionLog};
@@ -132,9 +135,11 @@ pub fn codegen_router() -> Router {
         )),
         accounts: None,
     });
-    let router = Router::new(SignedInAuthorizer::new(
+    let router = Router::new(RoleAuthorizer::new(
         "codegen",
         Arc::clone(&state.sessions),
+        PolicyHandle::default(),
+        Arc::new(NoStoredProfiles),
     ));
     mount(&router, &state);
     router
@@ -408,10 +413,38 @@ pub fn audit_tenant(config: &ServeConfig) -> String {
 pub const ACCOUNTS_OFF_WITHOUT_OIDC: &str = "auth.accounts = false needs [auth.oidc]: \
      otherwise only the default administrator could sign in";
 
-/// Why `auth.default_admin = false` does not start yet (DOC-25 §3.2.7, §3.6.2 point 1).
+/// Why `auth.default_admin = false` does not start without a pinned administrator mapping
+/// (DOC-25 §3.2.7, §3.6.2 point 1).
 pub const DEFAULT_ADMIN_OFF: &str = "auth.default_admin = false needs a pinned \
-     [[auth.group_roles]] entry granting admin, and group mappings arrive with roles (TSK-138); \
-     keep the default administrator until then";
+     [[auth.group_roles]] entry granting admin everywhere (no scope); otherwise nobody could \
+     administer this server";
+
+/// Whether the pinned mappings make someone an administrator everywhere.
+pub fn has_pinned_admin(auth: &AuthSettings) -> bool {
+    auth.group_roles
+        .iter()
+        .any(|m| m.role == authz::catalogue::ADMIN_ROLE && m.scope.is_everywhere())
+}
+
+/// The policy at start (DOC-25 §3.3.2, §3.3.5): the store's roles, assignments, groups and
+/// disabled users, `auth.default_role`, the pinned `[[auth.group_roles]]`, and the default
+/// administrator's own pinned `admin` while it is on.
+pub fn load_policy(store: &store::Store, auth: &AuthSettings) -> Result<Policy, String> {
+    let mut parts = store
+        .policy_parts()
+        .map_err(|e| format!("reading the roles: {}", e.0))?;
+    parts.default_role = auth.default_role.clone();
+    parts.pinned = auth.group_roles.clone();
+    parts.default_admin = if auth.default_admin {
+        store
+            .account_by_username(admin::ADMIN_USERNAME)
+            .map_err(|e| format!("reading the default administrator: {}", e.0))?
+            .map(|a| a.principal_id())
+    } else {
+        None
+    };
+    Ok(Policy::new(parts))
+}
 
 /// The running server's side of `reset-admin` (DOC-25 §3.2.7): performs a request, ends the
 /// administrator's sessions, records `auth.admin.reset` and says where the password is.
@@ -501,6 +534,8 @@ pub struct Server {
     /// The JWKS refresh and the session sweep, with sign-in; the `reset-admin` watcher.
     auth_tasks: Vec<JoinHandle<()>>,
     store: Arc<store::Store>,
+    /// Roles, assignments and groups in force.
+    policy: PolicyHandle,
     tls: ServerTls,
     local_addr: SocketAddr,
     ui: ServedUi,
@@ -545,7 +580,7 @@ impl Server {
         if !config.auth.accounts && config.auth.oidc.is_none() {
             return Err(StartError::Auth(ACCOUNTS_OFF_WITHOUT_OIDC.into()));
         }
-        if !config.auth.default_admin {
+        if !config.auth.default_admin && !has_pinned_admin(&config.auth) {
             return Err(StartError::Auth(DEFAULT_ADMIN_OFF.into()));
         }
         if let Some(worker) = options.jq_worker {
@@ -629,10 +664,14 @@ impl Server {
         };
         let store = Arc::new(store);
         let hasher = PasswordHasher::new();
-        if let Some(file) = admin::ensure(&store, &data, &hasher, options.clock.now_unix_ms())
-            .await
-            .map_err(|e| StartError::Store(format!("the default administrator: {e}")))?
-        {
+        let made = if config.auth.default_admin {
+            admin::ensure(&store, &data, &hasher, options.clock.now_unix_ms())
+                .await
+                .map_err(|e| StartError::Store(format!("the default administrator: {e}")))?
+        } else {
+            None
+        };
+        if let Some(file) = made {
             log.line(&format!(
                 "mightyconsole-server: made the default administrator `{}`; its password is in {} \
                  (in a container: docker cp <container>:/data/{} -). It must be changed at the \
@@ -642,6 +681,16 @@ impl Server {
                 admin::PASSWORD_FILE,
             ));
         }
+        // Roles (DOC-25 §3.3): the store's, the configuration's, and the default administrator's
+        // pinned `admin`.
+        let policy = {
+            let store = Arc::clone(&store);
+            let auth = config.auth.clone();
+            tokio::task::spawn_blocking(move || load_policy(&store, &auth).map(PolicyHandle::new))
+                .await
+                .map_err(|e| StartError::Store(format!("loading the roles panicked: {e}")))?
+                .map_err(StartError::Store)?
+        };
         // Every browser signs in (DOC-25 §3.1): one session store for the built-in accounts and
         // OIDC.
         let clock: Arc<dyn Clock> = Arc::clone(&options.clock);
@@ -653,7 +702,9 @@ impl Server {
         let hooks = Arc::new(
             McSignIn::new(&config.auth.tenant, Arc::clone(&log), events.clone())
                 .with_data(data.clone())
-                .accounts_enabled(config.auth.accounts),
+                .accounts_enabled(config.auth.accounts)
+                .default_admin_enabled(config.auth.default_admin)
+                .with_policy(Arc::clone(&store), policy.clone()),
         );
         let mut accounts_config = AccountsConfig::new("Mightyconsole");
         accounts_config.signup = if config.auth.accounts {
@@ -697,7 +748,12 @@ impl Server {
             accounts: Some(accounts.clone()),
             oidc,
         };
-        let authorizer = SignedInAuthorizer::new(&config.auth.tenant, Arc::clone(&login_sessions));
+        let authorizer = RoleAuthorizer::new(
+            &config.auth.tenant,
+            Arc::clone(&login_sessions),
+            policy.clone(),
+            Arc::new(NoStoredProfiles),
+        );
         auth_tasks.push(reset_watcher(
             &store,
             &data,
@@ -721,12 +777,15 @@ impl Server {
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
         let sensitive = SensitiveTable::default();
-        let router = Router::new(authorizer).with_audit(McAuditSink::new(
-            sink,
-            sensitive.clone(),
-            config.audit,
-            Arc::clone(&log),
-        ));
+        let router = Router::new(authorizer)
+            .with_audit(McAuditSink::new(
+                sink,
+                sensitive.clone(),
+                config.audit,
+                Arc::clone(&log),
+            ))
+            .with_targets(McTargets::new(Arc::clone(&hub)))
+            .with_denial_details();
         mount(&router, &state);
         sensitive.fill(&router);
         let engine = ServerConfig::new(API_NAME, SCHEMA_HASH.as_str(), API_VERSION);
@@ -812,6 +871,7 @@ impl Server {
             retention_task,
             auth_tasks,
             store,
+            policy,
             tls,
             local_addr,
             ui: served_ui,
@@ -825,6 +885,12 @@ impl Server {
     /// The address the listener is bound to (the actual port when the configuration asked for 0).
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// The roles, assignments and groups in force (tests change them as the management
+    /// procedures will).
+    pub fn policy(&self) -> &PolicyHandle {
+        &self.policy
     }
 
     pub fn hub(&self) -> &Arc<Hub> {

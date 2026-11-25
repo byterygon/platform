@@ -767,7 +767,7 @@ impl DockerFilesApi {
     }
 
     /// A file's text for the preview, when it is UTF-8 and at most 1 MiB.
-    #[rpc::query(perm = "docker.read", risk = Risk::Read, audit = "always")]
+    #[rpc::query(perm = "docker.files.read", risk = Risk::Read, audit = "always")]
     async fn read(&self, ctx: Ctx, input: FilesPathInput) -> ToolResult<FileReadOutput> {
         let client = client(&self.0, &ctx, &input.conn_id)?;
         let id = container_ref("id", &input.id)?;
@@ -776,7 +776,7 @@ impl DockerFilesApi {
     }
 
     /// The path's tar (a file or a whole folder) as `bytes` chunks of at most 256 KiB.
-    #[rpc::stream(perm = "docker.read", risk = Risk::Read, timeout_max = "12h", audit = "always")]
+    #[rpc::stream(perm = "docker.files.read", risk = Risk::Read, timeout_max = "12h", audit = "always")]
     async fn download(
         &self,
         ctx: Ctx,

@@ -20,8 +20,15 @@
 //! signup = "open"       # or "off": only an administrator makes accounts
 //! require_totp = "none" # or "admins", "all"
 //! default_admin = true
+//! default_role = "member" # every user's role besides any other ("" for none)
 //! session_idle = "60m"
 //! session_absolute = "12h"
+//!
+//! # Pinned group mappings (DOC-25 §3.3.5): always present, not editable in the UI.
+//! [[auth.group_roles]]
+//! group = "idp:platform-admins"   # or "local:<name>"
+//! role = "admin"
+//! scope = ["profile:01J…/ns:team-a-*"] # optional; left out = everywhere
 //!
 //! [audit]
 //! reads = "sensitive"   # or "all"
@@ -52,7 +59,11 @@ use zeroize::Zeroizing;
 
 use audit_jsonl::SegmentPolicy;
 
+use security_types::{Scope, ScopeEntry};
+
 use crate::audit::{AuditSettings, Reads};
+use crate::authz::catalogue;
+use crate::authz::policy::{GroupMapping, is_group, is_role_id};
 
 /// The environment variable naming the configuration file.
 pub const CONFIG_ENV: &str = "MIGHTYCONSOLE_CONFIG";
@@ -162,7 +173,20 @@ pub struct AuthSection {
     pub signup: Option<String>,
     /// `"none"` (default), `"admins"` or `"all"`.
     pub require_totp: Option<String>,
+    /// Every user's role (DOC-25 §3.2.3); default `member`, `""` for none.
+    pub default_role: Option<String>,
+    /// Pinned group mappings (DOC-25 §3.3.5).
+    pub group_roles: Option<Vec<GroupRoleSection>>,
     pub oidc: Option<OidcSection>,
+}
+
+/// One `[[auth.group_roles]]` entry.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupRoleSection {
+    pub group: String,
+    pub role: String,
+    pub scope: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +221,10 @@ pub struct AuthSettings {
     pub signup: Signup,
     /// `auth.require_totp`.
     pub require_totp: RequireTotp,
+    /// `auth.default_role`: every user's role besides any other; `None` for `""`.
+    pub default_role: Option<String>,
+    /// `[[auth.group_roles]]`: pinned group mappings.
+    pub group_roles: Vec<GroupMapping>,
     /// `[auth.oidc]`, when configured.
     pub oidc: Option<OidcSettings>,
 }
@@ -210,6 +238,8 @@ impl Default for AuthSettings {
             accounts: true,
             signup: Signup::Open,
             require_totp: RequireTotp::None,
+            default_role: Some(catalogue::MEMBER_ROLE.into()),
+            group_roles: Vec::new(),
             oidc: None,
         }
     }
@@ -404,6 +434,43 @@ pub fn auth_settings(section: AuthSection, file: &Path) -> Result<AuthSettings, 
         Some("all") => RequireTotp::All,
         Some(other) => return Err(format!("auth.require_totp {other:?}: none, admins or all")),
     };
+    if let Some(role) = section.default_role {
+        auth.default_role = match role.as_str() {
+            "" => None,
+            id if is_role_id(id) => Some(id.to_owned()),
+            other => {
+                return Err(format!(
+                    "auth.default_role {other:?}: a role id ([a-z][a-z0-9-]{{1,31}}) or \"\""
+                ));
+            }
+        };
+    }
+    for (i, entry) in section.group_roles.into_iter().flatten().enumerate() {
+        let at = format!("[[auth.group_roles]] entry {}", i + 1);
+        if !is_group(&entry.group) {
+            return Err(format!(
+                "{at}: group {:?} must be idp:<name> or local:<name>",
+                entry.group
+            ));
+        }
+        if !is_role_id(&entry.role) {
+            return Err(format!("{at}: role {:?} is not a role id", entry.role));
+        }
+        let scope = match entry.scope {
+            None => Scope::everywhere(),
+            Some(entries) => Scope::only(
+                entries
+                    .iter()
+                    .map(|e| e.parse::<ScopeEntry>().map_err(|e| format!("{at}: {e}")))
+                    .collect::<Result<_, _>>()?,
+            ),
+        };
+        auth.group_roles.push(GroupMapping {
+            group: entry.group,
+            role: entry.role,
+            scope,
+        });
+    }
     if let Some(oidc) = section.oidc {
         let token_auth = match oidc.token_auth.as_deref() {
             None | Some("basic") => TokenAuth::Basic,
@@ -556,6 +623,65 @@ mod tests {
         assert!(
             toml::from_str::<FileConfig>(
                 "[auth.oidc]\nissuer='x'\nclient_id='c'\nca_file='a'\nclient_secret='inline'"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn the_default_role_and_pinned_group_roles_resolve() {
+        let none: FileConfig = toml::from_str("").unwrap();
+        let auth = auth_settings(none.auth, Path::new("/c.toml")).unwrap();
+        assert_eq!(auth.default_role.as_deref(), Some("member"));
+        assert!(auth.group_roles.is_empty());
+        let file: FileConfig = toml::from_str(
+            r#"
+            [auth]
+            default_role = ""
+            [[auth.group_roles]]
+            group = "idp:platform-admins"
+            role = "admin"
+            [[auth.group_roles]]
+            group = "local:team-a"
+            role = "operator"
+            scope = ["profile:P1/ns:team-a-*", "personal"]
+            "#,
+        )
+        .unwrap();
+        let auth = auth_settings(file.auth, Path::new("/c.toml")).unwrap();
+        assert_eq!(auth.default_role, None);
+        assert_eq!(auth.group_roles.len(), 2);
+        assert!(auth.group_roles[0].scope.is_everywhere());
+        assert_eq!(
+            serde_json::to_value(&auth.group_roles[1].scope).unwrap(),
+            serde_json::json!(["profile:P1/ns:team-a-*", "personal"])
+        );
+        for bad in [
+            "[auth]
+default_role = 'Admin'",
+            "[[auth.group_roles]]
+group = 'admins'
+role = 'admin'",
+            "[[auth.group_roles]]
+group = 'idp:x'
+role = 'a b'",
+            "[[auth.group_roles]]
+group = 'idp:x'
+role = 'admin'
+scope = ['namespace:x']",
+        ] {
+            let file: FileConfig = toml::from_str(bad).unwrap();
+            assert!(
+                auth_settings(file.auth, Path::new("/c.toml")).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(
+            toml::from_str::<FileConfig>(
+                "[[auth.group_roles]]
+group='idp:x'
+role='admin'
+scopes=[]"
             )
             .is_err()
         );

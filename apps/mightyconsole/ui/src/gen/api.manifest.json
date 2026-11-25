@@ -13834,7 +13834,7 @@
       "output": {
         "$ref": "#/$defs/Empty"
       },
-      "perm": "app.account",
+      "perm": "app.self",
       "redact": [
         "current",
         "new"
@@ -13858,7 +13858,7 @@
       "output": {
         "$ref": "#/$defs/TotpEnrolmentOutput"
       },
-      "perm": "app.account",
+      "perm": "app.self",
       "redact": [],
       "risk": "Write",
       "timeout_default_ms": 30000,
@@ -13879,7 +13879,7 @@
       "output": {
         "$ref": "#/$defs/RecoveryCodes"
       },
-      "perm": "app.account",
+      "perm": "app.self",
       "redact": [
         "code"
       ],
@@ -13902,7 +13902,7 @@
       "output": {
         "$ref": "#/$defs/Empty"
       },
-      "perm": "app.account",
+      "perm": "app.self",
       "redact": [
         "current"
       ],
@@ -13963,7 +13963,7 @@
       "output": {
         "$ref": "#/$defs/Me"
       },
-      "perm": "app.read",
+      "perm": "app.self",
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -14034,7 +14034,7 @@
       "output": {
         "$ref": "#/$defs/ContainersExecSummary"
       },
-      "perm": "docker.write",
+      "perm": "docker.exec",
       "redact": [],
       "risk": "Write",
       "timeout_default_ms": 30000,
@@ -14056,7 +14056,7 @@
       "output": {
         "$ref": "#/$defs/FilesDownloadSummary"
       },
-      "perm": "docker.read",
+      "perm": "docker.files.read",
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -14099,7 +14099,7 @@
       "output": {
         "$ref": "#/$defs/FileReadOutput"
       },
-      "perm": "docker.read",
+      "perm": "docker.files.read",
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -16829,7 +16829,7 @@
       "output": {
         "$ref": "#/$defs/Empty"
       },
-      "perm": "temporal.write",
+      "perm": "temporal.destroy",
       "redact": [],
       "risk": "Destructive",
       "timeout_default_ms": 30000,
@@ -17093,7 +17093,7 @@
       "output": {
         "$ref": "#/$defs/Empty"
       },
-      "perm": "temporal.write",
+      "perm": "temporal.destroy",
       "redact": [],
       "risk": "Destructive",
       "timeout_default_ms": 30000,
@@ -17566,7 +17566,7 @@
       "output": {
         "$ref": "#/$defs/WorkflowResetOutput"
       },
-      "perm": "temporal.write",
+      "perm": "temporal.destroy",
       "redact": [],
       "risk": "Destructive",
       "timeout_default_ms": 30000,
@@ -17629,7 +17629,7 @@
       "output": {
         "$ref": "#/$defs/Empty"
       },
-      "perm": "temporal.write",
+      "perm": "temporal.destroy",
       "redact": [],
       "risk": "Destructive",
       "timeout_default_ms": 30000,
@@ -17702,5 +17702,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:9d23d845cd072628d243bae01f8bcd67d3c79faf5931f7e4d3eac4530549827f"
+  "schema_hash": "sha256:c70b8bbc0a101299e7a6f187563da12633cad893f73d4724d6f9aca52ba817c0"
 }

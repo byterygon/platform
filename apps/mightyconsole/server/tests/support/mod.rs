@@ -332,7 +332,13 @@ impl TestServer {
     pub async fn browser(&self) -> Browser {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let user = format!("human:account:test-{n}");
+        self.browser_as(&format!("human:account:test-{n}"), &[])
+            .await
+    }
+
+    /// A new browser signed in as `user` with the IdP groups `groups` in its session.
+    pub async fn browser_as(&self, user: &str, groups: &[&str]) -> Browser {
+        let user = user.to_owned();
         let issued = self
             .server
             .login_sessions()
@@ -346,7 +352,7 @@ impl TestServer {
                     roles: vec![],
                     session: security_types::SessionId::new("set per connection"),
                 },
-                groups: vec![],
+                groups: groups.iter().map(|g| (*g).to_owned()).collect(),
                 method: ambidex_axum::LoginMethod::Password,
                 auth_time_ms: 0,
                 id_token: None,

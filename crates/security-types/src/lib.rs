@@ -6,6 +6,8 @@
 //! - [`principal`]: who is acting, including the `on_behalf_of` chain.
 //! - [`authz`]: the authorization request, decision and risk, and the [`Authorizer`] hook.
 //! - [`permissions`]: effective permissions as the intersection along the `on_behalf_of` chain.
+//! - [`scope`]: the scope limits of a role assignment ([`Scope`], [`ScopeEntry`]) and profile
+//!   targets.
 //! - [`audit`]: the audit record and its SHA-256 hash chain.
 //! - [`sink`]: the asynchronous [`AuditSink`] both libraries write to, and [`MemoryAuditLog`].
 //! - [`report`]: how sink failures reach operators ([`AuditReporter`], [`StderrReporter`]).
@@ -23,6 +25,7 @@ mod digest;
 pub mod permissions;
 pub mod principal;
 pub mod report;
+pub mod scope;
 pub mod sink;
 
 pub use audit::{
@@ -40,6 +43,7 @@ pub use digest::{Digest, ParseDigestError};
 pub use permissions::{Permission, PermissionSet, RolePermissions, effective_permissions};
 pub use principal::{Principal, PrincipalKind, RoleId, SessionId, TenantId};
 pub use report::{AuditEntryKind, AuditFailure, AuditFailureEffect, AuditReporter, StderrReporter};
+pub use scope::{NamePattern, PROFILE_TARGET, ProfileTarget, Scope, ScopeEntry, ScopeError};
 pub use sink::{AuditError, AuditSink, BoxFuture, MemoryAuditLog};
 #[cfg(feature = "tokio")]
 pub use sink::{append_within, write_within};

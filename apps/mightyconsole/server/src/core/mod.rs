@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use security_types::Clock;
+use security_types::{Clock, TargetRef};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
@@ -85,6 +85,10 @@ fn base32(bytes: &[u8]) -> String {
 struct HandleEntry {
     session: String,
     tool: String,
+    /// What the handle acts on, for the Authorizer ([`crate::authz::targets`]).
+    target: TargetRef,
+    /// Other ids that name this handle (`uploadId` of a NATS upload): `(field, id)`.
+    links: HashSet<(String, String)>,
     value: Arc<dyn Any + Send + Sync>,
     token: CancellationToken,
     last_used_ms: u64,
@@ -101,6 +105,8 @@ struct SessionEntry {
 
 struct TerminalEntry {
     input: mpsc::Sender<TermInput>,
+    /// The target of the handle the terminal was opened on.
+    target: TargetRef,
 }
 
 #[derive(Default)]
@@ -293,12 +299,26 @@ impl Hub {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Registers a tool's live client for `session` and announces it `Connected`.
+    /// Registers a tool's live client for `session` and announces it `Connected`. Its target is
+    /// the browser-held profile it was opened with ([`crate::authz::targets::browser`]): until
+    /// profiles move to the server (TSK-139) every connection is opened with a profile the
+    /// browser sends.
     pub fn insert<T: Send + Sync + 'static>(
         &self,
         session: &str,
         tool: &str,
         value: Arc<T>,
+    ) -> Handle<T> {
+        self.insert_for(session, tool, value, crate::authz::targets::browser(tool))
+    }
+
+    /// [`Hub::insert`] for a handle acting on `target`.
+    pub fn insert_for<T: Send + Sync + 'static>(
+        &self,
+        session: &str,
+        tool: &str,
+        value: Arc<T>,
+        target: TargetRef,
     ) -> Handle<T> {
         let conn_id = random_id();
         let token = CancellationToken::new();
@@ -309,6 +329,8 @@ impl Hub {
             HandleEntry {
                 session: session.to_owned(),
                 tool: tool.to_owned(),
+                target,
+                links: HashSet::new(),
                 value: value.clone(),
                 token: token.clone(),
                 last_used_ms: now,
@@ -419,6 +441,56 @@ impl Hub {
             conn_id: conn_id.to_owned(),
         };
         Ok((handle, guard))
+    }
+
+    /// The tool and target of the handle `conn_id` of `session`; `None` for any other session's
+    /// or a released handle.
+    pub fn handle_target(&self, session: &str, conn_id: &str) -> Option<(String, TargetRef)> {
+        self.lock()
+            .handles
+            .get(conn_id)
+            .filter(|e| e.session == session)
+            .map(|e| (e.tool.clone(), e.target.clone()))
+    }
+
+    /// Lets `id` in the input field `field` name the handle `conn_id` of `session` (a NATS
+    /// upload's `uploadId`), until the handle is released or [`Hub::unlink`].
+    pub fn link(&self, session: &str, conn_id: &str, field: &str, id: &str) {
+        if let Some(entry) = self
+            .lock()
+            .handles
+            .get_mut(conn_id)
+            .filter(|e| e.session == session)
+        {
+            entry.links.insert((field.to_owned(), id.to_owned()));
+        }
+    }
+
+    pub fn unlink(&self, session: &str, field: &str, id: &str) {
+        let key = (field.to_owned(), id.to_owned());
+        for entry in self.lock().handles.values_mut() {
+            if entry.session == session {
+                entry.links.remove(&key);
+            }
+        }
+    }
+
+    /// The handle of `session` that `id` in `field` names ([`Hub::link`]).
+    pub fn linked(&self, session: &str, field: &str, id: &str) -> Option<String> {
+        let key = (field.to_owned(), id.to_owned());
+        self.lock()
+            .handles
+            .iter()
+            .find(|(_, e)| e.session == session && e.links.contains(&key))
+            .map(|(conn_id, _)| conn_id.clone())
+    }
+
+    /// The target of the handle terminal `terminal_id` of `session` was opened on.
+    pub fn terminal_target(&self, session: &str, terminal_id: &str) -> Option<TargetRef> {
+        self.lock()
+            .terminals
+            .get(&(session.to_owned(), terminal_id.to_owned()))
+            .map(|t| t.target.clone())
     }
 
     /// Releases one handle of `session` and `tool`; `false` when there was none (idempotent).
@@ -573,16 +645,24 @@ impl Hub {
         })
     }
 
-    /// Opens a terminal `terminal_id` for `session`; a duplicate is `Invalid`.
+    /// Opens a terminal `terminal_id` for `session` on its handle `conn_id`; a duplicate is
+    /// `Invalid`, a handle that is gone `NotFound`.
     pub fn open_terminal(
         self: &Arc<Self>,
         session: &str,
         tool: &str,
+        conn_id: &str,
         terminal_id: &str,
     ) -> Result<Terminal, ToolError> {
         check_client_id(tool, "terminalId", terminal_id)?;
         let key = (session.to_owned(), terminal_id.to_owned());
         let mut state = self.lock();
+        let target = state
+            .handles
+            .get(conn_id)
+            .filter(|e| e.session == session && e.tool == tool)
+            .map(|e| e.target.clone())
+            .ok_or_else(|| ToolError::connection_gone(tool))?;
         if state.terminals.contains_key(&key) {
             return Err(ToolError::invalid(
                 tool,
@@ -591,7 +671,9 @@ impl Hub {
             ));
         }
         let (tx, rx) = mpsc::channel(TERMINAL_INPUT_CAPACITY);
-        state.terminals.insert(key, TerminalEntry { input: tx });
+        state
+            .terminals
+            .insert(key, TerminalEntry { input: tx, target });
         Ok(Terminal {
             hub: Arc::clone(self),
             session: session.to_owned(),

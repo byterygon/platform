@@ -24,7 +24,16 @@
 //! registry refuses metadata that breaks these rules). Handlers observe cancellation through
 //! [`Ctx::cancelled`] and pass [`Ctx::cancellation_token`] on (e.g. to the Plugin Host driver call).
 //!
-//! Handlers re-check targets and escalated risk with [`Ctx::authorize`].
+//! With a [`Targets`] resolver ([`Router::with_targets`]), step 4 asks it first for the call's
+//! target, built on the server from the session and the input (a live handle's profile, a
+//! namespace), so the dispatch check, its audit entries and any approval name what the call acts
+//! on. A resolver may refuse the call itself (a handle that does not exist) with its own error.
+//! Handlers re-check narrower targets and escalated risk with [`Ctx::authorize`].
+//!
+//! A refusal reaches the client as `PermissionDenied` without the authorizer's reason, unless the
+//! router was built [`Router::with_denial_details`]: then its details are
+//! [`PermissionDeniedDetails`] (the permission, the target and the kind of reason, never the
+//! caller's other permissions).
 //!
 //! **Audit** (spec §8, Open questions 24g and 26; see [`crate::audit`]): with an [`AuditSink`]
 //! ([`Router::with_audit`]), every refusal by the authorizer is one entry, and every call that
@@ -42,7 +51,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use security_types::{
     Action, ApprovalSpec, AuditDecision, AuditEntry, AuditPrincipal, AuditReporter, AuditSink,
-    Authorizer, AuthzRequest, Decision, Digest, Outcome, Principal, Risk, TargetRef, unix_now_ms,
+    Authorizer, AuthzRequest, Decision, Digest, Outcome, Principal, Reason, Risk, TargetRef,
+    unix_now_ms,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -170,6 +180,21 @@ pub trait Api: Send + Sync + 'static {
     fn procedures(self: Arc<Self>) -> Vec<Procedure>;
 }
 
+/// Builds a call's target on the server, before the authorizer sees the call (see the module
+/// documentation). Never trusts a target the client names: it reads the input only for the ids
+/// it resolves itself (a live handle, a terminal) and the names below them (a namespace).
+pub trait Targets: Send + Sync + 'static {
+    /// The target of a call to `meta` with `input` on `session`: `Ok(None)` for a call without
+    /// one, `Err` to refuse the call with that error before the authorizer runs (for example
+    /// `NotFound` for a handle that is gone).
+    fn target(
+        &self,
+        session: &Session,
+        meta: &ProcedureMeta,
+        input: &Value,
+    ) -> Result<Option<TargetRef>, ErrorPayload>;
+}
+
 /// Records a human approval request and returns its id (spec §8, `approvals.pending`).
 pub trait Approvals: Send + Sync + 'static {
     /// `None` if the request could not be recorded; the call is then refused without an id.
@@ -236,6 +261,9 @@ struct Guard {
     authorizer: Arc<dyn DynAuthorizer>,
     approvals: Option<Arc<dyn Approvals>>,
     audit: Arc<Recorder>,
+    targets: Option<Arc<dyn Targets>>,
+    /// Refusals carry [`PermissionDeniedDetails`].
+    denial_details: bool,
 }
 
 /// What a check is about, for the authorizer and the audit entry.
@@ -280,10 +308,14 @@ impl Guard {
         let decision = self.authorizer.check(&req).await;
         let rejected = match &decision {
             Decision::Allow => return Ok(()),
-            // The reason stays on the server: the client learns only that it was denied.
-            Decision::Deny { .. } => Rejected {
+            // Without denial details the reason stays on the server: the client learns only that
+            // it was denied.
+            Decision::Deny { reason } => Rejected {
                 code: Code::PermissionDenied,
                 approval_id: None,
+                denial: self
+                    .denial_details
+                    .then(|| Box::new(PermissionDeniedDetails::new(&action, check.target, reason))),
             },
             Decision::NeedsApproval { approval } => {
                 let approval_id = match &self.approvals {
@@ -293,6 +325,7 @@ impl Guard {
                 Rejected {
                     code: Code::ApprovalRequired,
                     approval_id,
+                    denial: None,
                 }
             }
         };
@@ -353,6 +386,53 @@ pub struct ApprovalRequired {
     pub approval_id: String,
 }
 
+/// `details` of a `PermissionDenied` error from the authorizer, on a router built
+/// [`Router::with_denial_details`] (DOC-25 §3.3.4): which permission the call needs, on which
+/// target, and why it was refused. Never the caller's other permissions.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, ts_rs::TS, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename = "PermissionDeniedDetails")]
+#[schemars(rename = "PermissionDeniedDetails")]
+pub struct PermissionDeniedDetails {
+    pub perm: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target: Option<DeniedTarget>,
+    /// `missing` (no role grants it), `scope` (granted, but not here), `unknown` (no such
+    /// permission) or `policy` (anything else: another tenant, an agent, a session that ended).
+    pub reason: String,
+}
+
+/// The target of a refused call, as [`TargetRef`] has it.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, ts_rs::TS, schemars::JsonSchema,
+)]
+pub struct DeniedTarget {
+    pub kind: String,
+    pub id: String,
+}
+
+impl PermissionDeniedDetails {
+    fn new(action: &Action, target: Option<&TargetRef>, reason: &Reason) -> Self {
+        let reason = match reason {
+            Reason::MissingPermission { .. } => "missing",
+            Reason::OutOfScope { .. } => "scope",
+            Reason::UnknownPermission { .. } => "unknown",
+            Reason::TenantMismatch | Reason::Policy { .. } => "policy",
+        };
+        PermissionDeniedDetails {
+            perm: action.perm.as_str().to_owned(),
+            target: target.map(|t| DeniedTarget {
+                kind: t.kind.clone(),
+                id: t.id.clone(),
+            }),
+            reason: reason.to_owned(),
+        }
+    }
+}
+
 /// A call refused by the authorizer: `PermissionDenied`, or `ApprovalRequired` with the id of the
 /// recorded approval request when there is an approval queue. [`Ctx::authorize`] also returns
 /// `Unavailable` when an allowed re-check that must be recorded could not be.
@@ -360,6 +440,8 @@ pub struct ApprovalRequired {
 pub struct Rejected {
     pub code: Code,
     pub approval_id: Option<String>,
+    /// The details of a `PermissionDenied`, on a router built [`Router::with_denial_details`].
+    pub denial: Option<Box<PermissionDeniedDetails>>,
 }
 
 impl fmt::Display for Rejected {
@@ -381,10 +463,16 @@ impl IntoErrorPayload for Rejected {
 
     fn into_error_payload(self) -> ErrorPayload {
         let mut payload = ErrorPayload::new(self.code, self.to_string());
-        payload.details = self.approval_id.map(|approval_id| {
-            serde_json::to_value(ApprovalRequired { approval_id })
-                .expect("ApprovalRequired serializes")
-        });
+        payload.details = match (self.approval_id, self.denial) {
+            (Some(approval_id), _) => Some(
+                serde_json::to_value(ApprovalRequired { approval_id })
+                    .expect("ApprovalRequired serializes"),
+            ),
+            (None, Some(denial)) => {
+                Some(serde_json::to_value(denial).expect("PermissionDeniedDetails serializes"))
+            }
+            (None, None) => None,
+        };
         payload
     }
 }
@@ -481,6 +569,7 @@ impl Ctx {
             return Err(Rejected {
                 code: Code::Unavailable,
                 approval_id: None,
+                denial: None,
             });
         }
         self.scope.update_completion(|c| c.raise_risk(risk));
@@ -522,6 +611,8 @@ impl Router {
                 authorizer: Arc::from(authorizer),
                 approvals: approvals.map(Arc::from),
                 audit: Arc::new(Recorder::new()),
+                targets: None,
+                denial_details: false,
             }),
             procedures: Arc::default(),
         }
@@ -551,12 +642,34 @@ impl Router {
     }
 
     fn with_recorder(self, recorder: Recorder) -> Router {
+        self.with_guard(|g| g.audit = Arc::new(recorder))
+    }
+
+    /// This router asking `targets` for each call's target before the authorizer (see the
+    /// module documentation).
+    #[must_use]
+    pub fn with_targets(self, targets: impl Targets) -> Router {
+        let targets: Arc<dyn Targets> = Arc::new(targets);
+        self.with_guard(|g| g.targets = Some(targets))
+    }
+
+    /// This router answering a refusal with [`PermissionDeniedDetails`] (DOC-25 §3.3.4).
+    #[must_use]
+    pub fn with_denial_details(self) -> Router {
+        self.with_guard(|g| g.denial_details = true)
+    }
+
+    fn with_guard(self, change: impl FnOnce(&mut Guard)) -> Router {
+        let mut guard = Guard {
+            authorizer: Arc::clone(&self.guard.authorizer),
+            approvals: self.guard.approvals.clone(),
+            audit: Arc::clone(&self.guard.audit),
+            targets: self.guard.targets.clone(),
+            denial_details: self.guard.denial_details,
+        };
+        change(&mut guard);
         Router {
-            guard: Arc::new(Guard {
-                authorizer: Arc::clone(&self.guard.authorizer),
-                approvals: self.guard.approvals.clone(),
-                audit: Arc::new(recorder),
-            }),
+            guard: Arc::new(guard),
             procedures: self.procedures,
         }
     }
@@ -854,10 +967,15 @@ async fn admit(
     } else {
         input_digest(&meta.redacted_input(&call.input))
     };
+    // The target is built on the server, never named by the client (see [`Targets`]).
+    let target = match &guard.targets {
+        Some(targets) => targets.target(&session, &meta, &call.input)?,
+        None => None,
+    };
     let check = Check {
         principal: &session.principal,
         meta: &meta,
-        target: None,
+        target: target.as_ref(),
         risk: meta.risk,
         input_digest: digest,
         correlation_id: scope.correlation_id(),

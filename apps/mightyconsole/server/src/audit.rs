@@ -209,6 +209,7 @@ fn reason_kind(reason: &Reason) -> &'static str {
     match reason {
         Reason::UnknownPermission { .. } => "unknown_permission",
         Reason::MissingPermission { .. } => "missing_permission",
+        Reason::OutOfScope { .. } => "out_of_scope",
         Reason::TenantMismatch => "tenant_mismatch",
         Reason::Policy { .. } => "policy",
     }

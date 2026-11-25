@@ -21,6 +21,17 @@ fn committed_artifacts_match_the_router() {
     assert_eq!(output.schema_hash, *SCHEMA_HASH);
 }
 
+/// Every procedure is protected (DOC-25 §3.3.8): its permission is in the catalogue and a role,
+/// follows the risk rule, and a procedure that acts on a connection checks its target.
+#[test]
+fn every_procedure_is_protected() {
+    let output =
+        codegen::generate(&codegen_router(), &api_info()).unwrap_or_else(|e| panic!("{e}"));
+    let manifest: serde_json::Value = serde_json::from_str(&output.manifest_json).unwrap();
+    let problems = mightyconsole_server::authz::completeness::problems(&manifest);
+    assert!(problems.is_empty(), "{problems:#?}");
+}
+
 const LG_READ: &str = "langgraph.read";
 const LG_WRITE: &str = "langgraph.write";
 const LG_DESTROY: &str = "langgraph.destroy";
@@ -41,28 +52,28 @@ fn the_procedures_of_the_spec() {
         (
             "app.account.changePassword",
             Mutation,
-            "app.account",
+            "app.self",
             Risk::Write,
             defaults,
         ),
         (
             "app.account.totp.begin",
             Mutation,
-            "app.account",
+            "app.self",
             Risk::Write,
             defaults,
         ),
         (
             "app.account.totp.confirm",
             Mutation,
-            "app.account",
+            "app.self",
             Risk::Write,
             defaults,
         ),
         (
             "app.account.totp.remove",
             Mutation,
-            "app.account",
+            "app.self",
             Risk::Write,
             defaults,
         ),
@@ -74,7 +85,7 @@ fn the_procedures_of_the_spec() {
             (None, None),
         ),
         ("app.info", Query, "app.read", Risk::Read, defaults),
-        ("app.me", Query, "app.read", Risk::Read, defaults),
+        ("app.me", Query, "app.self", Risk::Read, defaults),
         // Docker over SSH (TSK-81, spec §10.6): connect waits for SSH, the login and the ping.
         (
             "docker.compose.projects",
@@ -97,14 +108,14 @@ fn the_procedures_of_the_spec() {
         (
             "docker.containers.exec",
             Stream,
-            "docker.write",
+            "docker.exec",
             Risk::Write,
             live,
         ),
         (
             "docker.containers.files.download",
             Stream,
-            "docker.read",
+            "docker.files.read",
             Risk::Read,
             live,
         ),
@@ -121,7 +132,7 @@ fn the_procedures_of_the_spec() {
         (
             "docker.containers.files.read",
             Query,
-            "docker.read",
+            "docker.files.read",
             Risk::Read,
             defaults,
         ),
@@ -905,7 +916,7 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.activities.terminate",
             Mutation,
-            "temporal.write",
+            "temporal.destroy",
             Risk::Destructive,
             defaults,
         ),
@@ -993,7 +1004,7 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.schedules.delete",
             Mutation,
-            "temporal.write",
+            "temporal.destroy",
             Risk::Destructive,
             defaults,
         ),
@@ -1150,7 +1161,7 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.workflows.reset",
             Mutation,
-            "temporal.write",
+            "temporal.destroy",
             Risk::Destructive,
             defaults,
         ),
@@ -1171,7 +1182,7 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.workflows.terminate",
             Mutation,
-            "temporal.write",
+            "temporal.destroy",
             Risk::Destructive,
             defaults,
         ),
