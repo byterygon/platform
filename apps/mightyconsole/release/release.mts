@@ -208,7 +208,10 @@ export function buildImage(options: { arch: string; binary: string; notices: str
   stageDocs(context, options.notices, notes);
   copyFileSync(options.binary, join(context, "mightyconsole-server"));
   chmodSync(join(context, "mightyconsole-server"), 0o755);
+  // The data directory is 0700 (DOC-25 §3.6.3), whatever the umask: COPY keeps the mode, and a
+  // group- or world-writable one refuses the start (§3.6.2 point 4).
   mkdirSync(join(context, "data"));
+  chmodSync(join(context, "data"), 0o700);
   writeFileSync(join(context, "data", ".keep"), "");
   const tag = `byterygon/mightyconsole:${version}`;
   // The commit the image was built from (label org.opencontainers.image.revision, TSK-88).

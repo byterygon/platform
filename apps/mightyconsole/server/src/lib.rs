@@ -36,6 +36,7 @@ pub mod cli;
 pub mod config;
 pub mod core;
 pub mod management;
+pub mod preflight;
 pub mod profiles;
 pub mod secrets;
 pub mod sessions;
@@ -309,6 +310,9 @@ pub enum ServedUi {
 /// Why the server did not start.
 #[derive(Debug)]
 pub enum StartError {
+    /// One or more conditions of DOC-25 §3.6.2 that are checked before anything is opened:
+    /// one message per failed condition, each naming what is missing.
+    Preflight(Vec<String>),
     Tls(TlsError),
     /// The sign-in configuration (DOC-25 §3.6.2 point 2).
     Auth(String),
@@ -335,6 +339,9 @@ pub enum StartError {
 impl std::fmt::Display for StartError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            StartError::Preflight(problems) => {
+                write!(f, "{}", problems.join("\nmightyconsole-server: "))
+            }
             StartError::Tls(e) => e.fmt(f),
             StartError::Auth(e) => write!(f, "sign-in: {e}"),
             StartError::Audit(e) => write!(f, "audit log: {e}"),
@@ -356,104 +363,18 @@ impl std::error::Error for StartError {}
 /// `online`, the IdP's discovery document and keys. Never listens and creates nothing. `Ok`
 /// lists what was checked; `Err` every problem found.
 pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<String>, Vec<String>> {
-    let mut report = Vec::new();
-    let mut problems = Vec::new();
-    report.push(format!(
-        "listen {}{}; public origin {}{}",
-        config.listen,
-        if config.is_exposed() {
-            " (beyond loopback)"
-        } else {
-            ""
-        },
-        config.public_origin,
-        config.base_path
-    ));
-    match &config.tls {
-        TlsSource::Files { .. } => match tls::load(&config.tls) {
-            Ok(tls) => report.push(format!("certificate SHA-256 {}", tls.fingerprint)),
-            Err(e) => problems.push(e.to_string()),
-        },
-        TlsSource::Generated { dir } => report.push(format!(
-            "certificate: self-signed, kept in {}",
-            dir.display()
-        )),
-    }
-    if let Some(ui) = &config.ui
-        && let Err(e) = static_ui::StaticUi::open(ui)
-    {
-        problems.push(format!("UI directory {}: {e}", ui.display()));
-    }
-    let (keys_report, keys_problems) =
-        secrets::keys::check(config.data.as_deref(), &config.secrets);
-    report.extend(keys_report);
-    problems.extend(keys_problems);
-    // The log is verified, not opened: `config check` creates nothing (DOC-25 §3.6.1).
-    match &config.data {
-        None => problems
-            .push("audit log: no data directory: give --data or set MIGHTYCONSOLE_DATA".into()),
-        Some(data) => {
-            let dir = audit::audit_dir(data);
-            let files = audit_jsonl::segment_files(&dir).unwrap_or_default();
-            match audit_jsonl::check_files(&files) {
-                Ok(checked) => report.push(format!(
-                    "audit log {}: {} records in {} segment(s), chain intact; reads: {}{}",
-                    dir.display(),
-                    checked.records,
-                    checked.segments.len(),
-                    config.audit.reads.as_str(),
-                    if config.audit.stderr {
-                        ", also on stderr"
-                    } else {
-                        ""
-                    }
-                )),
-                Err(e) => problems.push(format!("audit log {e}")),
+    let preflight::Preflight {
+        mut report,
+        mut problems,
+    } = preflight::run(config);
+    if online && config.auth.oidc.is_some() {
+        // Only when the configuration itself loaded: the problems above already say why not.
+        if let Ok(login) = preflight::oidc_login(config) {
+            match login.discover().await {
+                Ok(()) => report.push("identity provider: discovery and keys fetched".into()),
+                Err(e) => problems.push(format!("identity provider: {e}")),
             }
         }
-    }
-    match &config.auth.oidc {
-        None => report.push(format!(
-            "sign-in: built-in accounts{}; no [auth.oidc]",
-            if config.auth.accounts {
-                ""
-            } else {
-                " off (the default administrator only)"
-            }
-        )),
-        Some(oidc) => match oidc.load(std::env::var(OIDC_CLIENT_SECRET_ENV).ok()) {
-            Err(e) => problems.push(e),
-            Ok(loaded) => {
-                let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-                let store = Arc::new(LoginSessions::new(
-                    Arc::clone(&clock),
-                    config.auth.limits,
-                    Arc::new(ambidex_axum::NoSessionEvents),
-                ));
-                let hooks = Arc::new(McSignIn::new(
-                    &config.auth.tenant,
-                    Arc::new(Stderr),
-                    EventLog::discard(),
-                ));
-                let issuer = loaded.issuer.clone();
-                match OidcLogin::new(loaded, config.login_routes(), store, hooks, clock) {
-                    Err(e) => problems.push(format!("[auth.oidc]: {e}")),
-                    Ok(login) => {
-                        report.push(format!(
-                            "sign-in: OIDC through {issuer}; register the redirect URI {}",
-                            login.redirect_uri()
-                        ));
-                        if online {
-                            match login.discover().await {
-                                Ok(()) => report
-                                    .push("identity provider: discovery and keys fetched".into()),
-                                Err(e) => problems.push(format!("identity provider: {e}")),
-                            }
-                        }
-                    }
-                }
-            }
-        },
     }
     if problems.is_empty() {
         Ok(report)
@@ -616,6 +537,17 @@ impl Server {
         config: ServeConfig,
         options: StartOptions,
     ) -> Result<Server, StartError> {
+        // Every condition that can be checked without side effects, all at once (DOC-25 §3.6.2).
+        let checked = preflight::run(&config);
+        if !checked.problems.is_empty() {
+            return Err(StartError::Preflight(checked.problems));
+        }
+        // Private before anything is written into it (the certificate is the first).
+        if let Some(data) = &config.data {
+            store::create_private_dir(data).map_err(|e| {
+                StartError::Store(format!("data directory {}: {e}", data.display()))
+            })?;
+        }
         let tls = tls::load(&config.tls).map_err(StartError::Tls)?;
         let mut ws_config =
             WsConfig::new(config.allowed_hosts.clone(), config.public_origin.clone());
@@ -638,13 +570,6 @@ impl Server {
             None => ServedUi::Placeholder,
         };
 
-        // Someone can sign in (DOC-25 §3.6.2 point 1). Pinned group mappings come with roles.
-        if !config.auth.accounts && config.auth.oidc.is_none() {
-            return Err(StartError::Auth(ACCOUNTS_OFF_WITHOUT_OIDC.into()));
-        }
-        if !config.auth.default_admin && !has_pinned_admin(&config.auth) {
-            return Err(StartError::Auth(DEFAULT_ADMIN_OFF.into()));
-        }
         if let Some(worker) = options.jq_worker {
             core::jq::set_worker_program(worker);
         }

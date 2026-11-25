@@ -20,6 +20,7 @@ USER 65532:65532
 VOLUME ["/data"]
 EXPOSE 7443
 ENTRYPOINT ["/mightyconsole-server"]
-# All of the container's addresses: publish the port on the host's 127.0.0.1 only
-# (docker run -p 127.0.0.1:7443:7443 ...); there is no login.
+# All of the container's addresses. Everyone signs in (built-in accounts or OIDC); the
+# certificate is self-signed unless --tls-cert and --tls-key are given, so publish the port on
+# the host's 127.0.0.1 only (docker run -p 127.0.0.1:7443:7443 ...) until you have one.
 CMD ["serve", "--listen", "0.0.0.0:7443"]

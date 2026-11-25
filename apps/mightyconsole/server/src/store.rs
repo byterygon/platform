@@ -312,7 +312,7 @@ impl Store {
             path: path.clone(),
             message,
         };
-        fs::create_dir_all(data).map_err(|e| other(e.to_string()))?;
+        create_private_dir(data).map_err(|e| other(e.to_string()))?;
         let created = !path.exists();
         let db = redb::Builder::new()
             .set_cache_size(16 << 20)
@@ -1057,6 +1057,19 @@ impl Store {
         copy_table(&read, &write, crate::profiles::table::IMPORTS)?;
         write.commit().map_err(err)
     }
+}
+
+/// Makes the data directory (and missing parents) with mode 0700 (DOC-25 §3.6.3); an existing
+/// one is left as it is, and the start checks it (`preflight`).
+pub fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder.create(path)
 }
 
 /// Mode 0600 on Unix. A file that already existed keeps its content but has its mode put right.
