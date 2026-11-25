@@ -101,6 +101,8 @@ struct HandleEntry {
 struct SessionEntry {
     events: broadcast::Sender<AppEvent>,
     subscribers: usize,
+    /// Who subscribed (`app.events`), for events only some people may see.
+    principal: Option<security_types::Principal>,
 }
 
 struct TerminalEntry {
@@ -124,6 +126,7 @@ impl State {
             .or_insert_with(|| SessionEntry {
                 events: broadcast::channel(EVENTS_CAPACITY).0,
                 subscribers: 0,
+                principal: None,
             })
     }
 
@@ -540,6 +543,31 @@ impl Hub {
 
     pub fn publish(&self, session: &str, event: AppEvent) {
         self.lock().publish(session, event);
+    }
+
+    /// Sends `event` to every subscribed session whose principal `may_see` allows.
+    pub fn publish_where(
+        &self,
+        event: &AppEvent,
+        may_see: impl Fn(&security_types::Principal) -> bool,
+    ) {
+        let state = self.lock();
+        for entry in state.sessions.values() {
+            if entry.principal.as_ref().is_some_and(&may_see) {
+                let _ = entry.events.send(event.clone());
+            }
+        }
+    }
+
+    /// Subscribes to the session's events (`app.events`) as `principal`.
+    pub fn subscribe_as(
+        self: &Arc<Self>,
+        session: &str,
+        principal: &security_types::Principal,
+    ) -> EventsGuard {
+        let guard = self.subscribe(session);
+        self.lock().session(session).principal = Some(principal.clone());
+        guard
     }
 
     /// Subscribes to the session's events (`app.events`).

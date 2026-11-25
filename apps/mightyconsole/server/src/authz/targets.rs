@@ -8,6 +8,7 @@
 //!   succeeds, on the caller's own browser connection of that tool);
 //! - `terminalId`: the target of the handle the terminal was opened on;
 //! - `uploadId`: the handle a NATS upload runs on;
+//! - `id` of a `profiles.*` call and `owner.id` of a `secrets.*` call: the stored profile;
 //! - `profile` (a `<tool>.connect`, `temporal.testCodec`): the profile the browser sends;
 //! - then, for a tool with namespaces ([`catalogue::NAMESPACED_TOOLS`]), the input's
 //!   `namespace` below that target.
@@ -100,6 +101,21 @@ fn text<'a>(input: &'a Value, field: &str) -> Option<&'a str> {
     input.get(field).and_then(Value::as_str)
 }
 
+/// The stored profile a `profiles.*` or `secrets.*` call names: `id` (`profiles.get`, `update`,
+/// `duplicate`, `delete`), or `owner.id` of a profile's secret.
+fn stored_profile<'a>(procedure: &str, input: &'a Value) -> Option<&'a str> {
+    if procedure.starts_with("profiles.") {
+        text(input, "id")
+    } else if procedure.starts_with("secrets.") {
+        let owner = input.get("owner")?;
+        (text(owner, "kind") == Some("profile"))
+            .then(|| text(owner, "id"))
+            .flatten()
+    } else {
+        None
+    }
+}
+
 impl Targets for McTargets {
     fn target(
         &self,
@@ -136,6 +152,8 @@ impl Targets for McTargets {
                         .into_error_payload()
                 })?;
             self.handle(&session.id, namespace, &conn_id)?
+        } else if let Some(id) = stored_profile(&meta.name, input) {
+            crate::profiles::target_of(id)
         } else if input.get("profile").is_some_and(Value::is_object)
             && catalogue::TOOLS.contains(&namespace)
         {

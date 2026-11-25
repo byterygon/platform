@@ -538,6 +538,27 @@
           "type": "object"
         },
         {
+          "description": "A stored profile was made, changed or deleted (DOC-25 §3.4.2): sent to the sessions that\nmay see it, which read it again.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "ProfileChanged",
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
           "description": "A terminal ended; `term.*` calls on it answer `NotFound` from now on.",
           "properties": {
             "exitCode": {
@@ -4741,6 +4762,41 @@
         "connId",
         "ids",
         "force"
+      ],
+      "type": "object"
+    },
+    "ImportRecord": {
+      "additionalProperties": false,
+      "description": "A browser record to import (DOC-21 §4.2, migrated to its tool's newest version).",
+      "properties": {
+        "color": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extras": {
+          "default": null
+        },
+        "fields": true,
+        "name": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool",
+        "version",
+        "name",
+        "fields"
       ],
       "type": "object"
     },
@@ -9025,6 +9081,81 @@
       ],
       "type": "object"
     },
+    "OwnerWire": {
+      "description": "Who a profile belongs to, on the wire.",
+      "oneOf": [
+        {
+          "description": "A user's: their principal id. In an input, the caller's own (any `user` given is ignored).",
+          "properties": {
+            "kind": {
+              "const": "personal",
+              "type": "string"
+            },
+            "user": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "shared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OwnerWire.Output": {
+      "description": "Who a profile belongs to, on the wire.",
+      "oneOf": [
+        {
+          "description": "A user's: their principal id. In an input, the caller's own (any `user` given is ignored).",
+          "properties": {
+            "kind": {
+              "const": "personal",
+              "type": "string"
+            },
+            "user": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "user"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "shared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Part": {
       "description": "Which part of a message a codec reads or writes.",
       "enum": [
@@ -9533,6 +9664,332 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "ProfileCreateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extras": {
+          "default": null
+        },
+        "fields": true,
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "description": "Secret values by field (redacted). An empty value is left out.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "name",
+        "owner",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ProfileDeleteInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The profile's name: what the person types to confirm.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProfileDuplicateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The copy's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProfileDuplicateOutput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ProfileView"
+        },
+        "secretsCopied": {
+          "description": "Whether the secrets came along (the caller may edit the source and the copy has its owner).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile",
+        "secretsCopied"
+      ],
+      "type": "object"
+    },
+    "ProfileIdInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "ProfileImportInput": {
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "record": {
+          "$ref": "#/$defs/ImportRecord"
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "description": "Its secrets by server field path (redacted).",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "description": "The record's id in the browser.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "record",
+        "owner"
+      ],
+      "type": "object"
+    },
+    "ProfileImportOutput": {
+      "properties": {
+        "created": {
+          "description": "`false` when an earlier import of the same record made it.",
+          "type": "boolean"
+        },
+        "profile": {
+          "$ref": "#/$defs/ProfileView"
+        }
+      },
+      "required": [
+        "profile",
+        "created"
+      ],
+      "type": "object"
+    },
+    "ProfileUpdateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "default": null,
+          "description": "A palette name; `\"\"` clears it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "etag": {
+          "description": "The etag of the record this edit starts from.",
+          "type": "string"
+        },
+        "extras": {
+          "default": null
+        },
+        "fields": {
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "description": "Secrets set in the same change (redacted), which keeps them when a target field changes.",
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "etag"
+      ],
+      "type": "object"
+    },
+    "ProfileUpdateOutput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ProfileView"
+        },
+        "removedSecrets": {
+          "description": "Secrets removed because a target field changed and they were not set again (DOC-25\n§3.4.8).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile",
+        "removedSecrets"
+      ],
+      "type": "object"
+    },
+    "ProfileView": {
+      "description": "A stored profile as the caller may see it (DOC-21 §4.2 without `secrets`).",
+      "properties": {
+        "access": {
+          "description": "`owner`, `edit`, `use` or `metadata`.",
+          "type": "string"
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "extras": {
+          "description": "Empty when `access` is `metadata`."
+        },
+        "fields": {
+          "description": "All fields; only the target fields when `access` is `metadata`."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire.Output"
+        },
+        "secrets": {
+          "description": "The secrets set (none listed for `metadata`).",
+          "items": {
+            "$ref": "#/$defs/SecretRow"
+          },
+          "type": "array"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "version",
+        "name",
+        "fields",
+        "extras",
+        "owner",
+        "etag",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "access",
+        "secrets"
+      ],
+      "type": "object"
+    },
+    "ProfilesListInput": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "default": null,
+          "description": "One tool's profiles; all when left out.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ProfilesOutput": {
+      "properties": {
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/ProfileView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "profiles"
+      ],
       "type": "object"
     },
     "QueryInput": {
@@ -11988,6 +12445,131 @@
       ],
       "type": "object"
     },
+    "SecretFieldInput": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/SecretOwnerWire"
+        }
+      },
+      "required": [
+        "owner",
+        "field"
+      ],
+      "type": "object"
+    },
+    "SecretOwnerInput": {
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/SecretOwnerWire"
+        }
+      },
+      "required": [
+        "owner"
+      ],
+      "type": "object"
+    },
+    "SecretOwnerWire": {
+      "additionalProperties": false,
+      "description": "What a secret belongs to on the wire.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "`profile` (routes come with DOC-23).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "type": "object"
+    },
+    "SecretRemoveOutput": {
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "type": "object"
+    },
+    "SecretRow": {
+      "description": "A secret's status in a profile: never its value.",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "set": {
+          "type": "boolean"
+        },
+        "setAt": {
+          "description": "Unix ms.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "setBy": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "field",
+        "set",
+        "version",
+        "setBy",
+        "setAt"
+      ],
+      "type": "object"
+    },
+    "SecretSetInput": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/SecretOwnerWire"
+        },
+        "value": {
+          "description": "The value (redacted; never answered).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "field",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SecretsOutput": {
+      "properties": {
+        "secrets": {
+          "items": {
+            "$ref": "#/$defs/SecretRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "secrets"
+      ],
+      "type": "object"
+    },
     "SecretsStatusOutput": {
       "description": "What `admin.secrets.status` answers.",
       "properties": {
@@ -13459,6 +14041,39 @@
       },
       "required": [
         "current"
+      ],
+      "type": "object"
+    },
+    "TransferInput": {
+      "additionalProperties": false,
+      "properties": {
+        "profileIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "toUserId": {
+          "description": "The new owner's principal id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profileIds",
+        "toUserId"
+      ],
+      "type": "object"
+    },
+    "TransferOutput": {
+      "properties": {
+        "transferred": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "transferred"
       ],
       "type": "object"
     },
@@ -15006,6 +15621,27 @@
         "$ref": "#/$defs/GroupsListOutput"
       },
       "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TransferInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.profiles.transfer",
+      "output": {
+        "$ref": "#/$defs/TransferOutput"
+      },
+      "perm": "admin.users.write",
       "redact": [],
       "risk": "Write",
       "timeout_default_ms": 30000,
@@ -18349,6 +18985,224 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ProfileCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "profiles.create",
+      "output": {
+        "$ref": "#/$defs/ProfileView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfileDeleteInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "profiles.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfileDuplicateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "profiles.duplicate",
+      "output": {
+        "$ref": "#/$defs/ProfileDuplicateOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfileIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "profiles.get",
+      "output": {
+        "$ref": "#/$defs/ProfileView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfileImportInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "profiles.import",
+      "output": {
+        "$ref": "#/$defs/ProfileImportOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfilesListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "profiles.list",
+      "output": {
+        "$ref": "#/$defs/ProfilesOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProfileUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "profiles.update",
+      "output": {
+        "$ref": "#/$defs/ProfileUpdateOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SecretFieldInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "secrets.remove",
+      "output": {
+        "$ref": "#/$defs/SecretRemoveOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SecretSetInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "secrets.set",
+      "output": {
+        "$ref": "#/$defs/SecretRow"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SecretOwnerInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "secrets.status",
+      "output": {
+        "$ref": "#/$defs/SecretsOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ActivityReasonInput"
       },
       "kind": "mutation",
@@ -19335,5 +20189,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:ecf61d52212b8d1e9943408afba4283216e6ca4ac5d41edc6aabda69869084f6"
+  "schema_hash": "sha256:de01ce6f3e37d5f6b7d5ed77a4308f5cd48112646d1a5888d88d43ba730ac8fb"
 }

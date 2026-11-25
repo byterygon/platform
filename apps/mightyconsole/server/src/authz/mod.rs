@@ -148,6 +148,27 @@ impl RoleAuthorizer {
         self
     }
 
+    /// Whether `principal` holds `perm` on `target` (`None`: anywhere it applies), by the same
+    /// steps as a call (DOC-25 §3.3.4) but as a Read, so no confirmation is asked. The profile
+    /// procedures use it for what one procedure permission cannot say: who sees, uses and edits
+    /// which profile (§3.4.2).
+    pub fn permits(
+        &self,
+        principal: &security_types::Principal,
+        perm: &str,
+        target: Option<&TargetRef>,
+    ) -> bool {
+        let action = security_types::Action::new("profiles.access", perm);
+        self.decide(&AuthzRequest {
+            principal,
+            action: &action,
+            target,
+            risk: Risk::Read,
+            input_digest: security_types::Digest::ZERO,
+        })
+        .is_allow()
+    }
+
     /// Step 7: a Destructive call needs a confirmed challenge.
     fn confirmed(&self, req: &AuthzRequest<'_>) -> Decision {
         if req.risk < Risk::Destructive {

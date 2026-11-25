@@ -16,11 +16,13 @@
 //! - `group_roles`: `mappings` → the editable group mappings with their etag as JSON.
 //! - `groups`: local group name → its members (principal ids) as JSON.
 //!
+//! - `profiles`, `imports`: stored profiles and the browser records imported as them
+//!   ([`crate::profiles::table`]).
 //! - `secrets`: one encrypted entry per secret ([`crate::secrets::table`]); `meta` also counts
 //!   the data keys wrapped under each key (`wraps:<kekId>`).
 //!
 //! The tables of roles, groups and secrets are made on open when an older store lacks them.
-//! Profiles (TSK-139) add theirs with that task. An account's TOTP key is a `secrets` entry
+//! An account's TOTP key is a `secrets` entry
 //! (owner kind `account`, field `totp`), written in the transaction of its row; rows of TSK-142's
 //! stores that still hold the key are moved at start ([`Store::migrate_totp_keys`]). Reading an
 //! account with TOTP needs the keys ([`Store::set_vault`]).
@@ -495,6 +497,12 @@ impl Store {
             write.open_table(GROUPS).map_err(err)?;
             write
                 .open_table(crate::secrets::table::SECRETS)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::PROFILES)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::IMPORTS)
                 .map_err(err)?;
         }
         write.commit().map_err(err)
@@ -1003,7 +1011,7 @@ where
 impl Store {
     /// The tables a snapshot copies: every table the store has (a test checks that none is
     /// missing).
-    pub const TABLES: [&'static str; 10] = [
+    pub const TABLES: [&'static str; 12] = [
         "meta",
         "accounts",
         "usernames",
@@ -1014,6 +1022,8 @@ impl Store {
         "group_roles",
         "groups",
         "secrets",
+        "profiles",
+        "imports",
     ];
 
     /// Writes a consistent copy of the store to a new file `to` (DOC-25 §3.4.6): a new redb file
@@ -1043,6 +1053,8 @@ impl Store {
         copy_table(&read, &write, GROUP_ROLES)?;
         copy_table(&read, &write, GROUPS)?;
         copy_table(&read, &write, crate::secrets::table::SECRETS)?;
+        copy_table(&read, &write, crate::profiles::table::PROFILES)?;
+        copy_table(&read, &write, crate::profiles::table::IMPORTS)?;
         write.commit().map_err(err)
     }
 }

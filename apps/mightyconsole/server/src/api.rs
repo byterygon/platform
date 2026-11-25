@@ -38,6 +38,8 @@ pub struct AppState {
     pub management: Option<Arc<crate::management::Management>>,
     /// The secret store, for `admin.secrets.*` (`None` only in the codegen router).
     pub secrets: Option<Arc<crate::secrets::service::SecretService>>,
+    /// Stored profiles, for `profiles.*` and `secrets.*` (`None` only in the codegen router).
+    pub profiles: Option<Arc<crate::profiles::ProfileService>>,
 }
 
 /// A tool built into the server.
@@ -99,7 +101,7 @@ impl AppApi {
         _input: Empty,
         events: EventSink<AppEvent>,
     ) -> Result<(), RpcError> {
-        let mut guard = self.0.hub.subscribe(&ctx.session().id);
+        let mut guard = self.0.hub.subscribe_as(&ctx.session().id, ctx.principal());
         loop {
             tokio::select! {
                 biased;

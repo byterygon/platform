@@ -36,6 +36,7 @@ pub mod cli;
 pub mod config;
 pub mod core;
 pub mod management;
+pub mod profiles;
 pub mod secrets;
 pub mod sessions;
 pub mod static_ui;
@@ -146,6 +147,15 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(secrets::api::AdminBackupApi(state.secrets.clone()))
         .expect("admin.backup API registers");
+    router
+        .mount(profiles::api::ProfilesApi(state.profiles.clone()))
+        .expect("profiles API registers");
+    router
+        .mount(profiles::api::SecretsApi(state.profiles.clone()))
+        .expect("secrets API registers");
+    router
+        .mount(profiles::api::AdminProfilesApi(state.profiles.clone()))
+        .expect("admin.profiles API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
@@ -169,6 +179,7 @@ pub fn codegen_router() -> Router {
         confirmations: Arc::new(Confirmations::new(Arc::new(SystemClock))),
         management: None,
         secrets: None,
+        profiles: None,
     });
     let router = Router::new(RoleAuthorizer::new(
         "codegen",
@@ -208,6 +219,8 @@ pub struct ServeConfig {
     pub audit: AuditSettings,
     /// The keys of the secret store (`[secrets]`, DOC-25 §3.4.4); none means the generated key.
     pub secrets: secrets::keys::SecretsSettings,
+    /// `[policy]` (DOC-25 §3.6.1).
+    pub policy: config::PolicySettings,
 }
 
 impl ServeConfig {
@@ -862,7 +875,7 @@ impl Server {
             &config.auth.tenant,
             Arc::clone(&login_sessions),
             policy.clone(),
-            Arc::new(NoStoredProfiles),
+            Arc::new(profiles::StoreOwners(Arc::clone(&store))),
         )
         .with_confirmations(Arc::clone(&confirmations));
         auth_tasks.push(reset_watcher(
@@ -875,6 +888,14 @@ impl Server {
             &log,
         ));
         let hub = Arc::new(Hub::new(options.clock, options.idle_timeout));
+        // Profiles on the server (DOC-25 §3.4.2).
+        let profile_service = Arc::new(profiles::ProfileService::new(
+            Arc::clone(&store),
+            Arc::clone(&vault),
+            authorizer.clone(),
+            Arc::clone(&hub),
+            config.policy.allow_personal_profiles,
+        ));
         let state = Arc::new(AppState {
             hub: Arc::clone(&hub),
             facts: ServerFacts {
@@ -892,6 +913,7 @@ impl Server {
                 Some(accounts.clone()),
             ))),
             secrets: Some(Arc::clone(&secret_service)),
+            profiles: Some(profile_service),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.

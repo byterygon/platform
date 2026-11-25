@@ -99,6 +99,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "admin.profiles.transfer",
+            Mutation,
+            "admin.users.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "admin.roles.create",
             Mutation,
             "admin.roles.write",
@@ -1070,6 +1077,77 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        // Profiles on the server and their write-only secrets (DOC-25 §3.4.7, TSK-139).
+        (
+            "profiles.create",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "profiles.delete",
+            Mutation,
+            "profiles.personal",
+            Risk::Destructive,
+            defaults,
+        ),
+        (
+            "profiles.duplicate",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "profiles.get",
+            Query,
+            "profiles.personal",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "profiles.import",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "profiles.list",
+            Query,
+            "profiles.personal",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "profiles.update",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "secrets.remove",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "secrets.set",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "secrets.status",
+            Query,
+            "profiles.personal",
+            Risk::Read,
+            defaults,
+        ),
         (
             "temporal.activities.cancel",
             Mutation,
@@ -1412,6 +1490,11 @@ fn the_procedures_of_the_spec() {
     assert_eq!(redact("app.account.totp.confirm"), ["code"]);
     assert_eq!(redact("app.account.totp.remove"), ["current"]);
     assert_eq!(redact("echo.connect"), ["profile.token"]);
+    // Secret values given to the profile procedures never reach the digest or a log.
+    assert_eq!(redact("profiles.create"), ["secrets"]);
+    assert_eq!(redact("profiles.update"), ["secrets"]);
+    assert_eq!(redact("profiles.import"), ["secrets"]);
+    assert_eq!(redact("secrets.set"), ["value"]);
     // The SSH secrets of a Docker profile are never logged.
     assert_eq!(
         redact("docker.connect"),
@@ -1463,4 +1546,49 @@ fn the_procedures_of_the_spec() {
             "profile.tls.clientKeyPem"
         ]
     );
+}
+
+/// The secret-field rule (DOC-25 §3.4.7, TSK-139): every secret field of a tool's profile type is
+/// one the secret store knows (`profiles::spec`), and every secret its connect takes is redacted.
+/// A new secret field that is not routed through the store fails here. The two differences are
+/// named: LangGraph's extra headers travel as `headers` on connect and are stored as
+/// `headerValues` (DOC-25 Open question 23); Docker's TCP client key waits for Docker over TCP
+/// (DOC-23).
+#[test]
+fn every_secret_field_goes_through_the_secret_store() {
+    use mightyconsole_server::profiles::spec::SPECS;
+    let procedures = codegen_router().procedures();
+    let stored = |path: &str| match path {
+        "headers" => "headerValues".to_owned(),
+        other => other.to_owned(),
+    };
+    for spec in &SPECS {
+        let connect = procedures
+            .iter()
+            .find(|m| m.name == format!("{}.connect", spec.tool))
+            .unwrap_or_else(|| panic!("{}.connect", spec.tool));
+        let mut redacted: Vec<String> = connect
+            .redact
+            .iter()
+            .map(|p| {
+                stored(
+                    p.strip_prefix("profile.")
+                        .unwrap_or_else(|| panic!("{}: {p} is not in the profile", spec.tool)),
+                )
+            })
+            .collect();
+        redacted.sort();
+        let mut secrets: Vec<String> = spec
+            .secrets
+            .iter()
+            .filter(|f| !(spec.tool == "docker" && **f == "tls.clientKeyPem"))
+            .map(|f| (*f).to_owned())
+            .collect();
+        secrets.sort();
+        assert_eq!(
+            redacted, secrets,
+            "{}: the connect's secrets and the store's",
+            spec.tool
+        );
+    }
 }

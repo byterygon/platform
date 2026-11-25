@@ -18,7 +18,9 @@
 //!   subject's field is not in its input (the person would have nothing to type);
 //! - it is exposed to agents.
 //!
-//! The secret-field rule comes with the secret store (TSK-139) and the redaction test (TSK-141).
+//! The secret-field rule (every secret of a tool's profile goes through the secret store) is
+//! `tests/codegen.rs`'s `every_secret_field_goes_through_the_secret_store`; the redaction test
+//! comes with TSK-141.
 
 use serde_json::Value;
 
