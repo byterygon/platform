@@ -222,6 +222,8 @@ pub struct ServeConfig {
     pub secrets: secrets::keys::SecretsSettings,
     /// `[policy]` (DOC-25 §3.6.1).
     pub policy: config::PolicySettings,
+    /// `[outbound]` (TSK-141): what a profile may make the server reach.
+    pub outbound: core::outbound::Policy,
 }
 
 impl ServeConfig {
@@ -552,6 +554,8 @@ impl Server {
             })?;
         }
         let tls = tls::load(&config.tls).map_err(StartError::Tls)?;
+        // Every connection a tool opens from now on follows it.
+        core::outbound::set_policy(config.outbound.clone());
         let mut ws_config =
             WsConfig::new(config.allowed_hosts.clone(), config.public_origin.clone());
         // DOC-21 §2.3: under a base path the WebSocket is at <base>/rpc/ws, and the cookie keeps

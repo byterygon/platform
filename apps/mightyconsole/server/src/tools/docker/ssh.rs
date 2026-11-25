@@ -17,7 +17,6 @@ use russh::keys::{
     Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate, decode_secret_key,
 };
 use russh::{ChannelMsg, ChannelOpenFailure, ChannelStream, Disconnect, MethodKind};
-use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 use super::TOOL;
@@ -195,16 +194,8 @@ impl SshSession {
             }
             _ => None,
         };
-        let tcp = TcpStream::connect((target.host.as_str(), target.port))
-            .await
-            .map_err(|e| {
-                ToolError::new(
-                    ToolErrorKind::Connect,
-                    TOOL,
-                    format!("cannot reach {address}: {e}"),
-                )
-            })?;
-        let _ = tcp.set_nodelay(true);
+        // Through the server's outbound policy (TSK-141): the address connected to is checked.
+        let tcp = crate::core::outbound::connect_tcp(TOOL, &target.host, target.port, None).await?;
 
         let mut config = client::Config {
             keepalive_interval: target.keepalive,

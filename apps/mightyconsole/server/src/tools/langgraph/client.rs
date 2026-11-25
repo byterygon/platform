@@ -20,7 +20,6 @@ use hyper::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, US
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use serde_json::Value;
 use url::Url;
@@ -48,7 +47,7 @@ pub type SseItem = Result<Event, ToolError>;
 /// The events of a run stream.
 pub type SseStream = Pin<Box<dyn Stream<Item = SseItem> + Send>>;
 
-type Http = Client<HttpsConnector<HttpConnector>, Full<Bytes>>;
+type Http = Client<HttpsConnector<crate::core::outbound::Connector>, Full<Bytes>>;
 
 pub struct LangGraphClient {
     http: Http,
@@ -123,10 +122,8 @@ impl LangGraphClient {
         } else {
             plain_config()
         };
-        let mut tcp = HttpConnector::new();
-        tcp.enforce_http(false);
-        tcp.set_connect_timeout(Some(CONNECT_TIMEOUT));
-        tcp.set_nodelay(true);
+        // Through the server's outbound policy (TSK-141): the address connected to is checked.
+        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT));
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()

@@ -22,6 +22,7 @@
 pub mod error;
 pub mod jq;
 pub mod messaging;
+pub mod outbound;
 pub mod stored;
 pub mod tls;
 pub mod types;

@@ -439,6 +439,7 @@ impl NatsApi {
             Some(r) => Some((r.client()?, r.wire_format_on().unwrap_or_default())),
             None => None,
         };
+        prepared.check_reach().await?;
         let slot: Slot = Slot::default();
         let opts = status_callback(
             prepared.options.clone(),
@@ -487,6 +488,7 @@ impl NatsApi {
         if let Some(r) = &profile.schema_registry {
             r.client()?;
         }
+        prepared.check_reach().await?;
         let nats = prepared
             .options
             .clone()

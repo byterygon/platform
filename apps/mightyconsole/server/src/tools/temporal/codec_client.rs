@@ -21,7 +21,6 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::header::{AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use hyper::{Method, Request, StatusCode};
 use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use serde_json::{Map, Value, json};
 use url::Url;
@@ -35,7 +34,7 @@ const MAX_PER_CALL: usize = 100;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
 pub const DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
-type Https = hyper_rustls::HttpsConnector<HttpConnector>;
+type Https = hyper_rustls::HttpsConnector<crate::core::outbound::Connector>;
 
 pub struct PayloadCodec {
     http: Client<Https, Full<Bytes>>,
@@ -117,9 +116,8 @@ impl PayloadCodec {
             }
             (false, _) => plain_config(),
         };
-        let mut tcp = HttpConnector::new();
-        tcp.enforce_http(false);
-        tcp.set_connect_timeout(Some(Duration::from_secs(10)));
+        // Through the server's outbound policy (TSK-141): the address connected to is checked.
+        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(Duration::from_secs(10)));
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()

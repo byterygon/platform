@@ -14,7 +14,7 @@ use hyper::Method;
 use serde::{Deserialize, Serialize};
 
 use self::http::{Http, status_error};
-pub use self::http::{RegistryAuth, RegistryConfig};
+pub use self::http::{RegistryAuth, RegistryConfig, Resolver};
 use crate::codec::avro::AvroSchema;
 use crate::codec::jsonschema::JsonSchemaSchema;
 use crate::codec::protobuf::ProtoSchema;

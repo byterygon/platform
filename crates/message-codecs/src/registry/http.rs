@@ -49,6 +49,22 @@ impl std::fmt::Debug for RegistryAuth {
     }
 }
 
+/// Resolves the registry's host and port to the addresses the client may connect to (an
+/// embedder's outbound policy); an `Err` refuses the connection with its message.
+pub type Resolver = Arc<
+    dyn Fn(
+            String,
+            u16,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = std::result::Result<Vec<std::net::SocketAddr>, String>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
 /// Where and how to reach a registry.
 #[derive(Clone)]
 pub struct RegistryConfig {
@@ -62,6 +78,9 @@ pub struct RegistryConfig {
     pub client_key_pem: Option<String>,
     /// Per request; 30 s by default.
     pub timeout: Duration,
+    /// How the host is resolved; `None` lets the system resolve it and connects to the first
+    /// address that answers.
+    pub resolve: Option<Resolver>,
 }
 
 impl std::fmt::Debug for RegistryConfig {
@@ -87,6 +106,7 @@ impl RegistryConfig {
             tls: None,
             client_key_pem: None,
             timeout: Duration::from_secs(30),
+            resolve: None,
         }
     }
 }
@@ -155,6 +175,7 @@ pub(crate) struct Http {
     authorization: Option<String>,
     tls: Option<(tokio_rustls::TlsConnector, ServerName<'static>)>,
     timeout: Duration,
+    resolve: Option<Resolver>,
 }
 
 impl std::fmt::Debug for Http {
@@ -198,6 +219,7 @@ impl Http {
             authorization,
             tls,
             timeout: config.timeout,
+            resolve: config.resolve.clone(),
         })
     }
 
@@ -235,8 +257,7 @@ impl Http {
         path: &str,
         body: Option<Vec<u8>>,
     ) -> Result<Response> {
-        let addr = (self.base.host.as_str(), self.base.port);
-        let tcp = TcpStream::connect(addr).await.map_err(|e| {
+        let unreachable = |e: String| {
             CodecError::new(
                 ErrorKind::Connect,
                 format!(
@@ -244,7 +265,29 @@ impl Http {
                     self.base.host, self.base.port
                 ),
             )
-        })?;
+        };
+        let tcp = match &self.resolve {
+            None => TcpStream::connect((self.base.host.as_str(), self.base.port))
+                .await
+                .map_err(|e| unreachable(e.to_string()))?,
+            Some(resolve) => {
+                let addrs = resolve(self.base.host.clone(), self.base.port)
+                    .await
+                    .map_err(|e| CodecError::new(ErrorKind::Connect, e))?;
+                let mut last = "no address".to_owned();
+                let mut connected = None;
+                for addr in addrs {
+                    match TcpStream::connect(addr).await {
+                        Ok(tcp) => {
+                            connected = Some(tcp);
+                            break;
+                        }
+                        Err(e) => last = e.to_string(),
+                    }
+                }
+                connected.ok_or_else(|| unreachable(last))?
+            }
+        };
         let _ = tcp.set_nodelay(true);
         let host_header = if (self.base.port == 443 && self.tls.is_some())
             || (self.base.port == 80 && self.tls.is_none())

@@ -233,6 +233,18 @@ pub struct Prepared {
     pub connection_name: String,
 }
 
+impl Prepared {
+    /// Every server of the profile is one the server's outbound policy lets it reach (TSK-141):
+    /// checked before connecting. async-nats resolves the names again itself, so a name whose
+    /// address changes in between is not caught here (DOC-25 Open question 27).
+    pub async fn check_reach(&self) -> Result<(), ToolError> {
+        for server in &self.servers {
+            crate::core::outbound::resolve(TOOL, server.host(), server.port()).await?;
+        }
+        Ok(())
+    }
+}
+
 /// The async-nats options of a profile; field errors name the profile's field.
 pub fn options(profile: &ConnectNatsProfile) -> Result<Prepared, ToolError> {
     let tls_config = client_config(&profile.tls.clone().unwrap_or_default());
@@ -311,6 +323,13 @@ fn prepare(
             ));
         }
         options = options.custom_inbox_prefix(prefix);
+    }
+    // A NATS server tells its clients about the other servers of its cluster, and the client may
+    // reconnect to them without asking (async-nats resolves and connects itself). When the operator
+    // narrowed the reach (`[outbound] allow`, TSK-141), only the profile's own servers, which
+    // [`Prepared::check_reach`] checks, are used.
+    if crate::core::outbound::policy().is_narrowed() {
+        options = options.ignore_discovered_servers();
     }
     Ok(Prepared {
         options,
