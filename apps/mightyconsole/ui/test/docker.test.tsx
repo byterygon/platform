@@ -1,7 +1,6 @@
 // The Docker tool's UI, batch 1 (Mightyconsole spec §10.1, §10.2, §10.4; TSK-81): the profile's
-// validation and `docker.connect` input (only the chosen method's secrets travel), trust on first
-// use through the shell (the dialog shows the fingerprint, Trust stores it in the profile and
-// connects again; a changed key asks to replace it, Cancel leaves the profile alone), Test
+// validation (an SSH host to name, TSK-144), trust on first use through the shell (the dialog
+// shows the fingerprint, Trust stores it in the profile's SSH host and connects again; a changed key asks to replace it, Cancel leaves the profile alone), Test
 // connection in the profile sheet, and the Host page. Axe on the dialog and the page.
 import { afterEach, describe, expect, test } from "vitest";
 import { App } from "@/app/App";
@@ -10,42 +9,49 @@ import { HostKeyDialog, hostKeyFile, keyTypeLabel } from "@/app/dialogs/HostKeyD
 import { StoreProvider, loadPersisted } from "@/app/store";
 import type { ProfileRecord } from "@/profiles/record";
 import { containerCounts, formatMemory, hostSubtitle } from "@/tools/docker/HostTab";
-import { profile, targetOf, trustHostKey } from "@/tools/docker/profile";
+import { resetSshHosts } from "@/profiles/ssh-hosts";
+import { profile, targetOf } from "@/tools/docker/profile";
 import { FAKE_HOST_KEY, createFakeServices, fakeHostInfo } from "./support/fake-services";
-import { act, axeViolations, byRole, byText, cleanup, click, dialogWith, render, settle, waitFor } from "./support/render";
+import { act, axeViolations, byRole, byText, cleanup, click, dialogWith, key, render, settle, waitFor } from "./support/render";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetSshHosts();
+});
 
 type Fake = ReturnType<typeof createFakeServices>;
 
-function record(patch: Partial<ProfileRecord> = {}, fields: Record<string, unknown> = {}, secrets: Record<string, unknown> = { privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END OPENSSH PRIVATE KEY-----\n" }): ProfileRecord {
+function record(patch: Partial<ProfileRecord> = {}, fields: Record<string, unknown> = {}): ProfileRecord {
   return {
     id: `01D${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
     tool: "docker",
-    version: 1,
+    version: 2,
     name: "build-host",
     createdAt: "2026-11-19T10:00:00.000Z",
     updatedAt: "2026-11-19T10:00:00.000Z",
-    fields: { ...profile.defaults().fields, host: "build-host.lan", username: "deploy", ...fields },
-    secrets,
+    fields: { ...profile.defaults().fields, sshHostId: "H1", ...fields },
+    secrets: {},
     extras: {},
     ...patch,
   };
 }
 
+const LOGIN = { host: "build-host.lan", port: 22, username: "deploy", auth: "privateKey" as const, keepaliveSec: null, hostKey: null };
+const KEY = { privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END OPENSSH PRIVATE KEY-----\n" };
+
 describe("profile", () => {
-  test("validation names each field to fix", () => {
+  test("validation asks for the SSH host and an absolute socket; version 1 is the server's to migrate", () => {
     expect(profile.validate(record())).toEqual({});
-    const errors = profile.validate(record({}, { host: "deploy@h", port: 70000, username: " ", socketPath: "docker.sock", keepaliveSec: -1 }, {}));
-    expect(Object.keys(errors).sort()).toEqual(["host", "keepaliveSec", "port", "privateKey", "socketPath", "username"]);
-    expect(profile.validate(record({}, { auth: "password" }, {}))["password"]).toBeDefined();
-    expect(profile.validate(record({}, { auth: "agent" }, {}))).toEqual({});
+    const errors = profile.validate(record({}, { sshHostId: "", socketPath: "docker.sock" }));
+    expect(Object.keys(errors).sort()).toEqual(["socketPath", "sshHostId"]);
+    expect(profile.version).toBe(2);
+    expect(profile.serverMigratesFrom).toBe(1);
   });
 
-  test("trusting stores the key; the target brackets IPv6", () => {
-    const trusted = trustHostKey(record(), FAKE_HOST_KEY);
-    expect(trusted.fields["hostKey"]).toEqual(FAKE_HOST_KEY);
-    expect(targetOf(record({}, { host: "::1", port: 2222 }))).toBe("[::1]:2222");
+  test("the target is the SSH host's address, IPv6 in brackets", () => {
+    resetSshHosts([{ id: "H1", name: "lo", fields: { ...LOGIN, host: "::1", port: 2222 }, owner: { kind: "personal" }, etag: "1", createdAt: "", updatedAt: "", createdBy: "", updatedBy: "", access: "owner", secrets: [], usedBy: [], usedByHidden: 0 }]);
+    expect(targetOf(record())).toBe("[::1]:2222");
+    expect(targetOf(record({}, { sshHostId: "gone" }))).toBe("build-host");
     expect(keyTypeLabel("ecdsa-sha2-nistp256")).toBe("ECDSA-P256");
     expect(hostKeyFile("ssh-ed25519")).toBe("/etc/ssh/ssh_host_ed25519_key.pub");
   });
@@ -116,7 +122,8 @@ async function connectFromTree() {
 describe("trust on first use in the shell", () => {
   test("an unknown key asks first; Trust stores it and connects; the Host page shows the host", async () => {
     const fake = createFakeServices();
-    const p = record();
+    const hostId = fake.storeSshHost("build-host", LOGIN, KEY);
+    const p = record({}, { sshHostId: hostId });
     await fake.storage.putProfile(p);
     await mount(fake);
     await openDocker();
@@ -128,8 +135,9 @@ describe("trust on first use in the shell", () => {
     await click(byRole("button", /Trust and connect/));
     await waitFor(() => connects(fake).length === 2, "the second connect");
     expect(connects(fake)[1]!["hostKey"]).toEqual(FAKE_HOST_KEY);
-    const stored = await fake.storage.getProfile(p.id);
-    expect(stored?.fields["hostKey"]).toEqual(FAKE_HOST_KEY);
+    // The key is the SSH host's: every Docker host that uses it is trusted at once.
+    expect(fake.server.sshHosts.get(hostId)?.view.fields.hostKey).toEqual(FAKE_HOST_KEY);
+    expect((await fake.storage.getProfile(p.id))?.fields["hostKey"]).toBeUndefined();
 
     await waitFor(() => treeItem("Host") !== null, "the resource tree");
     await connectHostTab();
@@ -141,7 +149,8 @@ describe("trust on first use in the shell", () => {
   test("a changed key asks to replace it; Cancel leaves the profile and the connection failed", async () => {
     const fake = createFakeServices();
     const old = { algorithm: "ssh-ed25519", fingerprintSha256: "SHA256:old" };
-    const p = record({}, { hostKey: old });
+    const hostId = fake.storeSshHost("build-host", { ...LOGIN, hostKey: old }, KEY);
+    const p = record({}, { sshHostId: hostId });
     await fake.storage.putProfile(p);
     await mount(fake);
     await openDocker();
@@ -150,8 +159,7 @@ describe("trust on first use in the shell", () => {
     await click(byRole("button", "Cancel"));
     await settle(2);
     expect(connects(fake)).toHaveLength(1);
-    const stored = await fake.storage.getProfile(p.id);
-    expect(stored?.fields["hostKey"]).toEqual(old);
+    expect(fake.server.sshHosts.get(hostId)?.view.fields.hostKey).toEqual(old);
     await waitFor(() => treeItem("build-host")?.querySelector("[data-status=failed]") != null, "the failed state");
   });
 });
@@ -164,3 +172,28 @@ async function connectHostTab() {
   });
   await settle(2);
 }
+
+describe("Settings → SSH hosts (TSK-144)", () => {
+  test("lists the hosts with who uses them; a host in use is not deleted and says by whom; no axe violations", async () => {
+    const fake = createFakeServices();
+    const used = fake.storeSshHost("build-host", { ...LOGIN, hostKey: FAKE_HOST_KEY }, KEY);
+    fake.storeSshHost("spare", { ...LOGIN, host: "spare.lan", auth: "agent" });
+    await fake.storage.putProfile(record({}, { sshHostId: used }));
+    await mount(fake);
+    await key(",", { ctrlKey: true });
+    await waitFor(() => dialogWith("Changes apply at once") !== null, "Settings");
+    await click(byRole("tab", "SSH hosts"));
+    await waitFor(() => byText("spare.lan:22") !== null, "the hosts table");
+    const table = document.querySelector<HTMLElement>("[aria-label='SSH hosts'] table, table[aria-label='SSH hosts']") ?? byRole("table", "SSH hosts");
+    expect(table?.textContent).toContain("build-host.lan:22");
+    expect(table?.textContent).toContain("Docker build-host");
+    expect(table?.textContent).toContain("ssh-agent");
+    expect(await axeViolations(dialogWith("Changes apply at once")!)).toEqual([]);
+
+    await click(byRole("button", "Delete build-host"));
+    await waitFor(() => dialogWith("build-host is in use") !== null, "the in-use dialog");
+    expect(fake.server.calls.some((c) => c.procedure === "sshHosts.delete")).toBe(false);
+    await click(byRole("button", "Close"));
+    await waitFor(() => dialogWith("build-host is in use") === null, "the dialog to close");
+  });
+});

@@ -96,3 +96,49 @@ describe("moving the browser's profiles to the server", () => {
     expect((await browser.listProfiles()).find((r) => r.id === "01A")).toEqual(RECORDS[0]);
   });
 });
+
+describe("Docker profiles of version 1 (TSK-144)", () => {
+  test("stay as they are in the browser, move as an SSH host holding the key and a profile naming it", async () => {
+    const { loadProfiles } = await import("@/profiles/migrate");
+    const { profile: docker } = await import("@/tools/docker/profile");
+    const browser = await openStorage(new IDBFactory());
+    // idb opens the global factory: start from an empty store.
+    for (const r of await browser.listProfiles()) await browser.deleteProfile(r.id);
+    const old = rec("01D", "docker", "build", { host: "build.lan", port: 22, username: "deploy", auth: "privateKey", hostKey: null, socketPath: "/var/run/docker.sock" }, { privateKey: "KEY-D" });
+    await browser.putProfile(old);
+    // Not migrated in the browser: the server does it on import.
+    const loaded = await loadProfiles(browser, (tool) => (tool === "docker" ? docker : undefined));
+    expect(loaded.states["01D"]).toEqual({ kind: "current" });
+    expect(loaded.records[0]?.version).toBe(1);
+
+    const fake = createFakeServices(new MemoryStorage());
+    const result = await moveToServer(fake.services.client, browser, loaded.records);
+    expect(result.failed).toBeUndefined();
+    expect(result.moved).toHaveLength(1);
+    const [host] = [...fake.server.sshHosts.values()];
+    expect(host?.view.fields.host).toBe("build.lan");
+    expect(host?.secrets).toEqual({ privateKey: "KEY-D" });
+    const stored = await fake.storage.getProfile(result.moved[0]!.to);
+    expect(stored?.fields).toEqual({ socketPath: "/var/run/docker.sock", sshHostId: host?.view.id });
+    expect(result.cleared).toBe(true);
+  });
+});
+
+describe("export files carry the SSH hosts their profiles name, never a secret", () => {
+  test("export, then plan the import of the file", async () => {
+    const { exportFile, planImport } = await import("@/profiles/transfer");
+    const { profile: docker } = await import("@/tools/docker/profile");
+    const hosts = [
+      { id: "H1", name: "build", fields: { host: "build.lan", port: 22, username: "deploy", auth: "privateKey" as const, keepaliveSec: null, hostKey: null }, owner: { kind: "personal" as const }, etag: "1", createdAt: "", updatedAt: "", createdBy: "", updatedBy: "", access: "owner", secrets: [{ field: "privateKey", set: true, version: 1, setBy: "", setAt: 0 }], usedBy: [], usedByHidden: 0 },
+      { id: "H2", name: "unused", fields: { host: "x", port: 22, username: "u" }, owner: { kind: "personal" as const }, etag: "1", createdAt: "", updatedAt: "", createdBy: "", updatedBy: "", access: "owner", secrets: [], usedBy: [], usedByHidden: 0 },
+    ];
+    const profile = { ...rec("01E", "docker", "build", { sshHostId: "H1", socketPath: "/var/run/docker.sock" }, {}), version: 2 };
+    const file = exportFile([profile], { includeSecrets: false, app: "test", hosts });
+    expect(file.sshHosts).toEqual([{ id: "H1", name: "build", fields: hosts[0]!.fields }]);
+    // The host's settings only: no secret and no secret status.
+    expect(Object.keys(file.sshHosts![0]!).sort()).toEqual(["fields", "id", "name"]);
+    const plan = planImport(JSON.stringify(file), [], (tool) => (tool === "docker" ? docker : undefined));
+    expect(plan.hosts.map((h) => h.id)).toEqual(["H1"]);
+    expect(plan.rows[0]?.skipReason).toBeNull();
+  });
+});

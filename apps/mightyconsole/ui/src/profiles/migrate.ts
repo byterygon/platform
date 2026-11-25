@@ -20,6 +20,8 @@ export type RecordState =
 /** Runs the record through the schema's steps from its version to the schema's. */
 export function migrateRecord(record: ProfileRecord, schema: ProfileSchema): ProfileRecord {
   let current = structuredClone(record);
+  // The server migrates these when they are imported (a Docker login becomes an SSH host).
+  if (schema.serverMigratesFrom !== undefined && current.version >= schema.serverMigratesFrom) return current;
   for (let v = current.version; v < schema.version; v++) {
     const step = schema.migrations[v];
     if (!step) throw new Error(`no migration from version ${v}`);
@@ -58,7 +60,7 @@ export async function loadProfiles(storage: AppStorage, schemas: (tool: string) 
       records.push(record);
       continue;
     }
-    if (record.version === schema.version) {
+    if (record.version === schema.version || (schema.serverMigratesFrom !== undefined && record.version >= schema.serverMigratesFrom && record.version < schema.version)) {
       states[record.id] = { kind: "current" };
       records.push(record);
       continue;

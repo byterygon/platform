@@ -182,7 +182,7 @@ fn host_info(
 }
 
 /// The SSH target of a profile; the secret for the chosen method must be there.
-fn target(profile: &ConnectDockerProfile) -> Result<SshTarget, ToolError> {
+pub(crate) fn target(profile: &ConnectDockerProfile) -> Result<SshTarget, ToolError> {
     let host = profile.host.trim();
     if host.is_empty() {
         return Err(ToolError::invalid(

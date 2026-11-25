@@ -556,6 +556,21 @@ impl Tab {
         } else {
             name
         };
+        // A Docker profile names an SSH host that holds its login (DOC-23 §6.4, TSK-144).
+        let (fields, secrets) = if tool == "docker" {
+            let (login, login_secrets, rest) = split_docker_login(fields, secrets);
+            let host = self
+                .extra_call(
+                    "sshHosts.create",
+                    json!({ "name": format!("{name} {digest}"), "owner": { "kind": "personal" }, "fields": login, "secrets": login_secrets }),
+                )
+                .await;
+            let mut rest = rest;
+            rest["sshHostId"] = host["id"].clone();
+            (rest, json!({}))
+        } else {
+            (fields, secrets)
+        };
         let made = self
             .extra_call(
                 "profiles.create",
@@ -747,6 +762,17 @@ impl Tab {
         out["id"].as_str().expect("the profile's id").to_owned()
     }
 
+    /// A personal SSH host with `fields` and `secrets` (DOC-23 §4.3); its id.
+    pub async fn store_ssh_host(&mut self, name: &str, fields: Value, secrets: Value) -> String {
+        let out = self
+            .extra_call(
+                "sshHosts.create",
+                json!({ "name": name, "owner": { "kind": "personal" }, "fields": fields, "secrets": secrets }),
+            )
+            .await;
+        out["id"].as_str().expect("the host's id").to_owned()
+    }
+
     async fn extra_call(&mut self, procedure: &str, input: Value) -> Value {
         let wire = self.next_wire;
         self.next_wire = wire + 1;
@@ -841,6 +867,39 @@ pub fn stored_from_connect(tool: &str, connect: &Value) -> (String, Value, Value
     }
     strip_nulls(&mut fields);
     (name, fields, Value::Object(secrets), Value::Object(extras))
+}
+
+/// A Docker connect profile's login (an SSH host's fields and secrets) and the rest (the
+/// profile's own fields).
+pub fn split_docker_login(fields: Value, secrets: Value) -> (Value, Value, Value) {
+    let mut rest = fields.as_object().cloned().unwrap_or_default();
+    let mut login = serde_json::Map::new();
+    for key in [
+        "host",
+        "port",
+        "username",
+        "auth",
+        "keepaliveSec",
+        "hostKey",
+    ] {
+        if let Some(v) = rest.remove(key) {
+            login.insert(key.into(), v);
+        }
+    }
+    let mut login_secrets = secrets.as_object().cloned().unwrap_or_default();
+    for key in ["privateKey", "passphrase", "password"] {
+        if let Some(v) = rest
+            .remove(key)
+            .filter(|v| v.as_str().is_some_and(|t| !t.is_empty()))
+        {
+            login_secrets.insert(key.into(), v);
+        }
+    }
+    (
+        Value::Object(login),
+        Value::Object(login_secrets),
+        Value::Object(rest),
+    )
 }
 
 /// Removes and returns the value at a dotted path.

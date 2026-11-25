@@ -14,9 +14,16 @@ import { type BrowserContext, type Checklist, browser, cargo, command, manual, v
 
 const GENERATED = process.env["MIGHTYCONSOLE_LAB_GENERATED"] ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..", "lab", ".generated");
 
+/** In the sheet titled `title`: the control labelled `label`. */
+const inSheet = (title: string, label: string) =>
+  `(() => { const d = [...document.querySelectorAll("[role=dialog]")].find((x) => x.querySelector("h2")?.textContent.trim() === ${JSON.stringify(title)}); const l = d && [...d.querySelectorAll("label")].find((x) => x.textContent.replace(/\\s+/g, " ").trim() === ${JSON.stringify(label)}); return l && (l.control || document.getElementById(l.htmlFor)); })()`;
+const sheetButton = (title: string, label: string) =>
+  `(() => { const d = [...document.querySelectorAll("[role=dialog]")].find((x) => x.querySelector("h2")?.textContent.trim() === ${JSON.stringify(title)}); return d && [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)}); })()`;
+
 /**
- * Adds the lab's Docker host as the profile `lab` (its private key read from the lab's generated
- * files, never logged), trusts its key on first use and waits for the resource tree.
+ * Adds the lab's Docker host as the profile `lab`: its login as the SSH host `lab` (TSK-144: New
+ * SSH host… in the profile sheet, the private key read from the lab's generated files, never
+ * logged), trusts its key on first use and waits for the resource tree.
  */
 async function labTree({ lab, until, run, shot }: Pick<BrowserContext, "lab" | "until" | "run" | "shot">): Promise<void> {
   const docker = (lab?.["docker"] ?? null) as { host: string; port: number; user: string; keyFile: string } | null;
@@ -26,13 +33,20 @@ async function labTree({ lab, until, run, shot }: Pick<BrowserContext, "lab" | "
   await until(`__mc.has("No Docker connections yet") || __mc.item("lab")`, "the Docker connection list");
   if (!(await run<boolean>(`Boolean(__mc.item("lab"))`))) {
     await run(`__mc.click(__mc.button("Add connection"))`);
-    await until(`__mc.field("Name") && __mc.field("Private key")`, "the profile sheet");
+    await until(`__mc.field("Name") && __mc.button("New SSH host…")`, "the profile sheet");
+    await run(`__mc.type(__mc.field("Name"), "lab")`);
+    // The login is an SSH host (DOC-23 §4.3): made over the profile sheet, chosen on Save host.
+    await run(`__mc.click(__mc.button("New SSH host…"))`);
+    await until(inSheet("New SSH host", "Username"), "the SSH host editor");
     const key = readFileSync(join(GENERATED, docker.keyFile), "utf8");
     for (const [label, value] of [["Name", "lab"], ["Host", docker.host], ["Port", String(docker.port)], ["Username", docker.user]] as const) {
-      await run(`__mc.type(__mc.field(${JSON.stringify(label)}), ${JSON.stringify(value)})`);
+      await run(`__mc.type(${inSheet("New SSH host", label)}, ${JSON.stringify(value)})`);
     }
     // "Private key" also names a radio of Authentication: the key's text area by its tag.
-    await run(`__mc.type(document.querySelector("[role=dialog] textarea"), ${JSON.stringify(key)})`);
+    await run(`__mc.type([...document.querySelectorAll("[role=dialog] textarea")].pop(), ${JSON.stringify(key)})`);
+    await shot("SSH host editor");
+    await run(`__mc.click(${sheetButton("New SSH host", "Save host")})`);
+    await until(`!${inSheet("New SSH host", "Username")} && __mc.has("Also used by")`, "the host chosen in the profile sheet");
     await shot("profile sheet");
     await run(`__mc.click([...document.querySelectorAll("[role=dialog] button")].find((b) => b.textContent.trim() === "Save"))`);
     try {

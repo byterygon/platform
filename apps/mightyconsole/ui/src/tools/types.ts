@@ -21,6 +21,12 @@ export interface ProfileSchema {
   validate(record: ProfileRecord): FieldErrors;
   /** `migrations[n]` turns a version-n record into version n + 1. */
   readonly migrations: Readonly<Record<number, (record: ProfileRecord) => ProfileRecord>>;
+  /**
+   * Records from this version up to `version` are migrated by the server when they are imported
+   * (a Docker profile of version 1 becomes an SSH host and a profile, DOC-23 (z)): the browser
+   * keeps them as they are.
+   */
+  readonly serverMigratesFrom?: number;
 }
 
 /** Props of a tool's connection form: the tool's own fields; name and colour are the shell's. */
@@ -264,10 +270,11 @@ export interface ToolModule {
   /** Releases it (`<tool>.disconnect`). */
   disconnect(client: MightyClient, connId: string): Promise<void>;
   /**
-   * For a tool that connects over SSH (spec §10.2): the record trusting `key`. The shell calls it
-   * when the person trusts the key a `HostKey` error named, saves the record and connects again.
+   * For a tool that connects over SSH (spec §10.2): saves `key` as trusted where the login lives
+   * (Docker: the profile's SSH host, DOC-23 §4.3). The shell calls it when the person trusts the
+   * key a `HostKey` error named, then connects (or tests) again.
    */
-  trustHostKey?(record: ProfileRecord, key: HostKeyFingerprint): ProfileRecord;
+  trustHostKey?(client: MightyClient, record: ProfileRecord, key: HostKeyFingerprint): Promise<void>;
   /** `host:port` of the record, for the trust dialog. */
   targetOf?(record: ProfileRecord): string;
 }

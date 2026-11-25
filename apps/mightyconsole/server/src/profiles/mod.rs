@@ -21,6 +21,7 @@
 pub mod api;
 pub mod connect;
 pub mod spec;
+pub mod ssh_hosts;
 pub mod table;
 
 use std::collections::BTreeMap;
@@ -452,17 +453,17 @@ impl ProfileService {
         Ok(())
     }
 
-    /// Writes the secrets of `profile` in its write transaction.
-    fn write_secrets(
+    /// Writes the secrets of `owner` (a profile, an SSH host) in a write transaction.
+    pub(crate) fn write_secrets(
         &self,
         write: &redb::WriteTransaction,
-        profile_id: &str,
+        owner: &SecretOwner,
         set: &[(String, Secret)],
         remove: &[&str],
         by: &str,
         at: u64,
     ) -> Result<Vec<String>, WriteError> {
-        let owner = SecretOwner::profile(profile_id);
+        let owner = owner.clone();
         let (mut secrets, mut meta) = crate::secrets::table::open_tables(write)?;
         let mut removed = Vec::new();
         for field in remove {
@@ -499,6 +500,7 @@ impl ProfileService {
         draft: Draft,
         secrets: BTreeMap<String, String>,
         import: Option<&str>,
+        host: Option<ssh_hosts::PendingHost>,
         now_ms: u64,
     ) -> Result<StoredProfile, ProfileError> {
         let spec = Self::spec(tool)?;
@@ -544,8 +546,23 @@ impl ProfileService {
             created_by: p.id.clone(),
             updated_by: p.id.clone(),
         };
+        if let Some(host) = &host {
+            self.check_link(&profile.owner, &profile.fields, Some(&host.row))?;
+        } else {
+            self.check_link(&profile.owner, &profile.fields, None)?;
+        }
         let stored = self.store.put_profile(profile, None, |write, stored| {
-            self.write_secrets(write, &stored.id, &secrets, &[], &p.id, now_ms)?;
+            if let Some(host) = host {
+                self.put_pending_host(write, host, &p.id, now_ms)?;
+            }
+            self.write_secrets(
+                write,
+                &SecretOwner::profile(&stored.id),
+                &secrets,
+                &[],
+                &p.id,
+                now_ms,
+            )?;
             if let Some(source) = import {
                 table::record_import(write, &p.id, source, &stored.id)?;
             }
@@ -596,6 +613,7 @@ impl ProfileService {
                 Some(&current.id),
             )?;
         }
+        self.check_link(&next.owner, &next.fields, None)?;
         let secrets = check_secrets(spec, secrets)?;
         let unbind: Vec<&str> = spec
             .secrets_to_unbind(&current.fields, &next.fields)
@@ -606,7 +624,14 @@ impl ProfileService {
         next.updated_by = p.id.clone();
         let mut removed = Vec::new();
         let stored = self.store.put_profile(next, Some(etag), |write, stored| {
-            removed = self.write_secrets(write, &stored.id, &secrets, &unbind, &p.id, now_ms)?;
+            removed = self.write_secrets(
+                write,
+                &SecretOwner::profile(&stored.id),
+                &secrets,
+                &unbind,
+                &p.id,
+                now_ms,
+            )?;
             Ok(())
         })?;
         self.changed(&stored);
@@ -664,6 +689,7 @@ impl ProfileService {
             owner,
             draft,
             secrets,
+            None,
             None,
             now_ms,
         )?;
@@ -769,6 +795,14 @@ impl ProfileService {
         {
             return Ok((profile, false));
         }
+        // A Docker profile of version 1 holds its SSH login: it becomes an SSH host (or names an
+        // identical one the owner has) and a profile of version 2 (DOC-23 (z)).
+        let (version, draft, secrets, host) = if tool == "docker" && version < 2 {
+            self.may_create(p, &owner)?;
+            self.docker_v1_to_v2(p, &owner, draft, secrets, now_ms)?
+        } else {
+            (version, draft, secrets, None)
+        };
         let profile = self.create(
             p,
             tool,
@@ -777,6 +811,7 @@ impl ProfileService {
             draft,
             secrets,
             Some(source_id),
+            host,
             now_ms,
         )?;
         Ok((profile, true))

@@ -42,10 +42,11 @@ fn drafts(host: &str) -> Vec<(&'static str, &'static str, Value, Value)> {
                     "codec": { "enabled": true, "endpoint": format!("http://{host}:8888") } }),
             json!({}),
         ),
+        // Docker over SSH logs into a saved SSH host (TSK-144): the host form's Test.
         (
-            "docker.test",
+            "sshHosts.test",
             "docker",
-            json!({ "transport": "ssh", "host": host, "port": 22, "username": "u", "auth": "password" }),
+            json!({ "host": host, "port": 22, "username": "u", "auth": "password" }),
             json!({ "password": "p" }),
         ),
         (
@@ -66,6 +67,8 @@ async fn tests_to(t: &TestServer, host: &str) -> Vec<(String, Value)> {
         let id = n as u32 + 1;
         let input = if procedure == "messaging.registry.test" {
             json!({ "tool": tool, "draft": { "name": "r", "fields": fields, "secrets": secrets } })
+        } else if procedure == "sshHosts.test" {
+            json!({ "fields": fields, "secrets": secrets })
         } else {
             json!({ "draft": { "name": "r", "fields": fields, "secrets": secrets } })
         };
@@ -76,6 +79,29 @@ async fn tests_to(t: &TestServer, host: &str) -> Vec<(String, Value)> {
             serde_json::from_slice(&frame.payload).unwrap_or(Value::Null),
         ));
     }
+    // A stored Docker profile connects through its SSH host, through the policy too.
+    let host = tab
+        .store_ssh_host(
+            &format!("h {host}"),
+            json!({ "host": host, "port": 22, "username": "u", "auth": "password" }),
+            json!({ "password": "p" }),
+        )
+        .await;
+    let profile = tab
+        .store_profile(
+            "docker",
+            &format!("d {host}"),
+            json!({ "sshHostId": host }),
+            json!({}),
+        )
+        .await;
+    tab.call_raw(100, "docker.connect", json!({ "profileId": profile }))
+        .await;
+    let frame = tab.frame(100).await;
+    out.push((
+        "docker.connect".to_owned(),
+        serde_json::from_slice(&frame.payload).unwrap_or(Value::Null),
+    ));
     tab.disconnect().await;
     out
 }

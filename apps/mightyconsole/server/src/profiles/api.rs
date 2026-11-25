@@ -16,8 +16,9 @@ use ts_rs::TS;
 
 use super::table::{Ownership, StoredProfile};
 use super::{Access, Draft, ProfileError, ProfileService};
-use crate::core::{Empty, ToolError, ToolErrorKind, ToolResult};
+use crate::core::{Empty, HostKeyFingerprint, ToolError, ToolErrorKind, ToolResult};
 use crate::secrets::SecretStatus;
+use crate::tools::docker::DockerAuth;
 
 const SYSTEM: &str = "profiles";
 
@@ -359,7 +360,7 @@ pub struct ProfileImportOutput {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SecretOwnerWire {
-    /// `profile` (routes come with DOC-23).
+    /// `profile` or `sshHost` (routes come with DOC-23).
     pub kind: String,
     pub id: String,
 }
@@ -421,15 +422,22 @@ pub struct TransferOutput {
     pub transferred: u32,
 }
 
-fn profile_of(owner: &SecretOwnerWire) -> Result<String, ToolError> {
-    if owner.kind != "profile" {
-        return Err(ToolError::invalid(
+/// What a `secrets.*` call names: a profile or an SSH host.
+enum SecretOwnerRef {
+    Profile(String),
+    SshHost(String),
+}
+
+fn owner_of(owner: &SecretOwnerWire) -> Result<SecretOwnerRef, ToolError> {
+    match owner.kind.as_str() {
+        "profile" => Ok(SecretOwnerRef::Profile(owner.id.clone())),
+        "sshHost" => Ok(SecretOwnerRef::SshHost(owner.id.clone())),
+        _ => Err(ToolError::invalid(
             SYSTEM,
             "owner.kind",
-            "profile (route secrets come with connection routes)",
-        ));
+            "profile or sshHost (route secrets come with connection routes)",
+        )),
     }
-    Ok(owner.id.clone())
 }
 
 fn now() -> u64 {
@@ -492,6 +500,7 @@ impl ProfilesApi {
                 owner,
                 draft,
                 input.secrets.unwrap_or_default(),
+                None,
                 None,
                 now(),
             )?;
@@ -607,10 +616,17 @@ impl SecretsApi {
     async fn set(&self, ctx: Ctx, input: SecretSetInput) -> ToolResult<SecretRow> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
-        let id = profile_of(&input.owner)?;
+        let owner = owner_of(&input.owner)?;
         Ok(blocking(move || {
-            s.set_secret(&p, &id, &input.field, input.value, now())
-                .map(SecretRow::from)
+            match owner {
+                SecretOwnerRef::Profile(id) => {
+                    s.set_secret(&p, &id, &input.field, input.value, now())
+                }
+                SecretOwnerRef::SshHost(id) => {
+                    s.set_host_secret(&p, &id, &input.field, input.value, now())
+                }
+            }
+            .map(SecretRow::from)
         })
         .await?)
     }
@@ -620,10 +636,13 @@ impl SecretsApi {
     async fn remove(&self, ctx: Ctx, input: SecretFieldInput) -> ToolResult<SecretRemoveOutput> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
-        let id = profile_of(&input.owner)?;
+        let owner = owner_of(&input.owner)?;
         Ok(blocking(move || {
-            s.remove_secret(&p, &id, &input.field)
-                .map(|removed| SecretRemoveOutput { removed })
+            match owner {
+                SecretOwnerRef::Profile(id) => s.remove_secret(&p, &id, &input.field),
+                SecretOwnerRef::SshHost(id) => s.remove_host_secret(&p, &id, &input.field),
+            }
+            .map(|removed| SecretRemoveOutput { removed })
         })
         .await?)
     }
@@ -633,18 +652,26 @@ impl SecretsApi {
     async fn status(&self, ctx: Ctx, input: SecretOwnerInput) -> ToolResult<SecretsOutput> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
-        let id = profile_of(&input.owner)?;
+        let owner = owner_of(&input.owner)?;
         Ok(blocking(move || {
-            let (_, access) = s.get(&p, &id)?;
-            if access == Access::Metadata {
-                return Err(ProfileError::NotFound);
-            }
+            let status = match owner {
+                SecretOwnerRef::Profile(id) => {
+                    let (_, access) = s.get(&p, &id)?;
+                    if access == Access::Metadata {
+                        return Err(ProfileError::NotFound);
+                    }
+                    s.secret_status(&id)?
+                }
+                SecretOwnerRef::SshHost(id) => {
+                    let (_, access) = s.get_host(&p, &id)?;
+                    if !access.may_edit() {
+                        return Err(ProfileError::NotFound);
+                    }
+                    s.host_secret_status(&id)?
+                }
+            };
             Ok(SecretsOutput {
-                secrets: s
-                    .secret_status(&id)?
-                    .into_iter()
-                    .map(SecretRow::from)
-                    .collect(),
+                secrets: status.into_iter().map(SecretRow::from).collect(),
             })
         })
         .await?)
@@ -673,5 +700,440 @@ impl AdminProfilesApi {
                 .map(|transferred| TransferOutput { transferred })
         })
         .await?)
+    }
+}
+
+// ---- SSH hosts (DOC-23 §4.3, §8.1) ------------------------------------------------------------
+
+/// An SSH host's settings: never a secret (DOC-23 §4.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostFields {
+    /// Host name or IP address of the SSH server.
+    pub host: String,
+    /// 22 when absent.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub port: Option<u16>,
+    pub username: String,
+    /// `privateKey` when absent.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub auth: Option<DockerAuth>,
+    /// SSH keepalive interval, 30 s when absent; 0 turns it off.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub keepalive_sec: Option<u32>,
+    /// The trusted host key; `null` until the person trusts it on first use.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub host_key: Option<HostKeyFingerprint>,
+}
+
+impl SshHostFields {
+    fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or_default()
+    }
+
+    /// The stored fields as the wire's (a row a migration kept as it was reads as far as it can).
+    fn of(fields: &Value) -> SshHostFields {
+        serde_json::from_value(fields.clone()).unwrap_or_else(|_| SshHostFields {
+            host: fields["host"].as_str().unwrap_or_default().to_owned(),
+            port: fields["port"].as_u64().and_then(|p| u16::try_from(p).ok()),
+            username: fields["username"].as_str().unwrap_or_default().to_owned(),
+            auth: serde_json::from_value(fields["auth"].clone()).ok(),
+            keepalive_sec: fields["keepaliveSec"]
+                .as_u64()
+                .and_then(|k| u32::try_from(k).ok()),
+            host_key: serde_json::from_value(fields["hostKey"].clone()).ok(),
+        })
+    }
+}
+
+/// A profile that names an SSH host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostUser {
+    pub id: String,
+    pub tool: String,
+    pub name: String,
+}
+
+/// A saved SSH host as the caller may see it: never a secret value.
+#[derive(Debug, Clone, PartialEq, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostView {
+    pub id: String,
+    pub name: String,
+    pub fields: SshHostFields,
+    pub owner: OwnerWire,
+    pub etag: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub created_by: String,
+    pub updated_by: String,
+    /// `owner`, `edit`, `use` or `metadata`.
+    pub access: String,
+    /// The secrets set (none listed for `metadata` and `use`).
+    pub secrets: Vec<SecretRow>,
+    /// The profiles that name it and the caller sees.
+    pub used_by: Vec<SshHostUser>,
+    /// How many more name it that the caller does not see.
+    pub used_by_hidden: u32,
+}
+
+fn host_view(
+    service: &ProfileService,
+    host: StoredProfile,
+    access: Access,
+    users: Vec<super::ssh_hosts::User>,
+) -> Result<SshHostView, ProfileError> {
+    let secrets = if access.may_edit() {
+        service
+            .host_secret_status(&host.id)?
+            .into_iter()
+            .map(SecretRow::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let hidden = users.iter().filter(|u| !u.visible).count();
+    Ok(SshHostView {
+        fields: SshHostFields::of(&host.fields),
+        owner: match &host.owner {
+            Ownership::Personal { user } => OwnerWire::Personal {
+                user: Some(user.clone()),
+            },
+            Ownership::Shared => OwnerWire::Shared,
+        },
+        etag: host.etag.to_string(),
+        access: access.as_str().to_owned(),
+        secrets,
+        used_by: users
+            .into_iter()
+            .filter(|u| u.visible)
+            .map(|u| SshHostUser {
+                id: u.id,
+                tool: u.tool,
+                name: u.name,
+            })
+            .collect(),
+        used_by_hidden: u32::try_from(hidden).unwrap_or(u32::MAX),
+        id: host.id,
+        name: host.name,
+        created_at: host.created_at,
+        updated_at: host.updated_at,
+        created_by: host.created_by,
+        updated_by: host.updated_by,
+    })
+}
+
+fn host_view_of(
+    service: &ProfileService,
+    p: &security_types::Principal,
+    host: StoredProfile,
+) -> Result<SshHostView, ProfileError> {
+    let profiles = service.store.profiles()?;
+    let access = service.host_access(p, &host, &profiles);
+    let users = service.host_users(p, &host.id, &profiles);
+    host_view(service, host, access, users)
+}
+
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostsOutput {
+    pub hosts: Vec<SshHostView>,
+}
+
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostIdInput {
+    pub id: String,
+}
+
+#[derive(Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostCreateInput {
+    pub name: String,
+    pub owner: OwnerWire,
+    pub fields: SshHostFields,
+    /// `privateKey`, `passphrase`, `password` (redacted; never answered).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub secrets: Option<BTreeMap<String, String>>,
+}
+
+// Debug by hand: secret values never reach a log line, an error or a panic message (TSK-141).
+impl std::fmt::Debug for SshHostCreateInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshHostCreateInput")
+            .field("name", &self.name)
+            .field("owner", &self.owner)
+            .field("fields", &self.fields)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostUpdateInput {
+    pub id: String,
+    pub etag: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub name: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub fields: Option<SshHostFields>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub secrets: Option<BTreeMap<String, String>>,
+}
+
+// Debug by hand: secret values never reach a log line, an error or a panic message (TSK-141).
+impl std::fmt::Debug for SshHostUpdateInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshHostUpdateInput")
+            .field("id", &self.id)
+            .field("etag", &self.etag)
+            .field("name", &self.name)
+            .field("fields", &self.fields)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostUpdateOutput {
+    pub host: SshHostView,
+    /// Secrets removed because the address, port, user or trusted key changed (DOC-25 §3.4.8).
+    pub removed_secrets: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostDeleteInput {
+    pub id: String,
+    /// The host's name: the confirmation phrase.
+    pub name: String,
+}
+
+#[derive(Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostImportInput {
+    /// The host's id in the file it comes from: a repeated import answers the same host.
+    pub source_id: String,
+    pub name: String,
+    pub owner: OwnerWire,
+    pub fields: SshHostFields,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub secrets: Option<BTreeMap<String, String>>,
+}
+
+// Debug by hand: secret values never reach a log line, an error or a panic message (TSK-141).
+impl std::fmt::Debug for SshHostImportInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshHostImportInput")
+            .field("source_id", &self.source_id)
+            .field("name", &self.name)
+            .field("owner", &self.owner)
+            .field("fields", &self.fields)
+            .field(
+                "secrets",
+                &self.secrets.as_ref().map(|s| s.keys().collect::<Vec<_>>()),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostImportOutput {
+    pub host: SshHostView,
+    pub created: bool,
+}
+
+#[derive(Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshHostTestInput {
+    pub fields: SshHostFields,
+    /// The secrets typed in the form: used for this call only, never stored, logged or audited.
+    pub secrets: BTreeMap<String, String>,
+    /// The stored host the form edits, whose secrets fill those left empty while the form keeps
+    /// its address, port, user and trusted key.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub host_id: Option<String>,
+}
+
+impl std::fmt::Debug for SshHostTestInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshHostTestInput")
+            .field("fields", &self.fields)
+            .field("secrets", &self.secrets.keys().collect::<Vec<_>>())
+            .field("host_id", &self.host_id)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostTestOutput {
+    /// The key the host presented (the trusted one).
+    pub host_key: HostKeyFingerprint,
+    /// The login's time, handshake included.
+    pub ms: u32,
+}
+
+/// `sshHosts.*`: saved SSH logins that Docker profiles (and routes) choose. `None` only in the
+/// codegen router.
+pub struct SshHostsApi(pub Option<Arc<ProfileService>>);
+
+#[rpc::router(namespace = "sshHosts")]
+impl SshHostsApi {
+    /// The hosts the caller sees, with who uses each.
+    #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
+    async fn list(&self, ctx: Ctx, _input: Empty) -> ToolResult<SshHostsOutput> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        Ok(blocking(move || {
+            let hosts = s
+                .list_hosts(&p)?
+                .into_iter()
+                .map(|(host, access, users)| host_view(&s, host, access, users))
+                .collect::<Result<_, _>>()?;
+            Ok(SshHostsOutput { hosts })
+        })
+        .await?)
+    }
+
+    /// One host, as the caller may see it.
+    #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
+    async fn get(&self, ctx: Ctx, input: SshHostIdInput) -> ToolResult<SshHostView> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        Ok(blocking(move || {
+            let (host, _) = s.get_host(&p, &input.id)?;
+            host_view_of(&s, &p, host)
+        })
+        .await?)
+    }
+
+    /// A new personal (the caller's) or shared (`profiles.manage`) host.
+    #[rpc::mutation(perm = "profiles.personal", risk = Risk::Write, redact = ["secrets"])]
+    async fn create(&self, ctx: Ctx, input: SshHostCreateInput) -> ToolResult<SshHostView> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        Ok(blocking(move || {
+            let host = s.create_host(
+                &p,
+                input.owner.ownership(&p.id),
+                &input.name,
+                &input.fields.to_value(),
+                input.secrets.unwrap_or_default(),
+                None,
+                now(),
+            )?;
+            host_view_of(&s, &p, host)
+        })
+        .await?)
+    }
+
+    /// Changes the parts given, at `etag`. A changed address, port or user, or a replaced trusted
+    /// key, removes the login's secrets unless they are set in the same call; the answer names
+    /// them.
+    #[rpc::mutation(perm = "profiles.personal", risk = Risk::Write, redact = ["secrets"])]
+    async fn update(&self, ctx: Ctx, input: SshHostUpdateInput) -> ToolResult<SshHostUpdateOutput> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        let etag = etag_of(&input.etag)?;
+        Ok(blocking(move || {
+            let fields = input.fields.as_ref().map(SshHostFields::to_value);
+            let (host, removed) = s.update_host(
+                &p,
+                &input.id,
+                etag,
+                input.name.as_deref(),
+                fields.as_ref(),
+                input.secrets.unwrap_or_default(),
+                now(),
+            )?;
+            Ok(SshHostUpdateOutput {
+                host: host_view_of(&s, &p, host)?,
+                removed_secrets: removed,
+            })
+        })
+        .await?)
+    }
+
+    /// Deletes the host and its secrets (confirmed by typing its name); refused while a profile
+    /// names it.
+    #[rpc::mutation(perm = "profiles.personal", risk = Risk::Destructive)]
+    async fn delete(&self, ctx: Ctx, input: SshHostDeleteInput) -> ToolResult<Empty> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        blocking(move || s.delete_host(&p, &input.id, &input.name)).await?;
+        Ok(Empty {})
+    }
+
+    /// Imports a host from an export file once: a repeated call with the same `sourceId` answers
+    /// the host the first one made. A name taken gets `-2`.
+    #[rpc::mutation(perm = "profiles.personal", risk = Risk::Write, redact = ["secrets"])]
+    async fn import(&self, ctx: Ctx, input: SshHostImportInput) -> ToolResult<SshHostImportOutput> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        Ok(blocking(move || {
+            let (host, created) = s.import_host(
+                &p,
+                &input.source_id,
+                input.owner.ownership(&p.id),
+                &input.name,
+                &input.fields.to_value(),
+                input.secrets.unwrap_or_default(),
+                now(),
+            )?;
+            Ok(SshHostImportOutput {
+                host: host_view_of(&s, &p, host)?,
+                created,
+            })
+        })
+        .await?)
+    }
+
+    /// Test of the host form: logs in over SSH with the draft and closes. The host key is checked
+    /// as at connect: unknown or changed fails as `HostKey` with the key to trust.
+    #[rpc::mutation(perm = "profiles.personal", risk = Risk::Read, redact = ["secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: SshHostTestInput) -> ToolResult<SshHostTestOutput> {
+        let s = service(&self.0)?;
+        let p = ctx.principal().clone();
+        let profile = blocking(move || {
+            s.resolve_host_test(
+                &p,
+                &input.fields.to_value(),
+                input.secrets,
+                input.host_id.as_deref(),
+            )
+        })
+        .await?;
+        // serde's message can quote a secret: none is kept.
+        let profile: crate::tools::docker::ConnectDockerProfile =
+            serde_json::from_value(profile)
+                .map_err(|_| ToolError::invalid(SYSTEM, "fields", "the host does not read"))?;
+        let target = crate::tools::docker::target(&profile)?;
+        let started = std::time::Instant::now();
+        let ssh = crate::tools::docker::ssh::SshSession::connect(target).await?;
+        let ms = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
+        let host_key = ssh.host_key.clone();
+        ssh.close().await;
+        Ok(SshHostTestOutput { host_key, ms })
     }
 }
