@@ -82,3 +82,16 @@ export async function loadProfiles(storage: AppStorage, schemas: (tool: string) 
   records.sort((a, b) => a.name.localeCompare(b.name));
   return { records, states, migrated: migratedNow.size };
 }
+
+/**
+ * The states of records read from the server (TSK-139): each at its tool's version, made by a
+ * newer Mightyconsole (read-only), or of a tool this app lacks. The server migrates its own.
+ */
+export function recordStatesOf(records: readonly ProfileRecord[], schemas: (tool: string) => ProfileSchema | undefined): Record<string, RecordState> {
+  const out: Record<string, RecordState> = {};
+  for (const r of records) {
+    const schema = schemas(r.tool);
+    out[r.id] = !schema ? { kind: "unknownTool" } : r.version > schema.version ? { kind: "newer", version: r.version } : { kind: "current" };
+  }
+  return out;
+}

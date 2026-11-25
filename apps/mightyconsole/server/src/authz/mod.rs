@@ -28,10 +28,10 @@
 //!    matches it ([`confirm`]), else `NeedsApproval`.
 //! 8. Allow.
 //!
-//! Until profiles move to the server (TSK-139) there is no stored profile: every connection is
-//! opened with a profile the browser keeps and sends, a [`targets::BROWSER_TARGET`]. It counts as
-//! the caller's personal profile when the caller holds `profiles.personal` (every built-in role
-//! does; a site that takes it away with a custom default role makes roles bind there too).
+//! A draft of the profile form (`<tool>.test` with no `basedOn`, [`targets::BROWSER_TARGET`]) is
+//! the caller's own: it counts as their personal profile when they hold `profiles.personal`
+//! (every built-in role does; a site that takes it away with a custom default role makes roles
+//! bind there too).
 
 pub mod catalogue;
 pub mod completeness;

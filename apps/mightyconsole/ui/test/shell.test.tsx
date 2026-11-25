@@ -98,12 +98,15 @@ describe("profiles through the shell (spec §4)", () => {
     await click(byRole("button", "Save"));
     await waitFor(() => treeItem("lab") !== null, "the profile in the tree");
     const [stored] = await fake.storage.listProfiles();
+    // Saved on the server (the fake keeps it in `storage`), the token with it.
     expect(stored).toMatchObject({ tool: "echo", version: 1, name: "lab", fields: { greeting: "hi there" }, secrets: { token: "s3cret" } });
+    expect(calls(fake, "profiles.create")[0]!.input).toMatchObject({ owner: { kind: "personal" }, secrets: { token: "s3cret" } });
 
     // Connect from the tree: the status glyph says connected and the resources appear.
     await doubleClick(treeItem("lab"));
     await waitFor(() => treeItem("Ping") !== null, "the resource tree");
-    expect(calls(fake, "echo.connect")[0]!.input).toEqual({ profile: { name: "lab", greeting: "hi there", token: "s3cret", schemas: null, mappings: null } });
+    // Connect names the stored profile; the server opens its token (DOC-25 §3.4.7).
+    expect(calls(fake, "echo.connect")[0]!.input).toEqual({ profileId: stored!.id });
     expect(treeItem("lab")?.querySelector("[data-status=connected]")).not.toBeNull();
 
     // Edit keeps the stored secret unless a new one is typed; the name must stay unique.
@@ -115,10 +118,18 @@ describe("profiles through the shell (spec §4)", () => {
     await click(byRole("menuitem", "Edit"));
     await waitFor(() => dialogWith("Edit lab") !== null, "the edit sheet");
     expect(inputLabelled("Token").placeholder).toBe("Set (type to replace)");
+    // The form never holds the stored value: the field is empty.
+    expect(inputLabelled("Token").value).toBe("");
+    // Test connection: the draft, nothing typed, based on the stored profile (its token fills in).
+    await click(byRole("button", /Test connection/));
+    await waitFor(() => byText("The connection works") !== null, "the test");
+    expect(calls(fake, "echo.test")[0]!.input).toEqual({ draft: { name: "lab", fields: { greeting: "hi there" }, extras: {}, secrets: [] }, basedOn: stored!.id });
     await type(inputLabelled("Greeting"), "changed");
     await click(byRole("button", "Save"));
     await waitFor(() => dialogWith("Edit lab") === null, "the sheet to close");
     expect((await fake.storage.listProfiles())[0]).toMatchObject({ fields: { greeting: "changed" }, secrets: { token: "s3cret" } });
+    // Only what was typed goes up: no secret in the edit.
+    expect(calls(fake, "profiles.update").at(-1)!.input).toMatchObject({ secrets: {} });
 
     // Duplicate: a new id, the name must differ.
     await click(treeItem("lab"));
@@ -154,7 +165,7 @@ describe("profiles through the shell (spec §4)", () => {
     expect(await fake.storage.listProfiles()).toHaveLength(1);
   });
 
-  test("export without and with secrets, import with a choice per conflict", async () => {
+  test("export holds no secret, import with a choice per conflict", async () => {
     const fake = createFakeServices();
     await fake.storage.putProfile(profile({ name: "lab", secrets: { token: "s3cret" } }));
     await mount(fake);
@@ -170,22 +181,14 @@ describe("profiles through the shell (spec §4)", () => {
     await waitFor(() => byRole("option", /Export profiles/) !== null, "the palette");
     await click(byRole("option", /Export profiles/));
     await waitFor(() => dialogWith("Export 1 profile") !== null, "the export dialog");
+    // Secrets are write-only on the server: no export can hold them.
+    expect(document.querySelector("[role=dialog] [role=checkbox]")).toBeNull();
     await click(byRole("button", "Export"));
     await waitFor(() => blobs.length === 1, "the file");
     const without = JSON.parse(await blobs[0]!.text());
     expect(without).toMatchObject({ format: EXPORT_FORMAT, includesSecrets: false });
     expect(without.profiles[0].secrets).toEqual({});
 
-    await key("k", { ctrlKey: true });
-    await waitFor(() => byRole("option", /Export profiles/) !== null, "the palette");
-    await click(byRole("option", /Export profiles/));
-    await waitFor(() => dialogWith("Export 1 profile") !== null, "the export dialog");
-    await click(document.querySelector("[role=dialog] [role=checkbox]"));
-    expect(byText("The file will hold your secrets in plain text")).not.toBeNull();
-    await click(byRole("button", "Export"));
-    await waitFor(() => blobs.length === 2, "the second file");
-    const withSecrets = JSON.parse(await blobs[1]!.text());
-    expect(withSecrets.profiles[0].secrets).toEqual({ token: "s3cret" });
     create.mockRestore();
 
     // Import the first file back plus a new profile: the existing one is a conflict.
@@ -207,6 +210,60 @@ describe("profiles through the shell (spec §4)", () => {
     const stored = await fake.storage.listProfiles();
     expect(stored.map((p) => p.name).sort()).toEqual(["fresh", "lab"]);
     expect(stored.find((p) => p.name === "lab")?.secrets).toEqual({ token: "s3cret" });
+  });
+
+  test("a stored secret is removed from the sheet, and is set or not, never shown", async () => {
+    const fake = createFakeServices();
+    await fake.storage.putProfile(profile({ name: "lab", secrets: { token: "s3cret" } }));
+    await mount(fake);
+    await waitFor(() => treeItem("lab") !== null, "the stored profile");
+    await click(treeItem("lab"));
+    await act(async () => {
+      treeItem("lab")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    });
+    await settle(2);
+    await click(byRole("menuitem", "Edit"));
+    await waitFor(() => dialogWith("Stored secrets") !== null, "the edit sheet");
+    expect(document.body.textContent).not.toContain("s3cret");
+    await click(byRole("button", "Remove"));
+    expect(byText("removed on save")).not.toBeNull();
+    expect(inputLabelled("Token").placeholder).toBe("Not set");
+    await click(byRole("button", "Save"));
+    await waitFor(() => dialogWith("Stored secrets") === null, "the sheet to close");
+    expect(calls(fake, "secrets.remove")[0]!.input).toMatchObject({ field: "token" });
+    expect((await fake.storage.listProfiles())[0]!.secrets).toEqual({});
+  });
+
+  test("the browser's own profiles move to the server after a backup (DOC-25 §3.4.9)", async () => {
+    const browser = new MemoryStorage();
+    await browser.putProfile(profile({ id: "01OLD", name: "old lab", secrets: { token: "s3cret" } }));
+    const fake = createFakeServices(new MemoryStorage(), { browserProfiles: browser });
+    await mount(fake);
+    // Not listed until moved; the page says so and offers the step.
+    await waitFor(() => byText("1 profile is kept in this browser") !== null, "the prompt");
+    expect(treeItem("old lab")).toBeNull();
+    await click(byRole("button", "Move to the server"));
+    await waitFor(() => dialogWith("Move my profiles to the server") !== null, "the move dialog");
+    expect(byText("token")).not.toBeNull();
+    const move = byRole("button", "Move 1 profile") as HTMLButtonElement;
+    expect(move.disabled).toBe(true);
+    const blobs: Blob[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation((b) => {
+      blobs.push(b as Blob);
+      return "blob:x";
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await click(byRole("button", "Save the backup"));
+    const backup = JSON.parse(await blobs[0]!.text());
+    expect(backup).toMatchObject({ includesSecrets: true });
+    expect(backup.profiles[0].secrets).toEqual({ token: "s3cret" });
+    expect(move.disabled).toBe(false);
+    await click(move);
+    await waitFor(() => treeItem("old lab") !== null, "the moved profile, from the server");
+    expect(await browser.listProfiles()).toEqual([]);
+    const [onServer] = await fake.storage.listProfiles();
+    expect(onServer).toMatchObject({ name: "old lab", secrets: { token: "s3cret" } });
   });
 
   test("a newer profile is read-only; the in-memory fallback warns", async () => {

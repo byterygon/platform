@@ -8,7 +8,6 @@
 // mappings of the profile, mappings tested on the last messages JetStream keeps). Each tab kind
 // has a URL under /nats/<profile name>/ (routes.ts).
 import { Icon } from "@/components/ui/icon";
-import type { ConnectNatsProfile } from "@/gen/api";
 import { ArrowDownload, ArrowUp, Braces, Code, Database, Flash, Folder, NumberSymbol, PlugConnected, Server } from "@/lib/icons";
 import { mappingsOf, schemasOf } from "@/messaging/schemas/model";
 import { NatsMark } from "../marks";
@@ -300,7 +299,7 @@ export const natsTool: ToolModule = {
     },
   ],
   async connect(client, record) {
-    const out = await client.nats.connect({ profile: profile.toConnect(record) as ConnectNatsProfile });
+    const out = await client.nats.connect({ profileId: record.id });
     return { connId: out.connId };
   },
   async disconnect(client, connId) {

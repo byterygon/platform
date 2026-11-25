@@ -31,20 +31,6 @@ const profile: ProfileSchema = {
     return errors;
   },
   migrations: {},
-  toConnect(record): api.ConnectEchoProfile {
-    const greeting = record.fields["greeting"];
-    const token = record.secrets["token"];
-    const schemas = record.extras["schemas"];
-    const mappings = record.extras["mappings"];
-    return {
-      name: record.name,
-      greeting: typeof greeting === "string" && greeting !== "" ? greeting : null,
-      token: typeof token === "string" && token !== "" ? token : null,
-      // The messaging core's test backend (TSK-80): the profile's local schemas and mappings.
-      schemas: Array.isArray(schemas) ? (schemas as api.LocalSchema[]) : null,
-      mappings: Array.isArray(mappings) ? (mappings as api.SchemaMapping[]) : null,
-    };
-  },
 };
 
 function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
@@ -273,7 +259,7 @@ export const echoTool: ToolModule = {
   ],
   actions: [],
   async connect(client, record) {
-    const out = await client.echo.connect({ profile: profile.toConnect(record) as api.ConnectEchoProfile });
+    const out = await client.echo.connect({ profileId: record.id });
     return { connId: out.connId };
   },
   async disconnect(client, connId) {

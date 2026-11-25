@@ -17,7 +17,8 @@ import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RecordState } from "@/profiles/migrate";
-import { type ProfileRecord, hasSecrets, ulid } from "@/profiles/record";
+import { type ProfileRecord, ulid } from "@/profiles/record";
+import { testProfile } from "@/profiles/server";
 import { type ImportChoice, type ImportPlan, ImportError } from "@/profiles/transfer";
 import type { DescribedError, FieldErrors, ToolModule } from "@/tools/types";
 import { describeError } from "@/app/messages";
@@ -52,7 +53,9 @@ export interface ProfileSheetProps {
   takenNames: ReadonlySet<string>;
   /** The base record's load state; `newer` makes the sheet read-only. */
   recordState?: RecordState;
-  onSave: (record: ProfileRecord) => Promise<void>;
+  /** Saves the form's record (its `secrets`: what was typed), removing the stored secrets named
+   * in `remove`; `shared` makes a new profile the tenant's. */
+  onSave: (record: ProfileRecord, options: { remove: string[]; shared: boolean }) => Promise<void>;
   /** A new profile's name, filled in (a link's missing profile). */
   name?: string;
 }
@@ -71,7 +74,8 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
   };
   const [draft, setDraft] = useState(fresh);
   const releaseGuard = useSheetGuard(open, draft);
-  const [clearSecrets, setClearSecrets] = useState(false);
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
+  const [shared, setShared] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [test, setTest] = useState<TestState>({ status: "idle" });
@@ -80,19 +84,20 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     if (open) {
       setDraft(fresh());
       setErrors({});
-      setClearSecrets(false);
+      setRemoved(new Set());
+      setShared(false);
       setTest({ status: "idle" });
       setTrusting(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, base?.id, mode, name]);
   const readOnly = recordState?.kind === "newer";
-  const stored = useMemo(() => new Set(base && mode !== "add" && !clearSecrets ? Object.keys(base.secrets).filter((k) => base.secrets[k] !== "" && base.secrets[k] != null) : []), [base, mode, clearSecrets]);
+  // The secrets the server holds (never their values), less those the person removes.
+  const stored = useMemo(() => new Set(base && mode !== "add" ? (base.storedSecrets ?? []).filter((k) => !removed.has(k)) : []), [base, mode, removed]);
 
   const build = (): ProfileRecord => {
     const now = new Date().toISOString();
     const typed = Object.fromEntries(Object.entries(draft.secrets).filter(([, v]) => v !== "" && v !== undefined));
-    const keptSecrets = base && !clearSecrets && mode !== "add" ? base.secrets : {};
     return {
       id: mode === "edit" && base ? base.id : ulid(),
       tool: tool.id,
@@ -102,8 +107,10 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
       createdAt: mode === "edit" && base ? base.createdAt : now,
       updatedAt: now,
       fields: draft.fields,
-      secrets: { ...keptSecrets, ...typed },
+      secrets: typed,
       extras: draft.extras,
+      storedSecrets: [...stored],
+      ...(base?.etag && mode === "edit" ? { etag: base.etag } : {}),
     };
   };
 
@@ -116,7 +123,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     if (Object.keys(next).length > 0) return;
     setSaving(true);
     try {
-      await onSave(record);
+      await onSave(record, { remove: [...removed], shared });
       releaseGuard();
     } finally {
       setSaving(false);
@@ -131,8 +138,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     if (Object.keys(next).length > 0) return;
     setTest({ status: "running" });
     try {
-      const { connId } = await tool.connect(client, record);
-      await tool.disconnect(client, connId).catch(() => undefined);
+      await testProfile(client, record, base && mode !== "add" ? base.id : undefined);
       setTest({ status: "ok" });
     } catch (e) {
       const error = describeError(e);
@@ -148,7 +154,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>Profiles stay in this browser; secrets are stored in plain and left out of exports unless you include them.</SheetDescription>
+          <SheetDescription>Profiles are kept on the server. Secrets are write-only: the server stores them encrypted and never shows them again; type a new value to replace one.</SheetDescription>
         </SheetHeader>
         <SheetBody>
           <form
@@ -193,10 +199,27 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               onFields={(patch) => setDraft((d) => ({ ...d, fields: { ...d.fields, ...patch } }))}
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />
-            {base && mode !== "add" && hasSecrets(base) ? (
+            {base && mode === "edit" && (base.storedSecrets?.length ?? 0) > 0 ? (
+              <Field>
+                <FieldLabel>Stored secrets</FieldLabel>
+                <FieldDescription>Set on the server; their values are never shown. Remove one to stop sending it.</FieldDescription>
+                <ul className="flex flex-col gap-stack-xs">
+                  {(base.storedSecrets ?? []).map((key) => (
+                    <li key={key} className="flex items-center gap-inline-sm">
+                      <span className="text-body-1">{key}</span>
+                      <span className="text-caption-1 text-fg-muted">{removed.has(key) ? "removed on save" : "set"}</span>
+                      <Button size="small" className="ms-auto" disabled={readOnly} onClick={() => setRemoved((r) => (r.has(key) ? new Set([...r].filter((k) => k !== key)) : new Set([...r, key])))}>
+                        {removed.has(key) ? "Keep" : "Remove"}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Field>
+            ) : null}
+            {mode === "add" ? (
               <Field orientation="horizontal">
-                <Checkbox checked={clearSecrets} onCheckedChange={(v) => setClearSecrets(v === true)} disabled={readOnly} />
-                <FieldLabel>Remove the stored secrets</FieldLabel>
+                <Checkbox checked={shared} onCheckedChange={(v) => setShared(v === true)} disabled={readOnly} />
+                <FieldLabel>Shared: everyone who may use {tool.label} connects with it, without seeing its secrets (needs profiles.manage)</FieldLabel>
               </Field>
             ) : null}
             {test.status === "ok" ? (
@@ -297,7 +320,8 @@ export function DiscardChangesDialog({ open, onKeep, onDiscard }: { open: boolea
   );
 }
 
-export function ExportDialog({ open, onOpenChange, count, onExport }: { open: boolean; onOpenChange: (open: boolean) => void; count: number; onExport: (includeSecrets: boolean) => void }) {
+/** `withSecrets`: the records hold secret values (the browser's own, before they move to the server). */
+export function ExportDialog({ open, onOpenChange, count, onExport, withSecrets = false }: { open: boolean; onOpenChange: (open: boolean) => void; count: number; onExport: (includeSecrets: boolean) => void; withSecrets?: boolean }) {
   const [includeSecrets, setIncludeSecrets] = useState(false);
   useEffect(() => {
     if (open) setIncludeSecrets(false);
@@ -307,13 +331,15 @@ export function ExportDialog({ open, onOpenChange, count, onExport }: { open: bo
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Export {count === 1 ? "1 profile" : `${count} profiles`}</DialogTitle>
-          <DialogDescription>Writes a JSON file another browser can import.</DialogDescription>
+          <DialogDescription>Writes a JSON file another server can import. Secrets stay on this server: they are write-only and never in an export.</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-stack-md">
-          <Field orientation="horizontal">
-            <Checkbox checked={includeSecrets} onCheckedChange={(v) => setIncludeSecrets(v === true)} />
-            <FieldLabel>Include secrets (passwords, keys, tokens, kubeconfigs)</FieldLabel>
-          </Field>
+          {withSecrets ? (
+            <Field orientation="horizontal">
+              <Checkbox checked={includeSecrets} onCheckedChange={(v) => setIncludeSecrets(v === true)} />
+              <FieldLabel>Include secrets (passwords, keys, tokens, kubeconfigs)</FieldLabel>
+            </Field>
+          ) : null}
           {includeSecrets ? (
             <Alert intent="warning">
               <AlertTitle>The file will hold your secrets in plain text</AlertTitle>
@@ -441,6 +467,117 @@ export function ImportDialog({ open, onOpenChange, plan: makePlan, onImport, too
             }}
           >
             Import {importable > 0 ? importable : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * "Move my profiles to the server" (DOC-25 §3.4.9): the browser's own profiles, with the secrets
+ * each holds. A backup first: the export with secrets, saved or explicitly skipped. Each becomes a
+ * personal profile, or shared when marked (that needs profiles.manage).
+ */
+export function MoveProfilesDialog({
+  open,
+  onOpenChange,
+  records,
+  toolLabel,
+  onBackup,
+  onMove,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  records: readonly ProfileRecord[];
+  toolLabel: (id: string) => string;
+  /** Downloads the export with secrets. */
+  onBackup: () => void;
+  /** Moves the records; rejects with the failure, the moved ones staying moved. */
+  onMove: (shared: ReadonlySet<string>) => Promise<void>;
+}) {
+  const [backedUp, setBackedUp] = useState(false);
+  const [skipBackup, setSkipBackup] = useState(false);
+  const [shared, setShared] = useState<ReadonlySet<string>>(new Set());
+  const [moving, setMoving] = useState(false);
+  const [error, setError] = useState<DescribedError | null>(null);
+  useEffect(() => {
+    if (open) {
+      setBackedUp(false);
+      setSkipBackup(false);
+      setShared(new Set());
+      setError(null);
+    }
+  }, [open]);
+  const secretsOf = (r: ProfileRecord) => Object.keys(r.secrets).filter((k) => typeof r.secrets[k] === "string" && r.secrets[k] !== "");
+  const move = async () => {
+    setMoving(true);
+    setError(null);
+    try {
+      await onMove(shared);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setMoving(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Move my profiles to the server</DialogTitle>
+          <DialogDescription>
+            {records.length === 1 ? "1 profile is" : `${records.length} profiles are`} kept in this browser. On the server their secrets are stored encrypted and never shown again; this browser then keeps none.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-stack-md">
+          <Table aria-label="Profiles to move">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Profile</TableHead>
+                <TableHead>Tool</TableHead>
+                <TableHead>Secrets</TableHead>
+                <TableHead>Shared</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {records.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{r.name}</TableCell>
+                  <TableCell>{toolLabel(r.tool)}</TableCell>
+                  <TableCell>{secretsOf(r).join(", ") || "none"}</TableCell>
+                  <TableCell>
+                    <Checkbox aria-label={`Share ${r.name}`} checked={shared.has(r.id)} onCheckedChange={(v) => setShared((s) => (v === true ? new Set([...s, r.id]) : new Set([...s].filter((id) => id !== r.id))))} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <Alert intent="warning">
+            <AlertTitle>Save a backup first</AlertTitle>
+            <AlertDescription>The backup holds your secrets in plain text: keep it as safe as the systems it opens. Import it again if something goes wrong.</AlertDescription>
+          </Alert>
+          <div className="flex items-center gap-inline-sm">
+            <Button
+              onClick={() => {
+                onBackup();
+                setBackedUp(true);
+              }}
+            >
+              Save the backup
+            </Button>
+            {backedUp ? <span className="text-body-1 text-fg-muted">Backup saved</span> : null}
+          </div>
+          <Field orientation="horizontal">
+            <Checkbox checked={skipBackup} onCheckedChange={(v) => setSkipBackup(v === true)} />
+            <FieldLabel>Move without a backup</FieldLabel>
+          </Field>
+          {error ? <ErrorState error={error} /> : null}
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose render={<Button />}>Not now</DialogClose>
+          <Button appearance="primary" loading={moving} disabled={!(backedUp || skipBackup) || records.length === 0} onClick={() => void move()}>
+            Move {records.length === 1 ? "1 profile" : `${records.length} profiles`}
           </Button>
         </DialogFooter>
       </DialogContent>

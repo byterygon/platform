@@ -10,7 +10,7 @@ import { ServicesContext, type MightyClient } from "@/app/client";
 import { describeError } from "@/app/messages";
 import { ProgressBus } from "@/app/progress";
 import { loadPersisted, StoreProvider } from "@/app/store";
-import type { ConnectNatsProfile, NatsRequestOutput, NatsServerInfoOutput, TailSummary } from "@/gen/api";
+import type { NatsRequestOutput, NatsServerInfoOutput, TailSummary } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { MemoryStorage } from "@/profiles/storage";
 import { COLUMNS } from "@/messaging/columns";
@@ -47,23 +47,20 @@ function props(client: unknown, kind: string, params: Record<string, unknown> = 
 }
 
 describe("the profile (spec §6.1)", () => {
-  test("defaults are valid and connect to the local server without credentials", () => {
+  // What the server's connect profile holds is tested in server/src/profiles/connect.rs.
+  test("defaults are valid and name the local server without credentials", () => {
     const r = record();
     expect(schema.validate(r)).toEqual({});
-    const c = schema.toConnect(r);
-    expect(c).toMatchObject({ name: "edge-nats", servers: ["nats://127.0.0.1:4222"], auth: "none", user: null, password: null, token: null, nkeySeed: null, creds: null, requestTimeoutMs: 5000, inboxPrefix: "_INBOX" });
+    expect(r.fields).toMatchObject({ servers: ["nats://127.0.0.1:4222"], auth: "none", inboxPrefix: "_INBOX", requestTimeoutMs: 5000 });
   });
 
-  test("each authentication asks for its own value and sends only it", () => {
+  test("each authentication asks for its own value, typed or stored", () => {
     expect(schema.validate(record({ fields: { auth: "userPassword" } }))).toHaveProperty("user");
     expect(schema.validate(record({ fields: { auth: "token" } }))).toHaveProperty("token");
     expect(schema.validate(record({ fields: { auth: "nkey" }, secrets: { nkeySeed: "SAxyz" } }))["nkeySeed"]).toMatch(/starts with SU/);
     expect(schema.validate(record({ fields: { auth: "creds" }, secrets: { creds: "nope" } }))["creds"]).toMatch(/whole .creds/);
-    // Secrets of another authentication stay in the browser.
-    const c = (schema.toConnect(record({ fields: { auth: "token", user: "lab" }, secrets: { token: "t0k", password: "pw", creds: "x" } })) as ConnectNatsProfile);
-    expect(c).toMatchObject({ auth: "token", token: "t0k", user: null, password: null, creds: null });
-    const u = (schema.toConnect(record({ fields: { auth: "userPassword", user: " lab " }, secrets: { password: "" } })) as ConnectNatsProfile);
-    expect(u).toMatchObject({ user: "lab", password: "" });
+    // A secret stored on the server counts as given (its value is never in the browser).
+    expect(schema.validate({ ...record({ fields: { auth: "token" } }), storedSecrets: ["token"] })).toEqual({});
   });
 
   test("servers, TLS and the timeout are checked", () => {
@@ -73,8 +70,6 @@ describe("the profile (spec §6.1)", () => {
     expect(schema.validate(record({ fields: { servers: ["nats://a:99999"] } }))["servers"]).toMatch(/port/);
     expect(schema.validate(record({ fields: { tls: { enabled: true, clientCertPem: "PEM" } } }))["tls"]).toMatch(/private key/);
     expect(schema.validate(record({ fields: { requestTimeoutMs: 0 } }))).toHaveProperty("requestTimeoutMs");
-    const c = (schema.toConnect(record({ fields: { tls: { enabled: true, caPem: "CA" } }, secrets: { clientKeyPem: "" } })) as ConnectNatsProfile);
-    expect(c.tls).toEqual({ enabled: true, caPem: "CA", clientCertPem: null, serverName: null, clientKeyPem: null });
   });
 
   test("subjects: wildcards subscribe, publishing needs a whole subject", () => {

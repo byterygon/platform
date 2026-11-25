@@ -20,6 +20,7 @@ use rustls::pki_types::{CertificateDer, ServerName};
 use rustls_pki_types::pem::PemObject as _;
 use security_types::Clock;
 use serde_json::{Value, json};
+use sha2::Digest as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
@@ -501,11 +502,66 @@ impl Tab {
         self.wire.get(&id).copied().unwrap_or(id)
     }
 
+    /// Sends call `id`. A `<tool>.connect { profile }`, as the tests write a connection's settings,
+    /// stores that profile on the server first ([`Tab::stored_connect`]) and sends what the page
+    /// sends, `{ profileId }` (DOC-25 §3.4.7): no connect takes a profile from the browser.
     pub async fn call(&mut self, id: u32, procedure: &str, input: Value) {
+        let input = match procedure.strip_suffix(".connect") {
+            Some(tool) if input.get("profile").is_some_and(Value::is_object) => {
+                let profile_id = self.stored_connect(tool, &input["profile"]).await;
+                json!({ "profileId": profile_id })
+            }
+            _ => input,
+        };
+        self.call_raw(id, procedure, input).await;
+    }
+
+    /// [`Tab::call`] with the input as it is.
+    pub async fn call_raw(&mut self, id: u32, procedure: &str, input: Value) {
         let wire = self.assign(id);
         self.client
             .send(&[call_frame(wire, procedure, input, None)])
             .await;
+    }
+
+    /// The stored personal profile with `connect`'s settings (a tool's connect profile, as the
+    /// browser built it before TSK-139): its fields, its secrets by field path, its `extras`. The
+    /// same settings give the same profile; another profile with the name gets a suffix.
+    pub async fn stored_connect(&mut self, tool: &str, connect: &Value) -> String {
+        let (name, fields, secrets, mut extras) = stored_from_connect(tool, connect);
+        let text = serde_json::to_string(&(&fields, &secrets, &extras)).unwrap();
+        let digest: String = sha2::Sha256::digest(text.as_bytes())
+            .iter()
+            .take(6)
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        // The settings' digest marks the profile (no connect reads it): the same settings, from
+        // any tab of this user, connect with the same profile.
+        extras["testSettings"] = json!(digest);
+        let listed = self
+            .extra_call("profiles.list", json!({ "tool": tool }))
+            .await;
+        let profiles = listed["profiles"].as_array().unwrap();
+        if let Some(id) = profiles
+            .iter()
+            .find(|p| p["extras"]["testSettings"] == json!(digest))
+            .and_then(|p| p["id"].as_str())
+        {
+            return id.to_owned();
+        }
+        let taken = profiles.iter().any(|p| p["name"] == json!(name));
+        let name = if taken {
+            format!("{name} ({digest})")
+        } else {
+            name
+        };
+        let made = self
+            .extra_call(
+                "profiles.create",
+                json!({ "tool": tool, "name": name, "owner": { "kind": "personal" }, "fields": fields, "extras": extras, "secrets": secrets }),
+            )
+            .await;
+        made["id"].as_str().unwrap().to_owned()
     }
 
     pub async fn subscribe_events(&mut self, id: u32) {
@@ -732,4 +788,77 @@ pub async fn eventually(what: &str, mut check: impl FnMut() -> bool) {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     panic!("timed out waiting for {what}");
+}
+
+/// A tool's connect profile (the JSON the browser sent before TSK-139) as a stored record: the
+/// name, the `fields`, the secrets by field path (DOC-25 §3.4.1) and the `extras`. What
+/// `profiles/connect.rs` builds from them is the same connect profile.
+pub fn stored_from_connect(tool: &str, connect: &Value) -> (String, Value, Value, Value) {
+    let mut fields = connect.clone();
+    let map = fields
+        .as_object_mut()
+        .expect("a connect profile is an object");
+    let name = map
+        .remove("name")
+        .and_then(|n| n.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "lab".into());
+    map.remove("profileId");
+    let mut extras = serde_json::Map::new();
+    for key in ["schemas", "mappings"] {
+        if let Some(v) = map.remove(key).filter(|v| !v.is_null()) {
+            extras.insert(key.into(), v);
+        }
+    }
+    let mut secrets = serde_json::Map::new();
+    if tool == "langgraph"
+        && let Some(headers) = map.remove("headers").filter(|h| h.is_array())
+    {
+        let list = headers.as_array().unwrap();
+        let lines: Vec<String> = list
+            .iter()
+            .map(|h| {
+                format!(
+                    "{}: {}",
+                    h["name"].as_str().unwrap_or_default(),
+                    h["value"].as_str().unwrap_or_default()
+                )
+            })
+            .collect();
+        let names: Vec<Value> = list.iter().map(|h| h["name"].clone()).collect();
+        if !lines.is_empty() {
+            secrets.insert("headerValues".into(), Value::String(lines.join("\n")));
+        }
+        map.insert("headers".into(), Value::Array(names));
+    }
+    let spec = mightyconsole_server::profiles::spec::spec(tool).expect("a tool with profiles");
+    for path in spec.secrets {
+        if let Some(value) = take(&mut fields, path)
+            && let Some(text) = value.as_str().filter(|t| !t.is_empty())
+        {
+            secrets.insert((*path).to_owned(), Value::String(text.to_owned()));
+        }
+    }
+    strip_nulls(&mut fields);
+    (name, fields, Value::Object(secrets), Value::Object(extras))
+}
+
+/// Removes and returns the value at a dotted path.
+fn take(value: &mut Value, path: &str) -> Option<Value> {
+    let mut parts: Vec<&str> = path.split('.').collect();
+    let last = parts.pop()?;
+    let mut here = value;
+    for part in parts {
+        here = here.get_mut(part)?;
+    }
+    here.as_object_mut()?.remove(last)
+}
+
+/// Drops `null` members (a connect profile's unset options), at every depth.
+fn strip_nulls(value: &mut Value) {
+    if let Some(map) = value.as_object_mut() {
+        map.retain(|_, v| !v.is_null());
+        for v in map.values_mut() {
+            strip_nulls(v);
+        }
+    }
 }

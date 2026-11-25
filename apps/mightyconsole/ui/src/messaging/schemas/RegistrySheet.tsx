@@ -18,10 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import type { MightyClient } from "@/app/client";
 import { Fold, Required } from "@/app/form-parts";
 import { useSheetGuard } from "@/app/leave-guard";
-import type { RegistryAuthKind, RegistryTestOutput } from "@/gen/api";
+import type { RegistryTestOutput } from "@/gen/api";
 import { Delete, PlugConnected, Save } from "@/lib/icons";
 import type { ProfileRecord } from "@/profiles/record";
-import { REGISTRY_AUTH_LABELS, REGISTRY_SECRETS, type RegistryFields, registryOf, registryProblems, registrySecretSet, registryToConnect, splitPatterns } from "./registry";
+import { REGISTRY_AUTH_LABELS, REGISTRY_SECRETS, type RegistryAuthKind, type RegistryFields, registryOf, registryProblems, registrySecretSet, splitPatterns, withRegistry } from "./registry";
+import { testDraft } from "@/profiles/server";
 
 const AUTHS = Object.keys(REGISTRY_AUTH_LABELS) as RegistryAuthKind[];
 
@@ -88,7 +89,6 @@ export function RegistrySheet({ open, onOpenChange, profile, client, wireFormatS
     setFailure(null);
   };
   const secretKey = auth === "basic" ? REGISTRY_SECRETS.password : REGISTRY_SECRETS.token;
-  const secretsNow = (): Record<string, unknown> => ({ ...profile.secrets, ...(secret !== "" ? { [secretKey]: secret } : {}) });
 
   const runTest = async () => {
     setTried(true);
@@ -98,7 +98,11 @@ export function RegistrySheet({ open, onOpenChange, profile, client, wireFormatS
     setTestError(null);
     setAnswer(null);
     try {
-      const out = await client.messaging.registry.test({ registry: registryToConnect(draft(), secretsNow(), wireFormatSubjects) });
+      // The profile with this draft registry and the secret typed here: the server fills the
+      // stored one while the URL stays (DOC-25 §3.4.8), and uses the typed one for this call only.
+      const typed = secret === "" ? {} : auth === "basic" ? { password: secret } : { token: secret };
+      const tested = withRegistry(profile, draft(), typed);
+      const out = await client.messaging.registry.test({ tool: profile.tool, draft: testDraft(tested), basedOn: profile.id });
       if (mine === generation.current) setAnswer(out);
     } catch (e) {
       if (mine === generation.current) setTestError(e instanceof Error ? e.message : String(e));

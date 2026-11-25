@@ -115,7 +115,8 @@ export default {
         cargo("each_auth_needs_its_secret"),
         cargo("secrets_stay_out_of_debug"),
         lab("every_authentication_connects_and_wrong_credentials_are_auth"),
-        vitest("test/nats.test.tsx", "each authentication asks for its own value and sends only it"),
+        vitest("test/nats.test.tsx", "each authentication asks for its own value, typed or stored"),
+        cargo("only_the_chosen_authentications_secrets_go_in", { label: "the connect profile the server builds sends only the chosen authentication's secret" }),
         vitest("test/nats.test.tsx", "servers, TLS and the timeout are checked"),
         browser("connect to the lab and open the server", async ({ page, origin, until, run, shot }) => {
           await page.navigate(`${origin}/`);

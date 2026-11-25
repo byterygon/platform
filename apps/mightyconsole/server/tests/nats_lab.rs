@@ -2180,11 +2180,12 @@ async fn a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_an
     // Test before saving: the subjects, the mode, the compatibility; a wrong draft names its field.
     let registry =
         json!({ "url": url, "auth": "none", "wireFormatSubjects": [format!("{prefix}.wire.>")] });
+    let draft = |registry: Value, secrets: Value| json!({ "tool": "nats", "draft": { "fields": { "schemaRegistry": registry }, "secrets": secrets } });
     let out = call(
         &mut tab,
         2,
         "messaging.registry.test",
-        json!({ "registry": registry }),
+        draft(registry.clone(), json!({})),
     )
     .await;
     assert_eq!(
@@ -2199,21 +2200,32 @@ async fn a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_an
     tab.call(
         3,
         "messaging.registry.test",
-        json!({ "registry": { "url": "https://127.0.0.1:1", "auth": "none" } }),
+        draft(
+            json!({ "url": "https://127.0.0.1:1", "auth": "none" }),
+            json!({}),
+        ),
     )
     .await;
     assert_eq!(
         tab.error(3, Code::InvalidArgument).await.details.unwrap()["field"],
         "schemaRegistry.tls.caPem"
     );
-    tab.call(4, "messaging.registry.test", json!({ "registry": { "url": "http://127.0.0.1:1", "auth": "basic", "username": "u", "password": "secret-pw" } })).await;
+    tab.call(
+        4,
+        "messaging.registry.test",
+        draft(
+            json!({ "url": "http://127.0.0.1:1", "auth": "basic", "username": "u" }),
+            json!({ "schemaRegistry.password": "secret-pw" }),
+        ),
+    )
+    .await;
     let refused = tab.error(4, Code::Unavailable).await;
     assert!(!format!("{refused:?}").contains("secret-pw"));
 
     // Connect with the registry: the wire format is looked for on <prefix>.wire.> only.
     let mut profile = lab_profile();
     profile["schemaRegistry"] = registry.clone();
-    let out = connect(&mut tab, 5, profile).await;
+    let out = connect(&mut tab, 5, profile.clone()).await;
     let conn = s(&out["connId"]).to_owned();
     let status = call(
         &mut tab,
@@ -2393,12 +2405,24 @@ async fn a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_an
         "the update keeps the registry"
     );
 
-    // Removed from the connection: the mappings that need it say so; the counts stay.
+    // Removed from the stored profile, then from the connection (`messaging.registry.set`
+    // rebuilds it from the profile): the mappings that need it say so; the counts stay.
+    let pid = tab.stored_connect("nats", &profile).await;
+    let stored = call(&mut tab, 90, "profiles.get", json!({ "id": pid })).await;
+    let mut fields = stored["fields"].clone();
+    fields.as_object_mut().unwrap().remove("schemaRegistry");
+    call(
+        &mut tab,
+        91,
+        "profiles.update",
+        json!({ "id": pid, "etag": stored["etag"], "fields": fields }),
+    )
+    .await;
     call(
         &mut tab,
         46,
         "messaging.registry.set",
-        json!({ "connId": conn, "registry": null }),
+        json!({ "connId": conn }),
     )
     .await;
     let status = call(

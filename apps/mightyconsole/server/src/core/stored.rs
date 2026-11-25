@@ -4,8 +4,8 @@
 //! use the profile, opens its secrets and builds the tool's connect profile. A secret reaches the
 //! tool's client and nothing else: no answer, log line or audit entry holds one.
 //!
-//! Until the UI moves to stored profiles (TSK-139, the next batch) `<tool>.connect` also takes
-//! the `{ profile }` the browser sends; exactly one of the two is given.
+//! No connect takes a profile or a secret from the browser: the one place a secret arrives in a
+//! call is a draft's, in `<tool>.test` (and `temporal.testCodec`), redacted, for that call only.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -53,6 +53,19 @@ pub trait StoredProfiles: Send + Sync {
         draft: TestDraft,
         based_on: Option<&str>,
     ) -> Result<Resolved, ToolError>;
+
+    /// The Schema Registry (`schemaRegistry` and its secrets, as the connect profile has it) of
+    /// the stored profile `profile_id`, which `p` may use; `None` when it has none.
+    fn registry(&self, p: &Principal, profile_id: &str) -> Result<Option<Value>, ToolError>;
+
+    /// The Schema Registry of a draft of `tool`, filled as [`StoredProfiles::test`] fills it.
+    fn test_registry(
+        &self,
+        p: &Principal,
+        tool: &str,
+        draft: TestDraft,
+        based_on: Option<&str>,
+    ) -> Result<Value, ToolError>;
 }
 
 /// The profile form's draft, for `<tool>.test`.
@@ -141,29 +154,18 @@ impl Hub {
             .ok_or_else(|| no_store(tool))
     }
 
-    /// The profile a `<tool>.connect` names: `profile_id` (stored) or `legacy` (sent by the
-    /// browser), exactly one; with the target the handle acts on.
+    /// The stored profile a `<tool>.connect` names, built into the tool's connect profile, with
+    /// the target the handle acts on.
     pub async fn connect_profile<T: DeserializeOwned + Send + 'static>(
         &self,
         ctx: &Ctx,
         tool: &'static str,
-        legacy: Option<T>,
-        profile_id: Option<String>,
+        profile_id: String,
     ) -> Result<(T, TargetRef), ToolError> {
-        match (legacy, profile_id) {
-            (Some(profile), None) => Ok((profile, crate::authz::targets::browser(tool))),
-            (None, Some(id)) => {
-                let store = self.stored_profiles(tool)?;
-                let p = ctx.principal().clone();
-                let resolved = blocking(tool, move || store.connect(&p, tool, &id)).await?;
-                parse(tool, resolved)
-            }
-            _ => Err(ToolError::invalid(
-                tool,
-                "profileId",
-                "name the stored profile (profileId) or send a profile, not both",
-            )),
-        }
+        let store = self.stored_profiles(tool)?;
+        let p = ctx.principal().clone();
+        let resolved = blocking(tool, move || store.connect(&p, tool, &profile_id)).await?;
+        parse(tool, resolved)
     }
 
     /// The draft profile of a `<tool>.test`, with the target the test acts on.
@@ -180,5 +182,63 @@ impl Hub {
         })
         .await?;
         parse(tool, resolved)
+    }
+}
+
+impl Hub {
+    /// The Schema Registry of the stored profile the handle `conn_id` was opened with (DOC-25
+    /// §3.4.7: `messaging.registry.set` takes no secret); `None` when the profile has none.
+    pub async fn stored_registry<T: DeserializeOwned + Send + 'static>(
+        &self,
+        ctx: &Ctx,
+        conn_id: &str,
+    ) -> Result<Option<T>, ToolError> {
+        const SYSTEM: &str = "messaging";
+        let session = &ctx.session().id;
+        let (_, target) = self
+            .handle_target(session, conn_id)
+            .ok_or_else(|| ToolError::connection_gone(SYSTEM))?;
+        let id = security_types::ProfileTarget::of(&target)
+            .map(|t| t.profile.to_owned())
+            .ok_or_else(|| {
+                ToolError::invalid(SYSTEM, "connId", "this connection has no stored profile")
+            })?;
+        let store = self.stored_profiles(SYSTEM)?;
+        let p = ctx.principal().clone();
+        let registry = blocking(SYSTEM, move || store.registry(&p, &id)).await?;
+        registry
+            .map(|r| {
+                serde_json::from_value(r).map_err(|_| {
+                    ToolError::invalid(
+                        SYSTEM,
+                        "connId",
+                        "the profile's Schema Registry does not read",
+                    )
+                })
+            })
+            .transpose()
+    }
+
+    /// The Schema Registry of a profile form's draft (`messaging.registry.test`).
+    pub async fn draft_registry<T: DeserializeOwned + Send + 'static>(
+        &self,
+        ctx: &Ctx,
+        tool: String,
+        input: ToolTestInput,
+    ) -> Result<T, ToolError> {
+        const SYSTEM: &str = "messaging";
+        let store = self.stored_profiles(SYSTEM)?;
+        let p = ctx.principal().clone();
+        let registry = blocking(SYSTEM, move || {
+            store.test_registry(&p, &tool, input.draft, input.based_on.as_deref())
+        })
+        .await?;
+        serde_json::from_value(registry).map_err(|_| {
+            ToolError::invalid(
+                SYSTEM,
+                "draft",
+                "the draft has no Schema Registry: give its URL",
+            )
+        })
     }
 }

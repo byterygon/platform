@@ -109,14 +109,9 @@ pub struct ConnectLanggraphProfile {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LanggraphConnectInput {
-    /// The stored profile to connect with (DOC-25 §3.4.7).
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile_id: Option<String>,
-    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
-    #[serde(default)]
-    #[ts(optional = nullable)]
-    pub profile: Option<ConnectLanggraphProfile>,
+    /// The stored profile to connect with (DOC-25 §3.4.7): the server opens its secrets; the
+    /// browser never sends one.
+    pub profile_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]
@@ -835,7 +830,6 @@ impl LanggraphApi {
     #[rpc::mutation(
         perm = "langgraph.read",
         risk = Risk::Read,
-        redact = ["profile.apiKey", "profile.headers", "profile.tls.clientKeyPem"],
         audit = "always",
     )]
     async fn connect(
@@ -843,10 +837,7 @@ impl LanggraphApi {
         ctx: Ctx,
         input: LanggraphConnectInput,
     ) -> ToolResult<LanggraphConnectOutput> {
-        let (profile, target) = self
-            .0
-            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
-            .await?;
+        let (profile, target) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
         let client = LangGraphClient::new(&profile)?;
         let info = server_info(&client).await?;
         let handle = self

@@ -21,8 +21,6 @@ export interface ProfileSchema {
   validate(record: ProfileRecord): FieldErrors;
   /** `migrations[n]` turns a version-n record into version n + 1. */
   readonly migrations: Readonly<Record<number, (record: ProfileRecord) => ProfileRecord>>;
-  /** The server's `Connect<Tool>Profile` input, versioned with the API, not with the record. */
-  toConnect(record: ProfileRecord): unknown;
 }
 
 /** Props of a tool's connection form: the tool's own fields; name and colour are the shell's. */
@@ -261,7 +259,7 @@ export interface ToolModule {
    */
   routes?(profileRoute: AnyRoute): readonly AnyRoute[];
   readonly actions: readonly ToolAction[];
-  /** Opens the live handle (`<tool>.connect { profile: toConnect(record) }`). */
+  /** Opens the live handle (`<tool>.connect { profileId }`: the server builds the connection from the stored profile and its secrets, DOC-25 §3.4.7). */
   connect(client: MightyClient, record: ProfileRecord): Promise<{ connId: string }>;
   /** Releases it (`<tool>.disconnect`). */
   disconnect(client: MightyClient, connId: string): Promise<void>;

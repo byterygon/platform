@@ -315,31 +315,21 @@ impl TemporalApi {
         name = "testCodec",
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["draft.secrets", "profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
+        redact = ["draft.secrets"]
     )]
     async fn test_codec(
         &self,
         ctx: Ctx,
         input: TemporalTestCodecInput,
     ) -> ToolResult<TemporalTestCodecOutput> {
-        let profile = match (input.profile, input.draft) {
-            (Some(profile), None) => profile,
-            (None, Some(draft)) => {
-                let test = ToolTestInput {
-                    draft,
-                    based_on: input.based_on,
-                };
-                self.0.test_profile(&ctx, TOOL, test).await?.0
-            }
-            _ => {
-                return Err(ToolError::invalid(
-                    TOOL,
-                    "draft",
-                    "send the profile form's draft (or a profile), not both",
-                )
-                .into());
-            }
+        let test = ToolTestInput {
+            draft: input.draft,
+            based_on: input.based_on,
         };
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectTemporalProfile>(&ctx, TOOL, test)
+            .await?;
         Ok(codec_client::test(&profile, input.namespace.as_deref()).await?)
     }
 
@@ -360,7 +350,6 @@ impl TemporalApi {
     #[rpc::mutation(
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"],
         audit = "always",
     )]
     async fn connect(
@@ -368,10 +357,7 @@ impl TemporalApi {
         ctx: Ctx,
         input: TemporalConnectInput,
     ) -> ToolResult<TemporalConnectOutput> {
-        let (profile, target) = self
-            .0
-            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
-            .await?;
+        let (profile, target) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
         let client = Arc::new(client::connect(&profile).await?);
         let info = server_info(&client).await?;
         // The codec endpoint serves the profile while this connection lives (TSK-103).

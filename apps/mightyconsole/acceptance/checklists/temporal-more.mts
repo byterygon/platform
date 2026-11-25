@@ -259,8 +259,8 @@ export default {
           await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
           await until(`document.body.innerText.includes("received")`, "the decoded result (received, echo)");
           await shot("input-and-result");
-          // The profile's id, from the browser's store: the endpoint's path names it.
-          const id = await run<string>(`new Promise((resolve, reject) => { const open = indexedDB.open("mightyconsole"); open.onerror = () => reject(open.error); open.onsuccess = () => { const all = open.result.transaction("profiles").objectStore("profiles").getAll(); all.onsuccess = () => resolve(all.result.find((p) => p.name === "lab-s3").id); }; })`);
+          // The stored profile's id, from its row in the sidebar: the endpoint's path names it.
+          const id = await run<string>(`__mc.item("lab-s3").querySelector("[data-profile-id]").getAttribute("data-profile-id")`);
           const endpoint = `${codecOrigin}/codec/${id}`;
           const binary = temporalCli();
           const cli = (args: string[]) => execFileSync(binary, [...args, "--address", "127.0.0.1:7233", "--namespace", "lab", "--codec-endpoint", endpoint], { encoding: "utf8", timeout: 120_000 });

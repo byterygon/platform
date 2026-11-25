@@ -28,7 +28,8 @@ type Fake = ReturnType<typeof createFakeServices>;
 
 async function connected(): Promise<{ fake: Fake; connId: string }> {
   const fake = createFakeServices();
-  const out = await fake.services.client.docker.connect({ profile: { name: "build-host", host: "h", username: "u", hostKey: { algorithm: "ssh-ed25519", fingerprintSha256: "SHA256:q7Lw3Gm0bX9yT2vR8cKpN5sUe1JhAa4FzQ6dWiYoV0E" } } });
+  const profileId = await fake.storeProfile("docker", "build-host", { host: "h", username: "u", hostKey: { algorithm: "ssh-ed25519", fingerprintSha256: "SHA256:q7Lw3Gm0bX9yT2vR8cKpN5sUe1JhAa4FzQ6dWiYoV0E" } });
+  const out = await fake.services.client.docker.connect({ profileId });
   return { fake, connId: out.connId };
 }
 

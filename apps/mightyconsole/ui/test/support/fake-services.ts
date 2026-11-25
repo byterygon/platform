@@ -6,6 +6,8 @@ import { RpcError, type StreamCall, type Subscription } from "@byterygon/ambidex
 import type * as api from "@/gen/api";
 import type { MightyClient, Services } from "@/app/client";
 import { MemoryStorage, type AppStorage } from "@/profiles/storage";
+import { type ProfileRecord, ulid } from "@/profiles/record";
+import { browserKey, serverKey } from "@/profiles/server";
 import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { ProgressBus } from "@/app/progress";
 
@@ -22,7 +24,7 @@ export interface FakeServer {
   messageChunks: Uint8Array[];
   produced: api.EchoProduceInput[];
   /** The profile each Docker handle connected with (TSK-81). */
-  dockerProfiles: Map<string, api.ConnectDockerProfile>;
+  dockerProfiles: Map<string, FakeDockerProfile>;
   /** The Docker host's containers (TSK-81 batch 2b). */
   dockerContainers: api.ContainerRow[];
   /** Each container's log lines, by name. */
@@ -219,8 +221,33 @@ function jsonlCall<T>(first: readonly object[], summary: T, pushers?: ((lines: o
 /** The key the fake Docker host presents (TSK-81). */
 export const FAKE_HOST_KEY: api.HostKeyFingerprint = { algorithm: "ssh-ed25519", fingerprintSha256: "SHA256:q7Lw3Gm0bX9yT2vR8cKpN5sUe1JhAa4FzQ6dWiYoV0E" };
 
+/** What the fake connects Docker with: the stored profile's fields, as the server builds them. */
+export interface FakeDockerProfile {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: api.DockerAuth;
+  hostKey: api.HostKeyFingerprint | null;
+  socketPath: string | null;
+}
+
+function fakeDocker(r: ProfileRecord): FakeDockerProfile {
+  const f = r.fields;
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  const key = f["hostKey"] as api.HostKeyFingerprint | null | undefined;
+  return { name: r.name, host: text(f["host"]), port: typeof f["port"] === "number" ? f["port"] : 22, username: text(f["username"]), auth: (text(f["auth"]) || "privateKey") as api.DockerAuth, hostKey: key ?? null, socketPath: text(f["socketPath"]) || null };
+}
+
+/** What the fake connects echo with. */
+function fakeEcho(r: ProfileRecord): { name: string; greeting: string | null; token: string | null } {
+  const greeting = r.fields["greeting"];
+  const token = r.secrets["token"];
+  return { name: r.name, greeting: typeof greeting === "string" && greeting !== "" ? greeting : null, token: typeof token === "string" && token !== "" ? token : null };
+}
+
 /** The fake Docker host's facts. */
-export function fakeHostInfo(profile: api.ConnectDockerProfile): api.HostInfo {
+export function fakeHostInfo(profile: FakeDockerProfile): api.HostInfo {
   return {
     ssh: { target: `${profile.username}@${profile.host}:${profile.port ?? 22}`, hostKey: FAKE_HOST_KEY, socketPath: profile.socketPath ?? "/var/run/docker.sock", auth: profile.auth ?? "privateKey" },
     apiVersion: "1.47",
@@ -255,7 +282,32 @@ export function fakeHostInfo(profile: api.ConnectDockerProfile): api.HostInfo {
 
 const unavailable = () => new RpcError("Unavailable", "connection closed", { retryable: true, local: true });
 
-export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
+/**
+ * What the page stores in the browser: tabs, layout and settings in `storage` (the tests read them
+ * there), its own profile records apart (`browser`, those waiting to move to the server; TSK-139):
+ * the profiles in `storage` are the server's.
+ */
+function browserStorage(storage: AppStorage, browser: MemoryStorage): AppStorage {
+  const routed = new Set(["listProfiles", "getProfile", "putProfile", "deleteProfile", "putMigrated", "listBackups", "deleteBackup"]);
+  return new Proxy(storage, {
+    get(target, key, receiver) {
+      if (typeof key === "string" && routed.has(key)) {
+        const method = (browser as unknown as Record<string, (...args: unknown[]) => unknown>)[key]!;
+        return method.bind(browser);
+      }
+      const value: unknown = Reflect.get(target, key, receiver);
+      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+}
+
+export interface FakeOptions {
+  /** The browser's own profile records (IndexedDB), to move to the server. */
+  browserProfiles?: MemoryStorage;
+}
+
+export function createFakeServices(storage: AppStorage = new MemoryStorage(), options: FakeOptions = {}) {
+  const browser = options.browserProfiles ?? new MemoryStorage();
   const server: FakeServer = {
     calls: [],
     handles: new Map(),
@@ -390,7 +442,133 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     };
   }
 
+
+  // ---- Profiles on the server (TSK-139): the fake keeps them in `storage`, which the tests seed;
+  // the page's own browser records are a separate store (`browserStorage` below).
+  const etags = new Map<string, number>();
+  const imported = new Map<string, string>();
+  const profileGone = () => new RpcError("NotFound", "no such profile", { details: { kind: "NotFound", system: "profiles", message: "no such profile", retryable: false, resource: "profile" } });
+  const nonEmpty = (secrets: Record<string, unknown>) => Object.keys(secrets).filter((k) => typeof secrets[k] === "string" && secrets[k] !== "");
+  const view = (r: ProfileRecord): api.ProfileView => ({
+    id: r.id,
+    tool: r.tool,
+    version: r.version,
+    name: r.name,
+    ...(r.color ? { color: r.color } : {}),
+    fields: r.fields,
+    extras: r.extras,
+    owner: r.owner ?? { kind: "personal", user: "human:account:test" },
+    etag: String(etags.get(r.id) ?? 1),
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    createdBy: "human:account:test",
+    updatedBy: "human:account:test",
+    access: r.access ?? "owner",
+    secrets: nonEmpty(r.secrets).map((k) => ({ field: serverKey(r.tool, k), set: true, version: 1, setBy: "human:account:test", setAt: 0 })),
+  });
+  const browserSecrets = (tool: string, secrets: Record<string, string> | null | undefined) => Object.fromEntries(Object.entries(secrets ?? {}).map(([k, v]) => [browserKey(tool, k), v]));
+  const stored = async (id: string) => {
+    const r = await storage.getProfile(id);
+    if (!r) throw profileGone();
+    return r;
+  };
+  const touch = async (r: ProfileRecord) => {
+    etags.set(r.id, (etags.get(r.id) ?? 1) + 1);
+    const { etag: _etag, access: _access, storedSecrets: _stored, ...plain } = r;
+    await storage.putProfile({ ...plain, updatedAt: new Date().toISOString() });
+    return view((await storage.getProfile(r.id))!);
+  };
+  /** A `<tool>.test`'s draft as a record, `basedOn`'s stored secrets filling the empty ones. */
+  const draftRecord = async (tool: string, input: api.ToolTestInput): Promise<ProfileRecord> => {
+    const base = input.basedOn ? await stored(input.basedOn) : null;
+    const secrets = { ...(base?.secrets ?? {}), ...browserSecrets(tool, input.draft.secrets) };
+    return { id: input.basedOn ?? "draft", tool, version: 1, name: input.draft.name ?? "draft", createdAt: "", updatedAt: "", fields: (input.draft.fields ?? {}) as Record<string, unknown>, extras: (input.draft.extras ?? {}) as Record<string, unknown>, secrets };
+  };
+  const profilesApi = {
+    list: async (input: api.ProfilesListInput) => {
+      record("profiles.list", input);
+      reachable();
+      const all = await storage.listProfiles();
+      return { profiles: all.filter((r) => !input.tool || r.tool === input.tool).map(view) };
+    },
+    get: async (input: api.ProfileIdInput) => {
+      record("profiles.get", input);
+      return view(await stored(input.id));
+    },
+    create: async (input: api.ProfileCreateInput) => {
+      record("profiles.create", input);
+      reachable();
+      const now = new Date().toISOString();
+      const r: ProfileRecord = { id: ulid(), tool: input.tool, version: 1, name: input.name, ...(input.color ? { color: input.color } : {}), createdAt: now, updatedAt: now, fields: (input.fields ?? {}) as Record<string, unknown>, extras: (input.extras ?? {}) as Record<string, unknown>, secrets: browserSecrets(input.tool, input.secrets), ...(input.owner.kind === "shared" ? { owner: { kind: "shared" as const } } : {}) };
+      await storage.putProfile(r);
+      return view(r);
+    },
+    update: async (input: api.ProfileUpdateInput) => {
+      record("profiles.update", input);
+      reachable();
+      const r = await stored(input.id);
+      if (input.etag !== String(etags.get(r.id) ?? 1)) throw new RpcError("FailedPrecondition", "the profile changed since it was read: reload it", { details: { kind: "Conflict", system: "profiles", message: "stale", retryable: false } });
+      const color = input.color === "" ? undefined : (input.color ?? r.color);
+      const next: ProfileRecord = { ...r, name: input.name ?? r.name, fields: (input.fields ?? r.fields) as Record<string, unknown>, extras: (input.extras ?? r.extras) as Record<string, unknown>, secrets: { ...r.secrets, ...browserSecrets(r.tool, input.secrets) } };
+      if (color === undefined) delete next.color;
+      else next.color = color;
+      return { profile: await touch(next), removedSecrets: [] };
+    },
+    duplicate: async (input: api.ProfileDuplicateInput) => {
+      record("profiles.duplicate", input);
+      const r = await stored(input.id);
+      const now = new Date().toISOString();
+      const copy: ProfileRecord = { ...structuredClone(r), id: ulid(), name: input.name, createdAt: now, updatedAt: now };
+      await storage.putProfile(copy);
+      return { profile: view(copy), secretsCopied: true };
+    },
+    delete: async (input: api.ProfileDeleteInput) => {
+      record("profiles.delete", input);
+      await stored(input.id);
+      await storage.deleteProfile(input.id);
+      return {};
+    },
+    import: async (input: api.ProfileImportInput) => {
+      record("profiles.import", { ...input, secrets: Object.keys(input.secrets ?? {}) });
+      reachable();
+      const known = imported.get(input.sourceId);
+      const existing = known ? await storage.getProfile(known) : undefined;
+      if (existing) return { profile: view(existing), created: false };
+      const made = await profilesApi.create({ tool: input.record.tool, name: input.record.name, color: input.record.color ?? null, owner: input.owner, fields: input.record.fields, extras: input.record.extras, secrets: input.secrets ?? null });
+      imported.set(input.sourceId, made.id);
+      return { profile: made, created: true };
+    },
+  };
+  const secretsApi = {
+    status: async (input: api.SecretOwnerInput) => {
+      record("secrets.status", input);
+      return { secrets: view(await stored(input.owner.id)).secrets };
+    },
+    remove: async (input: api.SecretFieldInput) => {
+      record("secrets.remove", input);
+      const r = await stored(input.owner.id);
+      const key = browserKey(r.tool, input.field);
+      const removed = key in r.secrets;
+      delete r.secrets[key];
+      await touch(r);
+      return { removed };
+    },
+  };
+  /** The fake's SSH host key check: `FAKE_HOST_KEY` is the lab host's. */
+  const dockerHostKey = (profile: FakeDockerProfile) => {
+    const trusted = profile.hostKey;
+    if (trusted?.fingerprintSha256 !== FAKE_HOST_KEY.fingerprintSha256) {
+      const changed = trusted != null;
+      throw new RpcError("FailedPrecondition", changed ? "the host key of build-host changed" : "build-host is not trusted yet", {
+        correlation_id: "corr-hk",
+        details: { kind: "HostKey", system: "docker", message: "host key", retryable: false, hostKey: { state: changed ? "changed" : "unknown", ...FAKE_HOST_KEY, ...(changed ? { expected: trusted } : {}) } },
+      });
+    }
+  };
+
   const client = {
+    profiles: profilesApi,
+    secrets: secretsApi,
     app: {
       info: async () => {
         record("app.info", {});
@@ -407,13 +585,19 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
         record("echo.connect", input);
         if (server.connectGate) await server.connectGate;
         reachable();
-        const profile = input.profile;
-        if (!profile) throw new Error("the fake connects with the profile the browser sends");
+        const profile = fakeEcho(await stored(input.profileId));
         if (profile.token === "wrong") throw new RpcError("Unauthenticated", "the token was rejected", { correlation_id: "corr-1", details: { kind: "Auth", system: "echo", message: "the token was rejected", retryable: false } });
         const connId = `conn-${++ids}`;
         const greeting = profile.greeting ?? `hello from ${profile.name}`;
         server.handles.set(connId, { greeting });
         return { connId, greeting, schemaIssues: [] };
+      },
+      test: async (input: api.ToolTestInput) => {
+        record("echo.test", { ...input, draft: { ...input.draft, secrets: Object.keys(input.draft.secrets) } });
+        reachable();
+        const profile = fakeEcho(await draftRecord("echo", input));
+        if (profile.token === "wrong") throw new RpcError("Unauthenticated", "the token was rejected", { correlation_id: "corr-1", details: { kind: "Auth", system: "echo", message: "the token was rejected", retryable: false } });
+        return {};
       },
       disconnect: async (input: api.EchoConnIdInput) => {
         record("echo.disconnect", input);
@@ -482,22 +666,21 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     },
     docker: {
       connect: async (input: api.DockerConnectInput) => {
-        record("docker.connect", input);
         reachable();
-        const profile = input.profile;
-        if (!profile) throw new Error("the fake connects with the profile the browser sends");
-        const trusted = profile.hostKey;
-        if (trusted?.fingerprintSha256 !== FAKE_HOST_KEY.fingerprintSha256) {
-          const changed = trusted != null;
-          throw new RpcError("FailedPrecondition", changed ? "the host key of build-host changed" : "build-host is not trusted yet", {
-            correlation_id: "corr-hk",
-            details: { kind: "HostKey", system: "docker", message: "host key", retryable: false, hostKey: { state: changed ? "changed" : "unknown", ...FAKE_HOST_KEY, ...(changed ? { expected: trusted } : {}) } },
-          });
-        }
+        const profile = fakeDocker(await stored(input.profileId));
+        // With the profile the server built: what the Docker tests check.
+        record("docker.connect", { ...input, profile });
+        dockerHostKey(profile);
         const connId = `d${++ids}`;
         server.handles.set(connId, { greeting: "docker" });
         server.dockerProfiles.set(connId, profile);
         return { connId, host: fakeHostInfo(profile) };
+      },
+      test: async (input: api.ToolTestInput) => {
+        record("docker.test", { ...input, draft: { ...input.draft, secrets: Object.keys(input.draft.secrets) } });
+        reachable();
+        dockerHostKey(fakeDocker(await draftRecord("docker", input)));
+        return {};
       },
       disconnect: async (input: api.DockerConnIdInput) => {
         record("docker.disconnect", input);
@@ -794,11 +977,19 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     $close: () => {},
   } as unknown as MightyClient;
 
-  const services: Services = { client, storage, decoder: inThreadArrowDecoder(), progress: new ProgressBus() };
+  const services: Services = { client, storage: browserStorage(storage, browser), decoder: inThreadArrowDecoder(), progress: new ProgressBus() };
   return {
     services,
     server,
     storage,
+    /** The page's own browser records (IndexedDB), apart from the server's profiles. */
+    browser,
+    /** Stores a profile on the (fake) server; its id, for `<tool>.connect { profileId }`. */
+    async storeProfile(tool: string, name: string, fields: Record<string, unknown>, secrets: Record<string, string> = {}): Promise<string> {
+      const id = ulid();
+      await storage.putProfile({ id, tool, version: 1, name, createdAt: "", updatedAt: "", fields, secrets, extras: {} });
+      return id;
+    },
     /** Pushes samples to the open `docker.containers.stats` streams. */
     pushStats(samples: object[]) {
       for (const push of [...statsPushers]) push(samples);

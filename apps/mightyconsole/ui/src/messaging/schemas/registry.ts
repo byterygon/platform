@@ -1,10 +1,13 @@
 // A Schema Registry on a profile (DOC-21 §5.3, Open question 45 (p); mockup frame codecs-registry):
 // `fields.schemaRegistry` (URL, authentication, the CA, and for NATS the subjects whose messages may
-// carry the Confluent wire format) with the secrets `registryPassword` and `registryToken`; the
-// connect input the server takes (`RegistryProfile`); the words of the mapping table. Pure: NATS and
-// Kafka share it.
-import type { RegistryAuthKind, RegistryProfile, RegistryRef, SchemaVersion } from "@/gen/api";
-import type { ProfileRecord } from "@/profiles/record";
+// carry the Confluent wire format) with the secrets `registryPassword` and `registryToken` (stored on
+// the server as `schemaRegistry.password` and `.token`, which builds the client); the words of the
+// mapping table. Pure: NATS and Kafka share it.
+import type { RegistryRef, SchemaVersion } from "@/gen/api";
+import { hasSecret, type ProfileRecord } from "@/profiles/record";
+
+/** How a registry signs in. */
+export type RegistryAuthKind = "none" | "basic" | "bearer";
 
 export const REGISTRY_AUTH_LABELS: Record<RegistryAuthKind, string> = { none: "None", basic: "Basic: user and password", bearer: "Bearer token" };
 
@@ -58,28 +61,11 @@ export function withRegistry(record: ProfileRecord, registry: RegistryFields | n
 
 /** Whether the profile holds the secret this auth needs. */
 export function registrySecretSet(record: ProfileRecord, auth: RegistryAuthKind): boolean {
-  if (auth === "basic") return text(record.secrets[REGISTRY_SECRETS.password]) !== "";
-  if (auth === "bearer") return text(record.secrets[REGISTRY_SECRETS.token]) !== "";
+  if (auth === "basic") return hasSecret(record, REGISTRY_SECRETS.password);
+  if (auth === "bearer") return hasSecret(record, REGISTRY_SECRETS.token);
   return false;
 }
 
-/**
- * What `nats.connect` (and Kafka's) and `messaging.registry.*` take. `wireFormat`: whether the tool
- * scopes the wire format to subjects (NATS: an empty list looks nowhere); Kafka leaves it out.
- */
-export function registryToConnect(registry: RegistryFields, secrets: Record<string, unknown>, wireFormat: boolean): RegistryProfile {
-  const secret = (key: string): string | null => (text(secrets[key]) !== "" ? text(secrets[key]) : null);
-  const https = registry.url.trim().startsWith("https://");
-  return {
-    url: registry.url.trim(),
-    auth: registry.auth,
-    username: registry.auth === "basic" ? (registry.username?.trim() ?? null) : null,
-    password: registry.auth === "basic" ? secret(REGISTRY_SECRETS.password) : null,
-    token: registry.auth === "bearer" ? secret(REGISTRY_SECRETS.token) : null,
-    tls: { enabled: https, caPem: registry.tls.caPem ?? null, serverName: registry.tls.serverName ?? null, clientCertPem: null, clientKeyPem: null },
-    wireFormatSubjects: wireFormat ? (registry.wireFormatSubjects ?? []) : null,
-  };
-}
 
 /** Comma- or line-separated subject patterns, trimmed. */
 export function splitPatterns(value: string): string[] {

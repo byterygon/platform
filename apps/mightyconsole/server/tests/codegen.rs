@@ -8,6 +8,7 @@ use ambidex::codegen;
 use ambidex::{Agent, ProcedureKind};
 use mightyconsole_server::{SCHEMA_HASH, api_info, codegen_router, generated_dir};
 use security_types::Risk;
+use serde_json::{Value, json};
 
 #[test]
 fn committed_artifacts_match_the_router() {
@@ -1500,112 +1501,128 @@ fn the_procedures_of_the_spec() {
     assert_eq!(redact("app.account.changePassword"), ["current", "new"]);
     assert_eq!(redact("app.account.totp.confirm"), ["code"]);
     assert_eq!(redact("app.account.totp.remove"), ["current"]);
-    assert_eq!(redact("echo.connect"), ["profile.token"]);
+    // No connect takes a secret (DOC-25 §3.4.7): the server opens the stored profile's.
+    for tool in ["echo", "nats", "temporal", "docker", "langgraph"] {
+        assert!(redact(&format!("{tool}.connect")).is_empty(), "{tool}");
+    }
     // Secret values given to the profile procedures never reach the digest or a log.
     assert_eq!(redact("profiles.create"), ["secrets"]);
     assert_eq!(redact("profiles.update"), ["secrets"]);
     assert_eq!(redact("profiles.import"), ["secrets"]);
     assert_eq!(redact("secrets.set"), ["value"]);
-    // The SSH secrets of a Docker profile are never logged.
-    assert_eq!(
-        redact("docker.connect"),
-        [
-            "profile.privateKey",
-            "profile.passphrase",
-            "profile.password"
-        ]
-    );
-    assert_eq!(
-        redact("temporal.connect"),
-        [
-            "profile.clientKeyPem",
-            "profile.apiKey",
-            "profile.s3AccessKeyId",
-            "profile.s3SecretAccessKey",
-            "profile.s3SessionToken",
-            "profile.codecAuthorization"
-        ]
-    );
-    // Test codec takes the same draft profile, secrets and all.
-    let mut codec = vec!["draft.secrets".to_owned()];
-    codec.extend(redact("temporal.connect"));
-    assert_eq!(redact("temporal.testCodec"), codec);
+    // Test codec takes the form's draft, as Test connection does.
+    assert_eq!(redact("temporal.testCodec"), ["draft.secrets"]);
     // Test connection's draft secrets are used for the call only (DOC-25 §3.4.7).
     for tool in ["echo", "nats", "temporal", "docker", "langgraph"] {
         assert_eq!(redact(&format!("{tool}.test")), ["draft.secrets"], "{tool}");
     }
-    assert_eq!(
-        redact("nats.connect"),
-        [
-            "profile.password",
-            "profile.token",
-            "profile.nkeySeed",
-            "profile.creds",
-            "profile.tls.clientKeyPem",
-            "profile.schemaRegistry.password",
-            "profile.schemaRegistry.token",
-            "profile.schemaRegistry.tls.clientKeyPem"
-        ]
-    );
-    // The registry's secrets, wherever a registry is sent (TSK-85 batch 4b).
-    let registry = [
-        "registry.password",
-        "registry.token",
-        "registry.tls.clientKeyPem",
-    ];
-    assert_eq!(redact("messaging.registry.test"), registry);
-    assert_eq!(redact("messaging.registry.set"), registry);
-    assert_eq!(
-        redact("langgraph.connect"),
-        [
-            "profile.apiKey",
-            "profile.headers",
-            "profile.tls.clientKeyPem"
-        ]
-    );
+    // A registry's secrets: typed in the form's draft for a test, else opened on the server.
+    assert_eq!(redact("messaging.registry.test"), ["draft.secrets"]);
+    assert!(redact("messaging.registry.set").is_empty());
 }
 
-/// The secret-field rule (DOC-25 §3.4.7, TSK-139): every secret field of a tool's profile type is
-/// one the secret store knows (`profiles::spec`), and every secret its connect takes is redacted.
-/// A new secret field that is not routed through the store fails here. The two differences are
-/// named: LangGraph's extra headers travel as `headers` on connect and are stored as
-/// `headerValues` (DOC-25 Open question 23); Docker's TCP client key waits for Docker over TCP
-/// (DOC-23).
+/// The secret-field rule (DOC-25 §3.4.7, TSK-139): a connect takes only the stored profile's id,
+/// never a secret; every secret field of a tool's profile is one the secret store knows
+/// (`profiles::spec`), and the connect profile the server builds sends each of them to the tool
+/// (`profiles::connect`) under the authentication that uses it. A secret field that is not routed
+/// through the store fails here. Docker's TCP client key waits for Docker over TCP (DOC-23).
 #[test]
 fn every_secret_field_goes_through_the_secret_store() {
+    use mightyconsole_server::profiles::connect::{View, connect_profile};
     use mightyconsole_server::profiles::spec::SPECS;
-    let procedures = codegen_router().procedures();
-    let stored = |path: &str| match path {
-        "headers" => "headerValues".to_owned(),
-        other => other.to_owned(),
+    use mightyconsole_server::secrets::Secret;
+    let output =
+        codegen::generate(&codegen_router(), &api_info()).unwrap_or_else(|e| panic!("{e}"));
+    let manifest: Value = serde_json::from_str(&output.manifest_json).unwrap();
+    // The settings under which each secret is used (one authentication at a time).
+    let presets = |tool: &str| -> Vec<Value> {
+        match tool {
+            "nats" => vec![
+                json!({ "auth": "userPassword", "tls": { "enabled": true }, "schemaRegistry": { "url": "https://r", "auth": "basic" } }),
+                json!({ "auth": "token", "schemaRegistry": { "url": "https://r", "auth": "bearer" } }),
+                json!({ "auth": "nkey" }),
+                json!({ "auth": "creds" }),
+            ],
+            "temporal" => vec![json!({
+                "tls": { "enabled": true },
+                "codec": { "enabled": true, "endpoint": "https://c" },
+                "externalStorage": { "enabled": true, "bucket": "b" },
+            })],
+            "docker" => vec![
+                json!({ "auth": "privateKey" }),
+                json!({ "auth": "password" }),
+            ],
+            _ => vec![json!({})],
+        }
     };
     for spec in &SPECS {
-        let connect = procedures
+        let name = format!("{}.connect", spec.tool);
+        let connect = manifest["procedures"]
+            .as_array()
+            .unwrap()
             .iter()
-            .find(|m| m.name == format!("{}.connect", spec.tool))
-            .unwrap_or_else(|| panic!("{}.connect", spec.tool));
-        let mut redacted: Vec<String> = connect
-            .redact
-            .iter()
-            .map(|p| {
-                stored(
-                    p.strip_prefix("profile.")
-                        .unwrap_or_else(|| panic!("{}: {p} is not in the profile", spec.tool)),
-                )
-            })
-            .collect();
-        redacted.sort();
-        let mut secrets: Vec<String> = spec
+            .find(|p| p["name"] == json!(name))
+            .unwrap_or_else(|| panic!("{name}"));
+        assert_eq!(
+            input_fields_of(&manifest, connect),
+            ["profileId"],
+            "{}.connect takes the stored profile's id only",
+            spec.tool
+        );
+        let secrets: std::collections::BTreeMap<String, Secret> = spec
             .secrets
             .iter()
-            .filter(|f| !(spec.tool == "docker" && **f == "tls.clientKeyPem"))
-            .map(|f| (*f).to_owned())
+            .map(|f| {
+                let value = match *f {
+                    "headerValues" => format!("X-Secret: {f}"),
+                    _ => format!("secret:{f}"),
+                };
+                ((*f).to_owned(), Secret::new(value.into_bytes()))
+            })
             .collect();
-        secrets.sort();
+        let mut sent = std::collections::BTreeSet::new();
+        for fields in presets(spec.tool) {
+            let view = View {
+                id: Some("P1"),
+                name: "n",
+                fields: &fields,
+                extras: &json!({}),
+                secrets: &secrets,
+            };
+            let text = connect_profile(spec.tool, &view).unwrap().to_string();
+            for f in spec.secrets {
+                if text.contains(&format!("secret:{f}"))
+                    || text.contains(&format!("\"value\":\"{f}\""))
+                {
+                    sent.insert(*f);
+                }
+            }
+        }
+        let wanted: std::collections::BTreeSet<&str> = spec
+            .secrets
+            .iter()
+            .copied()
+            .filter(|f| !(spec.tool == "docker" && *f == "tls.clientKeyPem"))
+            .collect();
         assert_eq!(
-            redacted, secrets,
-            "{}: the connect's secrets and the store's",
+            sent, wanted,
+            "{}: the secrets its connect profile sends",
             spec.tool
         );
     }
+}
+
+/// The top-level input fields of a procedure in the manifest.
+fn input_fields_of(manifest: &Value, procedure: &Value) -> Vec<String> {
+    let input = &procedure["input"];
+    let schema = match input["$ref"].as_str() {
+        Some(r) => &manifest["$defs"][r.rsplit('/').next().unwrap()],
+        None => input,
+    };
+    let mut out: Vec<String> = schema["properties"]
+        .as_object()
+        .map(|p| p.keys().cloned().collect())
+        .unwrap_or_default();
+    out.sort();
+    out
 }

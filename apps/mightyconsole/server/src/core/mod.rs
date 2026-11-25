@@ -307,20 +307,8 @@ impl Hub {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Registers a tool's live client for `session` and announces it `Connected`. Its target is
-    /// the browser-held profile it was opened with ([`crate::authz::targets::browser`]): until
-    /// profiles move to the server (TSK-139) every connection is opened with a profile the
-    /// browser sends.
-    pub fn insert<T: Send + Sync + 'static>(
-        &self,
-        session: &str,
-        tool: &str,
-        value: Arc<T>,
-    ) -> Handle<T> {
-        self.insert_for(session, tool, value, crate::authz::targets::browser(tool))
-    }
-
-    /// [`Hub::insert`] for a handle acting on `target`.
+    /// Registers a tool's live client for `session`, acting on `target` (the stored profile it
+    /// was opened with, DOC-25 §3.4.7), and announces it `Connected`.
     pub fn insert_for<T: Send + Sync + 'static>(
         &self,
         session: &str,

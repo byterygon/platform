@@ -464,6 +464,7 @@ impl ProfileService {
         tool: &str,
         draft: TestDraft,
         based_on: Option<&str>,
+        build: impl FnOnce(&str, &View<'_>) -> Result<Value, ProfileError>,
     ) -> Result<(Value, TargetRef), ProfileError> {
         let may_keep = self
             .authorizer
@@ -517,7 +518,26 @@ impl ProfileService {
             extras: &extras,
             secrets: &secrets,
         };
-        Ok((connect_profile(tool, &view)?, target))
+        Ok((build(tool, &view)?, target))
+    }
+
+    fn resolve_registry(&self, p: &Principal, id: &str) -> Result<Option<Value>, ProfileError> {
+        let (profile, access) = self.get(p, id)?;
+        if !access.may_use() {
+            return Err(ProfileError::Forbidden(
+                "this is another user's personal profile".into(),
+            ));
+        }
+        let secrets = self.open_secrets(id)?;
+        let view = View {
+            id: Some(&profile.id),
+            name: &profile.name,
+            fields: &profile.fields,
+            extras: &profile.extras,
+            secrets: &secrets,
+        };
+        let registry = registry(&view, profile.tool == "nats");
+        Ok((!registry.is_null()).then_some(registry))
     }
 }
 
@@ -537,9 +557,30 @@ impl StoredProfiles for ProfileService {
         based_on: Option<&str>,
     ) -> Result<Resolved, ToolError> {
         let (profile, target) = self
-            .resolve_test(p, tool, draft, based_on)
+            .resolve_test(p, tool, draft, based_on, connect_profile)
             .map_err(|e| tool_error(tool, e))?;
         Ok(Resolved { profile, target })
+    }
+
+    fn registry(&self, p: &Principal, profile_id: &str) -> Result<Option<Value>, ToolError> {
+        self.resolve_registry(p, profile_id)
+            .map_err(|e| tool_error("messaging", e))
+    }
+
+    fn test_registry(
+        &self,
+        p: &Principal,
+        tool: &str,
+        draft: TestDraft,
+        based_on: Option<&str>,
+    ) -> Result<Value, ToolError> {
+        let wire_format = tool == "nats";
+        let (registry, _) = self
+            .resolve_test(p, tool, draft, based_on, |_, view| {
+                Ok(registry(view, wire_format))
+            })
+            .map_err(|e| tool_error("messaging", e))?;
+        Ok(registry)
     }
 }
 
@@ -617,6 +658,164 @@ mod tests {
                 json!({ "name": "X-A", "value": "1" }),
                 json!({ "name": "X-B", "value": "two:three" }),
             ]
+        );
+    }
+
+    // The checks the browser's `toConnect` tests made before TSK-139 (ui/test/*.test.ts).
+
+    #[test]
+    fn temporal_sends_tls_options_only_when_on_and_secrets_only_when_set() {
+        let none = BTreeMap::new();
+        let f = json!({ "tls": { "enabled": false, "caPem": "ignored" } });
+        let off = temporal(&view(&f, &json!({}), &none));
+        assert_eq!(off["tls"], json!({ "enabled": false }));
+        let f = json!({ "address": " tc:7233 ", "namespace": "prod", "tls": { "enabled": true, "caPem": "CA", "serverName": "tc" } });
+        let s = secrets(&[("apiKey", "secret")]);
+        let on = temporal(&view(&f, &json!({}), &s));
+        assert_eq!(on["address"], "tc:7233");
+        assert_eq!(on["namespace"], "prod");
+        assert_eq!(
+            on["tls"],
+            json!({ "enabled": true, "caPem": "CA", "clientCertPem": null, "serverName": "tc" })
+        );
+        assert_eq!(on["apiKey"], "secret");
+        assert_eq!(on["clientKeyPem"], Value::Null);
+        assert_eq!(on["profileId"], "P1");
+    }
+
+    #[test]
+    fn temporal_external_storage_and_its_keys_only_when_on() {
+        let f = json!({ "externalStorage": { "enabled": true, "bucket": " payloads ", "endpoint": "http://127.0.0.1:8333", "pathStyle": true, "readBuckets": "old, older\nother" } });
+        let s = secrets(&[("s3AccessKeyId", "AK"), ("s3SecretAccessKey", "SK")]);
+        let on = temporal(&view(&f, &json!({}), &s));
+        assert_eq!(on["externalStorage"]["bucket"], "payloads");
+        assert_eq!(
+            on["externalStorage"]["readBuckets"],
+            json!(["old", "older", "other"])
+        );
+        assert_eq!(on["externalStorage"]["region"], Value::Null);
+        assert_eq!(
+            (
+                &on["s3AccessKeyId"],
+                &on["s3SecretAccessKey"],
+                &on["s3SessionToken"]
+            ),
+            (&json!("AK"), &json!("SK"), &Value::Null)
+        );
+        let f = json!({ "externalStorage": { "enabled": false, "bucket": "b" } });
+        let off = temporal(&view(&f, &json!({}), &s));
+        assert_eq!(
+            (&off["externalStorage"], &off["s3AccessKeyId"]),
+            (&Value::Null, &Value::Null)
+        );
+        let f = json!({ "externalStorage": { "enabled": true, "bucket": "b" }, "codecServer": { "enabled": true } });
+        let with_endpoint = temporal(&view(&f, &json!({}), &s));
+        assert_eq!(
+            with_endpoint["codecServer"],
+            json!({ "enabled": true, "allowedOrigins": ["http://localhost:8233", "http://127.0.0.1:8233"] })
+        );
+    }
+
+    #[test]
+    fn temporal_payload_codec_and_its_authorization_only_when_on() {
+        let s = secrets(&[("codecAuthorization", "Bearer t")]);
+        let f = json!({ "codec": { "enabled": true, "endpoint": " http://127.0.0.1:8234 ", "namespaces": "payments http://localhost:8235", "encodeInputs": false } });
+        let on = temporal(&view(&f, &json!({}), &s));
+        assert_eq!(
+            on["codec"],
+            json!({ "enabled": true, "endpoint": "http://127.0.0.1:8234", "namespaces": [{ "namespace": "payments", "endpoint": "http://localhost:8235" }], "caPem": null, "sendNamespace": true, "encodeInputs": false, "timeoutMs": null })
+        );
+        assert_eq!(on["codecAuthorization"], "Bearer t");
+        let off = temporal(&view(&json!({}), &json!({}), &s));
+        assert_eq!(off["codecAuthorization"], Value::Null);
+    }
+
+    #[test]
+    fn docker_sends_only_the_chosen_methods_secrets() {
+        let s = secrets(&[
+            ("privateKey", "KEY"),
+            ("passphrase", "PP"),
+            ("password", "PW"),
+        ]);
+        let f = json!({ "host": " build-host.lan ", "username": "deploy", "socketPath": "/var/run/docker.sock", "keepaliveSec": 30 });
+        let key = docker(&view(&f, &json!({}), &s));
+        assert_eq!(
+            (
+                &key["host"],
+                &key["port"],
+                &key["auth"],
+                &key["privateKey"],
+                &key["passphrase"],
+                &key["password"],
+                &key["hostKey"],
+                &key["keepaliveSec"]
+            ),
+            (
+                &json!("build-host.lan"),
+                &json!(22),
+                &json!("privateKey"),
+                &json!("KEY"),
+                &json!("PP"),
+                &Value::Null,
+                &Value::Null,
+                &json!(30)
+            )
+        );
+        let f = json!({ "auth": "password" });
+        let pw = docker(&view(&f, &json!({}), &s));
+        assert_eq!(
+            (&pw["privateKey"], &pw["passphrase"], &pw["password"]),
+            (&Value::Null, &Value::Null, &json!("PW"))
+        );
+        let f = json!({ "auth": "agent", "hostKey": { "algorithm": "ssh-ed25519", "fingerprintSha256": "SHA256:x" } });
+        let agent = docker(&view(&f, &json!({}), &s));
+        assert_eq!(
+            (&agent["privateKey"], &agent["password"]),
+            (&Value::Null, &Value::Null)
+        );
+        assert_eq!(
+            agent["hostKey"],
+            json!({ "algorithm": "ssh-ed25519", "fingerprintSha256": "SHA256:x" })
+        );
+    }
+
+    #[test]
+    fn nats_defaults_tls_and_the_user() {
+        let none = BTreeMap::new();
+        let defaults = nats(&view(
+            &json!({ "inboxPrefix": "_INBOX" }),
+            &json!({}),
+            &none,
+        ));
+        assert_eq!(defaults["servers"], json!(["nats://127.0.0.1:4222"]));
+        assert_eq!(defaults["auth"], "none");
+        assert_eq!(defaults["inboxPrefix"], "_INBOX");
+        assert_eq!(defaults["schemaRegistry"], Value::Null);
+        let f = json!({ "auth": "userPassword", "user": " lab ", "tls": { "enabled": true, "caPem": "CA" } });
+        let s = secrets(&[("password", "pw")]);
+        let out = nats(&view(&f, &json!({}), &s));
+        assert_eq!(
+            (&out["user"], &out["password"]),
+            (&json!("lab"), &json!("pw"))
+        );
+        assert_eq!(
+            out["tls"],
+            json!({ "enabled": true, "caPem": "CA", "clientCertPem": null, "serverName": null, "clientKeyPem": null })
+        );
+    }
+
+    #[test]
+    fn langgraph_sends_its_key_headers_and_tls() {
+        let f =
+            json!({ "url": " https://lg.example ", "tls": { "caPem": "PEM", "serverName": "" } });
+        let s = secrets(&[("apiKey", "k"), ("headerValues", "X-A: 1")]);
+        let out = langgraph(&view(&f, &json!({}), &s));
+        assert_eq!(out["url"], "https://lg.example");
+        assert_eq!(out["apiKey"], "k");
+        assert_eq!(out["headers"], json!([{ "name": "X-A", "value": "1" }]));
+        assert_eq!(
+            out["tls"],
+            json!({ "enabled": false, "caPem": "PEM", "clientCertPem": null, "clientKeyPem": null, "serverName": null })
         );
     }
 

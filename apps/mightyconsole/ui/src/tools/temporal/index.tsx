@@ -2,7 +2,6 @@
 // profile and its form, namespaces, the workflow list and detail, the actions with their
 // confirmations, schedules, task queues, workers and standalone activities (TSK-92).
 import { Icon } from "@/components/ui/icon";
-import type { ConnectTemporalProfile } from "@/gen/api";
 import { CalendarClock, Clock, Flash, Folder, List, Search, Server } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
 import { ActivitiesTab } from "./ActivitiesTab";
@@ -243,7 +242,7 @@ export const temporalTool: ToolModule = {
     },
   ],
   async connect(client, record) {
-    const out = await client.temporal.connect({ profile: profile.toConnect(record) as ConnectTemporalProfile });
+    const out = await client.temporal.connect({ profileId: record.id });
     return { connId: out.connId };
   },
   async disconnect(client, connId) {

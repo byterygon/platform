@@ -1,8 +1,8 @@
 // The Docker profile (Mightyconsole spec §10.1): an SSH host and the Docker socket on it. Its
 // versioned schema, defaults, validation and the input of `docker.connect`. Pure, so the form and
 // the tests share it. Secrets: the private key and its passphrase, or the password.
-import type { ConnectDockerProfile, DockerAuth, HostKeyFingerprint } from "@/gen/api";
-import type { ProfileRecord } from "@/profiles/record";
+import type { DockerAuth, HostKeyFingerprint } from "@/gen/api";
+import { hasSecret, type ProfileRecord } from "@/profiles/record";
 import type { FieldErrors, ProfileSchema } from "../types";
 
 export const DEFAULT_PORT = 22;
@@ -47,43 +47,21 @@ export const profile: ProfileSchema = {
   }),
   validate(record): FieldErrors {
     const errors: FieldErrors = {};
-    const { fields, secrets } = record;
+    const { fields } = record;
     const host = text(fields["host"]).trim();
     if (host === "") errors["host"] = "The host name or address is required.";
     else if (/\s|@/.test(host)) errors["host"] = "Only the host: put the user in Username and the port in Port.";
     if (fields["port"] !== undefined && !wholeNumber(fields["port"], 1, 65535)) errors["port"] = "A port from 1 to 65535.";
     if (text(fields["username"]).trim() === "") errors["username"] = "The user to log in as is required.";
     const auth = authOf(fields);
-    if (auth === "privateKey" && text(secrets["privateKey"]).trim() === "") errors["privateKey"] = "Paste the private key or choose its file.";
-    if (auth === "password" && text(secrets["password"]) === "") errors["password"] = "The password is required.";
+    if (auth === "privateKey" && !hasSecret(record, "privateKey")) errors["privateKey"] = "Paste the private key or choose its file.";
+    if (auth === "password" && !hasSecret(record, "password")) errors["password"] = "The password is required.";
     const socket = text(fields["socketPath"]).trim();
     if (socket !== "" && !socket.startsWith("/")) errors["socketPath"] = "An absolute path, like /var/run/docker.sock.";
     if (fields["keepaliveSec"] !== undefined && !wholeNumber(fields["keepaliveSec"], 0, 3600)) errors["keepaliveSec"] = "Seconds from 0 (off) to 3600.";
     return errors;
   },
   migrations: {},
-  toConnect(record: ProfileRecord): ConnectDockerProfile {
-    const { fields, secrets } = record;
-    const auth = authOf(fields);
-    const secret = (key: string) => {
-      const value = text(secrets[key]);
-      return value !== "" ? value : null;
-    };
-    return {
-      name: record.name,
-      host: text(fields["host"]).trim(),
-      port: portOf(fields),
-      username: text(fields["username"]).trim(),
-      auth,
-      // Only the chosen method's secrets travel.
-      privateKey: auth === "privateKey" ? secret("privateKey") : null,
-      passphrase: auth === "privateKey" ? secret("passphrase") : null,
-      password: auth === "password" ? secret("password") : null,
-      hostKey: hostKeyOf(fields),
-      socketPath: text(fields["socketPath"]).trim() || null,
-      keepaliveSec: typeof fields["keepaliveSec"] === "number" ? fields["keepaliveSec"] : null,
-    };
-  },
 };
 
 /** The record trusting `key` (spec §10.2). */

@@ -42,20 +42,9 @@ describe("profile", () => {
     expect(profile.validate(record({}, { auth: "agent" }, {}))).toEqual({});
   });
 
-  test("only the chosen method's secrets reach docker.connect", () => {
-    const secrets = { privateKey: "KEY", passphrase: "PP", password: "PW" };
-    const key = profile.toConnect(record({}, {}, secrets)) as Record<string, unknown>;
-    expect(key).toMatchObject({ host: "build-host.lan", port: 22, username: "deploy", auth: "privateKey", privateKey: "KEY", passphrase: "PP", password: null, hostKey: null, socketPath: "/var/run/docker.sock", keepaliveSec: 30 });
-    const password = profile.toConnect(record({}, { auth: "password" }, secrets)) as Record<string, unknown>;
-    expect(password).toMatchObject({ privateKey: null, passphrase: null, password: "PW" });
-    const agent = profile.toConnect(record({}, { auth: "agent" }, secrets)) as Record<string, unknown>;
-    expect(agent).toMatchObject({ privateKey: null, passphrase: null, password: null });
-  });
-
   test("trusting stores the key; the target brackets IPv6", () => {
     const trusted = trustHostKey(record(), FAKE_HOST_KEY);
     expect(trusted.fields["hostKey"]).toEqual(FAKE_HOST_KEY);
-    expect((profile.toConnect(trusted) as Record<string, unknown>)["hostKey"]).toEqual(FAKE_HOST_KEY);
     expect(targetOf(record({}, { host: "::1", port: 2222 }))).toBe("[::1]:2222");
     expect(keyTypeLabel("ecdsa-sha2-nistp256")).toBe("ECDSA-P256");
     expect(hostKeyFile("ssh-ed25519")).toBe("/etc/ssh/ssh_host_ed25519_key.pub");
@@ -64,7 +53,7 @@ describe("profile", () => {
 
 describe("host page helpers", () => {
   test("counts, memory and the subtitle read as the mockup's", () => {
-    const host = fakeHostInfo(profile.toConnect(record()) as never);
+    const host = fakeHostInfo({ name: "build-host", host: "build-host.lan", port: 22, username: "deploy", auth: "privateKey", hostKey: FAKE_HOST_KEY, socketPath: "/var/run/docker.sock" });
     expect(containerCounts(host)).toBe("11 · 7 running · 4 stopped");
     expect(formatMemory(33_600_000_000)).toBe("31.3 GiB");
     expect(hostSubtitle(host)).toBe("deploy@build-host.lan:22 · private key · ED25519 host key trusted · socket /var/run/docker.sock · ping 3 ms");
