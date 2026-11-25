@@ -3849,9 +3849,11 @@ dependencies = [
 name = "mightyconsole-server"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "ambidex",
  "ambidex-axum",
  "ambidex-conformance",
+ "argon2",
  "arrow-array",
  "arrow-ipc",
  "arrow-schema",

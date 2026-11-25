@@ -35,6 +35,7 @@ pub mod cli;
 pub mod config;
 pub mod core;
 pub mod management;
+pub mod secrets;
 pub mod sessions;
 pub mod static_ui;
 pub mod store;
@@ -197,6 +198,8 @@ pub struct ServeConfig {
     pub auth: AuthSettings,
     /// The audit log (`[audit]`, DOC-25 §3.5), kept in `data/audit`.
     pub audit: AuditSettings,
+    /// The keys of the secret store (`[secrets]`, DOC-25 §3.4.4); none means the generated key.
+    pub secrets: secrets::keys::SecretsSettings,
 }
 
 impl ServeConfig {
@@ -294,6 +297,9 @@ pub enum StartError {
     /// `DATA/store.redb` cannot be used (DOC-25 §3.6.2 point 7): no data directory, another
     /// process holds it, an unknown schema; or the default administrator cannot be made.
     Store(String),
+    /// The keys of the secret store (DOC-25 §3.6.2 point 5): a key that does not load, or an
+    /// entry whose key is not configured. There is no plaintext fallback.
+    Secrets(String),
     Web(ConfigError),
     Ui {
         path: PathBuf,
@@ -312,6 +318,7 @@ impl std::fmt::Display for StartError {
             StartError::Auth(e) => write!(f, "sign-in: {e}"),
             StartError::Audit(e) => write!(f, "audit log: {e}"),
             StartError::Store(e) => write!(f, "{e}"),
+            StartError::Secrets(e) => write!(f, "secret store: {e}"),
             StartError::Web(e) => write!(f, "web configuration: {e}"),
             StartError::Ui { path, error } => {
                 write!(f, "UI directory {}: {error}", path.display())
@@ -356,6 +363,10 @@ pub async fn check_config(config: &ServeConfig, online: bool) -> Result<Vec<Stri
     {
         problems.push(format!("UI directory {}: {e}", ui.display()));
     }
+    let (keys_report, keys_problems) =
+        secrets::keys::check(config.data.as_deref(), &config.secrets);
+    report.extend(keys_report);
+    problems.extend(keys_problems);
     // The log is verified, not opened: `config check` creates nothing (DOC-25 §3.6.1).
     match &config.data {
         None => problems
@@ -560,6 +571,8 @@ pub struct Server {
     /// The JWKS refresh and the session sweep, with sign-in; the `reset-admin` watcher.
     auth_tasks: Vec<JoinHandle<()>>,
     store: Arc<store::Store>,
+    /// The secret store's keys.
+    vault: Arc<secrets::Vault>,
     /// Roles, assignments and groups in force.
     policy: PolicyHandle,
     tls: ServerTls,
@@ -689,6 +702,25 @@ impl Server {
                 .map_err(|e| StartError::Store(e.to_string()))?
         };
         let store = Arc::new(store);
+        // The keys of the secret store (DOC-25 §3.4.4, §3.6.2 point 5): every configured key
+        // loads and every entry's key is among them, or the server does not start.
+        let vault = {
+            let entries = {
+                let store = Arc::clone(&store);
+                tokio::task::spawn_blocking(move || secrets::entries_by_key(&store))
+                    .await
+                    .map_err(|e| StartError::Secrets(format!("reading the store panicked: {e}")))?
+                    .map_err(|e| StartError::Secrets(e.to_string()))?
+            };
+            let prompt = std::io::IsTerminal::is_terminal(&std::io::stdin());
+            let loaded = secrets::keys::load(&data, &config.secrets, &entries, prompt)
+                .await
+                .map_err(|e| StartError::Secrets(e.0))?;
+            for warning in &loaded.warnings {
+                log.line(&format!("mightyconsole-server: WARNING: {warning}"));
+            }
+            Arc::new(secrets::Vault::new(loaded.keyring, &config.auth.tenant))
+        };
         let hasher = PasswordHasher::new();
         let made = if config.auth.default_admin {
             admin::ensure(&store, &data, &hasher, options.clock.now_unix_ms())
@@ -908,6 +940,7 @@ impl Server {
             retention_task,
             auth_tasks,
             store,
+            vault,
             policy,
             tls,
             local_addr,
@@ -941,6 +974,11 @@ impl Server {
     /// `DATA/store.redb`.
     pub fn store(&self) -> &Arc<store::Store> {
         &self.store
+    }
+
+    /// The secret store's keys and entries.
+    pub fn vault(&self) -> &Arc<secrets::Vault> {
+        &self.vault
     }
 
     /// The login sessions.

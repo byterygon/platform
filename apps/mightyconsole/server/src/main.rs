@@ -45,6 +45,59 @@ fn main() -> ExitCode {
             Some(runtime) => runtime.block_on(config_check(config, online)),
             None => ExitCode::FAILURE,
         },
+        Command::KeysGenerate { out } => keys_generate(&out),
+        Command::SecretsStatus { config } => secrets_status(&config),
+    }
+}
+
+/// `keys generate --out FILE` (DOC-25 §3.6.4): 32 random bytes in base64, mode 0600. Prints the
+/// key's id, never the key.
+fn keys_generate(out: &std::path::Path) -> ExitCode {
+    match mightyconsole_server::secrets::keys::generate_file(out) {
+        Ok(id) => {
+            println!("wrote key {id} to {}", out.display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("mightyconsole-server: keys generate: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `secrets status` (DOC-25 §3.4.5): the stored secrets by key, with the server stopped.
+fn secrets_status(config: &ServeConfig) -> ExitCode {
+    use mightyconsole_server::store::{OpenError, Store};
+    let data = config
+        .data
+        .clone()
+        .expect("parse requires a data directory");
+    let store = match Store::open(&data) {
+        Ok(store) => store,
+        Err(OpenError::Locked(path)) => {
+            eprintln!(
+                "mightyconsole-server: secrets status: {} is open in a running server; stop it, \
+                 or ask the server (admin.secrets.status)",
+                path.display()
+            );
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("mightyconsole-server: secrets status: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match mightyconsole_server::secrets::status_report(&store, &data, &config.secrets) {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("mightyconsole-server: secrets status: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -158,6 +211,10 @@ async fn config_check(config: ServeConfig, online: bool) -> ExitCode {
 }
 
 async fn serve(config: ServeConfig) -> ExitCode {
+    // No core files with decrypted secrets in them (DOC-25 §3.4.3).
+    if let Err(e) = mightyconsole_server::secrets::disable_core_dumps() {
+        eprintln!("mightyconsole-server: WARNING: {e}");
+    }
     let exposed = config.is_exposed();
     let sign_in = config.auth.oidc.as_ref().map(|oidc| oidc.issuer.clone());
     let accounts = config.auth.accounts;

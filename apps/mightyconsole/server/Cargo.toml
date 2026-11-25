@@ -24,6 +24,10 @@ name = "mightyconsole-server"
 path = "src/main.rs"
 
 [dependencies]
+# The secret store (DOC-25 §3.4.3, §3.4.4): AES-256-GCM envelopes and Argon2id passphrase keys,
+# RustCrypto (MIT OR Apache-2.0).
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc"] }
 ambidex = { path = "../../../crates/ambidex", features = ["arrow"] }
 ambidex-axum = { path = "../../../crates/ambidex-axum" }
 # NATS (spec §6.6): core, headers, request-reply, JetStream, KV, Object Store; rustls with ring, as the
@@ -70,9 +74,10 @@ url = "2.5.8"
 zeroize = "1.9.1"
 russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
 
-# The jq worker limits its own memory and CPU time (spec §5.4.1); safe Rust, Linux only.
-[target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "1.1.6", default-features = false, features = ["process", "std"] }
+# The jq worker limits its own memory and CPU time (spec §5.4.1, Linux); core dumps off, the key
+# file's owner and the hidden passphrase prompt (DOC-25 §3.4). Safe Rust.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.6", default-features = false, features = ["process", "std", "termios"] }
 
 [dev-dependencies]
 arrow-ipc = { version = "60.1.0", default-features = false }

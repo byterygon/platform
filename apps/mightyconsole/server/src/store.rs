@@ -16,9 +16,13 @@
 //! - `group_roles`: `mappings` → the editable group mappings with their etag as JSON.
 //! - `groups`: local group name → its members (principal ids) as JSON.
 //!
-//! The tables of roles and groups (TSK-138) are made on open when an older store lacks them.
-//! Profiles and encrypted secrets (TSK-139) add theirs with that task. Until TSK-139 encrypts secret entries, an account's TOTP key is kept
-//! in its row like the rest of it: the file is 0600 inside a 0700 data directory.
+//! - `secrets`: one encrypted entry per secret ([`crate::secrets::table`]); `meta` also counts
+//!   the data keys wrapped under each key (`wraps:<kekId>`).
+//!
+//! The tables of roles, groups and secrets are made on open when an older store lacks them.
+//! Profiles (TSK-139) add theirs with that task. Until an account's TOTP key moves into the
+//! `secrets` table (TSK-139, the next batch), it is kept in its row like the rest of it: the file
+//! is 0600 inside a 0700 data directory.
 //!
 //! Every write is one transaction, durable when it commits. [`McAccountStore`] runs them on the
 //! blocking pool.
@@ -315,6 +319,10 @@ impl Store {
         &self.path
     }
 
+    pub(crate) fn db(&self) -> &Database {
+        &self.db
+    }
+
     fn schema(&self) -> Result<Option<String>, StoreError> {
         let read = self.db.begin_read().map_err(err)?;
         let table = match read.open_table(META) {
@@ -343,7 +351,7 @@ impl Store {
         write.commit().map_err(err)
     }
 
-    /// Makes the tables of roles and groups when the store predates them (TSK-142's stores).
+    /// Makes the tables of roles, groups and secrets when the store predates them.
     fn ensure_tables(&self) -> Result<(), StoreError> {
         let write = self.db.begin_write().map_err(err)?;
         {
@@ -352,6 +360,9 @@ impl Store {
             write.open_table(ASSIGNMENTS).map_err(err)?;
             write.open_table(GROUP_ROLES).map_err(err)?;
             write.open_table(GROUPS).map_err(err)?;
+            write
+                .open_table(crate::secrets::table::SECRETS)
+                .map_err(err)?;
         }
         write.commit().map_err(err)
     }
