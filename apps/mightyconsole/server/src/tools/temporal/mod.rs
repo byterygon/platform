@@ -507,7 +507,7 @@ impl TemporalWorkflowsApi {
     }
 
     /// Ends the run at once, without cleanup; the reason is required.
-    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    #[rpc::mutation(perm = "temporal.destroy", risk = Risk::Destructive)]
     async fn terminate(&self, ctx: Ctx, input: WorkflowReasonInput) -> ToolResult<Empty> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         actions::terminate(&handle.value, input).await?;
@@ -515,7 +515,7 @@ impl TemporalWorkflowsApi {
     }
 
     /// Starts a new run from an earlier event of this one; returns the new run id.
-    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    #[rpc::mutation(perm = "temporal.destroy", risk = Risk::Destructive)]
     async fn reset(&self, ctx: Ctx, input: WorkflowResetInput) -> ToolResult<WorkflowResetOutput> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(actions::reset(&handle.value, input).await?)
@@ -717,7 +717,7 @@ impl TemporalSchedulesApi {
     }
 
     /// Deletes the schedule; runs it already started go on.
-    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    #[rpc::mutation(perm = "temporal.destroy", risk = Risk::Destructive)]
     async fn delete(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<Empty> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         actions::schedule_delete(&handle.value, input).await?;
@@ -793,7 +793,7 @@ impl TemporalActivitiesApi {
     }
 
     /// Ends the activity at once; the reason is required.
-    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    #[rpc::mutation(perm = "temporal.destroy", risk = Risk::Destructive)]
     async fn terminate(&self, ctx: Ctx, input: ActivityReasonInput) -> ToolResult<Empty> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         activities::terminate(&handle.value, input).await?;

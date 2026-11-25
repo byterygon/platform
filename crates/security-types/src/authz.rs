@@ -102,6 +102,9 @@ pub enum Reason {
     UnknownPermission { perm: Permission },
     /// The effective permission set does not contain the required permission.
     MissingPermission { perm: Permission },
+    /// The permission is granted, but not for this target: every assignment that holds it is
+    /// limited to other profiles or namespaces ([`crate::Scope`]).
+    OutOfScope { perm: Permission },
     /// The `on_behalf_of` chain crosses tenants.
     TenantMismatch,
     /// Denied by tenant or deployment policy.

@@ -9,8 +9,15 @@
 //! - `usernames`: user name (lower case) → account id, so names stay unique.
 //! - `setup_links`: SHA-256 of a setup link's token → `{account, expires}` as JSON.
 //!
-//! Roles, assignments and groups (TSK-138), profiles and encrypted secrets (TSK-139) add their
-//! tables with those tasks. Until TSK-139 encrypts secret entries, an account's TOTP key is kept
+//! - `users`: principal id (`human:oidc:<sub>`) → an OIDC user's record as JSON ([`OidcUser`]),
+//!   made at the first sign-in (DOC-25 §3.2.3). Built-in accounts are in `accounts`.
+//! - `roles`: role id → a custom role as JSON ([`CustomRole`]); built-in roles are not stored.
+//! - `assignments`: principal id → the user's direct assignments as JSON (`[{ role, scope }]`).
+//! - `group_roles`: `mappings` → the editable group mappings with their etag as JSON.
+//! - `groups`: local group name → its members (principal ids) as JSON.
+//!
+//! The tables of roles and groups (TSK-138) are made on open when an older store lacks them.
+//! Profiles and encrypted secrets (TSK-139) add theirs with that task. Until TSK-139 encrypts secret entries, an account's TOTP key is kept
 //! in its row like the rest of it: the file is 0600 inside a 0700 data directory.
 //!
 //! Every write is one transaction, durable when it commits. [`McAccountStore`] runs them on the
@@ -33,6 +40,10 @@ use redb::{
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use crate::authz::policy::{Assignment, CustomRole, GroupMapping, PolicyParts};
+
 /// The store's file in the data directory.
 pub const STORE_FILE: &str = "store.redb";
 /// The schema this build reads and writes.
@@ -42,6 +53,38 @@ const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
 const ACCOUNTS: TableDefinition<&str, &[u8]> = TableDefinition::new("accounts");
 const USERNAMES: TableDefinition<&str, &str> = TableDefinition::new("usernames");
 const SETUP_LINKS: TableDefinition<&[u8], &[u8]> = TableDefinition::new("setup_links");
+const USERS: TableDefinition<&str, &[u8]> = TableDefinition::new("users");
+const ROLES: TableDefinition<&str, &[u8]> = TableDefinition::new("roles");
+const ASSIGNMENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("assignments");
+const GROUP_ROLES: TableDefinition<&str, &[u8]> = TableDefinition::new("group_roles");
+const GROUPS: TableDefinition<&str, &[u8]> = TableDefinition::new("groups");
+
+/// The one row of `group_roles`.
+const MAPPINGS_KEY: &str = "mappings";
+
+/// An OIDC user's record (DOC-25 §3.2.3): made at the first sign-in, updated at each. The name
+/// and e-mail are shown only, never used for authorization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OidcUser {
+    /// `human:oidc:<sub>`.
+    pub id: String,
+    pub sub: String,
+    pub display_name: String,
+    pub email: Option<String>,
+    /// The IdP's groups as of the last sign-in.
+    pub groups: Vec<String>,
+    pub first_seen_ms: u64,
+    pub last_seen_ms: u64,
+    pub disabled: bool,
+}
+
+/// The editable group mappings and their etag (a stale etag is a conflict).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredMappings {
+    pub etag: u64,
+    pub mappings: Vec<GroupMapping>,
+}
 
 /// Why the store did not open.
 #[derive(Debug)]
@@ -216,6 +259,14 @@ fn decode(bytes: &[u8]) -> Result<Account, StoreError> {
         .into_account()
 }
 
+fn json(value: &impl Serialize) -> Result<Vec<u8>, StoreError> {
+    serde_json::to_vec(value).map_err(err)
+}
+
+fn read_json<T: serde::de::DeserializeOwned>(bytes: &[u8], what: &str) -> Result<T, StoreError> {
+    serde_json::from_slice(bytes).map_err(|e| err(format!("{what} does not read: {e}")))
+}
+
 #[derive(Serialize, Deserialize)]
 struct SetupRow {
     account: String,
@@ -256,6 +307,7 @@ impl Store {
                 });
             }
         }
+        store.ensure_tables().map_err(|e| other(e.0))?;
         Ok(store)
     }
 
@@ -289,6 +341,283 @@ impl Store {
             write.open_table(SETUP_LINKS).map_err(err)?;
         }
         write.commit().map_err(err)
+    }
+
+    /// Makes the tables of roles and groups when the store predates them (TSK-142's stores).
+    fn ensure_tables(&self) -> Result<(), StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        {
+            write.open_table(USERS).map_err(err)?;
+            write.open_table(ROLES).map_err(err)?;
+            write.open_table(ASSIGNMENTS).map_err(err)?;
+            write.open_table(GROUP_ROLES).map_err(err)?;
+            write.open_table(GROUPS).map_err(err)?;
+        }
+        write.commit().map_err(err)
+    }
+
+    /// Records an OIDC sign-in: makes the user's record at the first one, otherwise updates its
+    /// name, e-mail, groups and last sign-in. Returns the record (a disabled user stays
+    /// disabled).
+    pub fn record_oidc_user(
+        &self,
+        id: &str,
+        sub: &str,
+        display_name: &str,
+        email: Option<&str>,
+        groups: &[String],
+        now_ms: u64,
+    ) -> Result<OidcUser, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let user = {
+            let mut users = write.open_table(USERS).map_err(err)?;
+            let existing = users
+                .get(id)
+                .map_err(err)?
+                .map(|v| read_json::<OidcUser>(v.value(), "a user"))
+                .transpose()?;
+            let user = OidcUser {
+                id: id.to_owned(),
+                sub: sub.to_owned(),
+                display_name: display_name.to_owned(),
+                email: email.map(str::to_owned),
+                groups: groups.to_vec(),
+                first_seen_ms: existing.as_ref().map_or(now_ms, |u| u.first_seen_ms),
+                last_seen_ms: now_ms,
+                disabled: existing.as_ref().is_some_and(|u| u.disabled),
+            };
+            users.insert(id, json(&user)?.as_slice()).map_err(err)?;
+            user
+        };
+        write.commit().map_err(err)?;
+        Ok(user)
+    }
+
+    pub fn oidc_user(&self, id: &str) -> Result<Option<OidcUser>, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let users = read.open_table(USERS).map_err(err)?;
+        users
+            .get(id)
+            .map_err(err)?
+            .map(|v| read_json(v.value(), "a user"))
+            .transpose()
+    }
+
+    /// Every OIDC user, in id order.
+    pub fn oidc_users(&self) -> Result<Vec<OidcUser>, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let users = read.open_table(USERS).map_err(err)?;
+        let mut out = Vec::new();
+        for row in users.iter().map_err(err)? {
+            let (_, value) = row.map_err(err)?;
+            out.push(read_json(value.value(), "a user")?);
+        }
+        Ok(out)
+    }
+
+    /// Changes an OIDC user's record; `None` when there is none.
+    pub fn update_oidc_user<T>(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut OidcUser) -> T,
+    ) -> Result<Option<T>, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let out = {
+            let mut users = write.open_table(USERS).map_err(err)?;
+            let current = users
+                .get(id)
+                .map_err(err)?
+                .map(|v| read_json::<OidcUser>(v.value(), "a user"))
+                .transpose()?;
+            match current {
+                None => None,
+                Some(mut user) => {
+                    let out = change(&mut user);
+                    user.id = id.to_owned();
+                    users.insert(id, json(&user)?.as_slice()).map_err(err)?;
+                    Some(out)
+                }
+            }
+        };
+        write.commit().map_err(err)?;
+        Ok(out)
+    }
+
+    /// Adds or replaces a custom role.
+    pub fn put_role(&self, role: &CustomRole) -> Result<(), StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        write
+            .open_table(ROLES)
+            .map_err(err)?
+            .insert(role.id.as_str(), json(role)?.as_slice())
+            .map_err(err)?;
+        write.commit().map_err(err)
+    }
+
+    /// Removes a custom role; `false` when there was none.
+    pub fn delete_role(&self, id: &str) -> Result<bool, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let removed = write
+            .open_table(ROLES)
+            .map_err(err)?
+            .remove(id)
+            .map_err(err)?
+            .is_some();
+        write.commit().map_err(err)?;
+        Ok(removed)
+    }
+
+    /// Replaces a user's direct assignments (none removes the row).
+    pub fn set_assignments(
+        &self,
+        user: &str,
+        assignments: &[Assignment],
+    ) -> Result<(), StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        {
+            let mut table = write.open_table(ASSIGNMENTS).map_err(err)?;
+            if assignments.is_empty() {
+                table.remove(user).map_err(err)?;
+            } else {
+                table
+                    .insert(user, json(&assignments)?.as_slice())
+                    .map_err(err)?;
+            }
+        }
+        write.commit().map_err(err)
+    }
+
+    /// Replaces the editable group mappings when `etag` is the current one; returns the new
+    /// etag, or `None` for a stale one.
+    pub fn set_mappings(
+        &self,
+        etag: u64,
+        mappings: &[GroupMapping],
+    ) -> Result<Option<u64>, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let next = {
+            let mut table = write.open_table(GROUP_ROLES).map_err(err)?;
+            let current: StoredMappings = table
+                .get(MAPPINGS_KEY)
+                .map_err(err)?
+                .map(|v| read_json(v.value(), "the group mappings"))
+                .transpose()?
+                .unwrap_or_default();
+            if current.etag != etag {
+                None
+            } else {
+                let next = StoredMappings {
+                    etag: etag + 1,
+                    mappings: mappings.to_vec(),
+                };
+                table
+                    .insert(MAPPINGS_KEY, json(&next)?.as_slice())
+                    .map_err(err)?;
+                Some(next.etag)
+            }
+        };
+        write.commit().map_err(err)?;
+        Ok(next)
+    }
+
+    pub fn mappings(&self) -> Result<StoredMappings, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let table = read.open_table(GROUP_ROLES).map_err(err)?;
+        Ok(table
+            .get(MAPPINGS_KEY)
+            .map_err(err)?
+            .map(|v| read_json(v.value(), "the group mappings"))
+            .transpose()?
+            .unwrap_or_default())
+    }
+
+    /// Sets a local group's members (an empty set keeps the group; [`Store::delete_group`]
+    /// removes it).
+    pub fn put_group(&self, name: &str, members: &BTreeSet<String>) -> Result<(), StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        write
+            .open_table(GROUPS)
+            .map_err(err)?
+            .insert(name, json(members)?.as_slice())
+            .map_err(err)?;
+        write.commit().map_err(err)
+    }
+
+    pub fn delete_group(&self, name: &str) -> Result<bool, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let removed = write
+            .open_table(GROUPS)
+            .map_err(err)?
+            .remove(name)
+            .map_err(err)?
+            .is_some();
+        write.commit().map_err(err)?;
+        Ok(removed)
+    }
+
+    /// Everything the policy needs from the store (DOC-25 §3.3.5): custom roles, direct
+    /// assignments, editable mappings, local groups, and the disabled accounts and OIDC users.
+    /// The configuration adds the rest ([`PolicyParts::default_role`], the pinned mappings, the
+    /// default administrator).
+    pub fn policy_parts(&self) -> Result<PolicyParts, StoreError> {
+        let read = self.db.begin_read().map_err(err)?;
+        let mut parts = PolicyParts::default();
+        for row in read.open_table(ROLES).map_err(err)?.iter().map_err(err)? {
+            let (_, v) = row.map_err(err)?;
+            parts.custom_roles.push(read_json(v.value(), "a role")?);
+        }
+        let mut direct = HashMap::new();
+        for row in read
+            .open_table(ASSIGNMENTS)
+            .map_err(err)?
+            .iter()
+            .map_err(err)?
+        {
+            let (k, v) = row.map_err(err)?;
+            direct.insert(
+                k.value().to_owned(),
+                read_json::<Vec<Assignment>>(v.value(), "assignments")?,
+            );
+        }
+        parts.direct = direct;
+        parts.mappings = read
+            .open_table(GROUP_ROLES)
+            .map_err(err)?
+            .get(MAPPINGS_KEY)
+            .map_err(err)?
+            .map(|v| read_json::<StoredMappings>(v.value(), "the group mappings"))
+            .transpose()?
+            .unwrap_or_default()
+            .mappings;
+        let mut groups = BTreeMap::new();
+        for row in read.open_table(GROUPS).map_err(err)?.iter().map_err(err)? {
+            let (k, v) = row.map_err(err)?;
+            groups.insert(
+                k.value().to_owned(),
+                read_json::<BTreeSet<String>>(v.value(), "a group")?,
+            );
+        }
+        parts.local_groups = groups;
+        for row in read
+            .open_table(ACCOUNTS)
+            .map_err(err)?
+            .iter()
+            .map_err(err)?
+        {
+            let (_, v) = row.map_err(err)?;
+            let account = decode(v.value())?;
+            if account.disabled {
+                parts.disabled.insert(account.principal_id());
+            }
+        }
+        for row in read.open_table(USERS).map_err(err)?.iter().map_err(err)? {
+            let (_, v) = row.map_err(err)?;
+            let user: OidcUser = read_json(v.value(), "a user")?;
+            if user.disabled {
+                parts.disabled.insert(user.id);
+            }
+        }
+        Ok(parts)
     }
 
     /// Adds an account; its user name and id must be free.
@@ -695,6 +1024,116 @@ mod tests {
         assert!(store.account("01A").unwrap().is_some());
         // A second process (here: a second open) is refused while it is open.
         assert!(matches!(Store::open(dir.path()), Err(OpenError::Locked(_))));
+    }
+
+    #[test]
+    fn roles_assignments_groups_and_users_make_the_policy() {
+        use crate::authz::policy::Policy;
+        use security_types::{Scope, ScopeEntry};
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        // OIDC users: made at the first sign-in, kept disabled, updated after.
+        let u = store
+            .record_oidc_user(
+                "human:oidc:bob",
+                "bob",
+                "Bob",
+                Some("b@x"),
+                &["ops".into()],
+                10,
+            )
+            .unwrap();
+        assert_eq!(
+            (u.first_seen_ms, u.last_seen_ms, u.disabled),
+            (10, 10, false)
+        );
+        store
+            .update_oidc_user("human:oidc:bob", |u| u.disabled = true)
+            .unwrap()
+            .unwrap();
+        let u = store
+            .record_oidc_user("human:oidc:bob", "bob", "Robert", None, &[], 20)
+            .unwrap();
+        assert_eq!(
+            (u.first_seen_ms, u.last_seen_ms, u.disabled),
+            (10, 20, true)
+        );
+        assert_eq!(u.display_name, "Robert");
+        assert_eq!(store.oidc_users().unwrap().len(), 1);
+        assert!(
+            store
+                .update_oidc_user("human:oidc:none", |_| ())
+                .unwrap()
+                .is_none()
+        );
+        // A disabled account counts too.
+        let mut a = account("01A", "alice");
+        a.disabled = true;
+        store.create_account(&a).unwrap();
+
+        store
+            .put_role(&CustomRole {
+                id: "deployer".into(),
+                name: "Deployer".into(),
+                description: "d".into(),
+                permissions: ["temporal.write".to_owned()].into(),
+            })
+            .unwrap();
+        let scoped = Scope::only(vec!["profile:P/ns:a".parse::<ScopeEntry>().unwrap()]);
+        store
+            .set_assignments(
+                "human:account:01B",
+                &[Assignment {
+                    role: "deployer".into(),
+                    scope: scoped.clone(),
+                }],
+            )
+            .unwrap();
+        let mapping = GroupMapping {
+            group: "local:team".into(),
+            role: "viewer".into(),
+            scope: Scope::everywhere(),
+        };
+        assert_eq!(
+            store
+                .set_mappings(0, std::slice::from_ref(&mapping))
+                .unwrap(),
+            Some(1)
+        );
+        assert_eq!(store.set_mappings(0, &[]).unwrap(), None, "a stale etag");
+        assert_eq!(
+            store.mappings().unwrap().mappings,
+            std::slice::from_ref(&mapping)
+        );
+        store
+            .put_group("team", &["human:account:01B".to_owned()].into())
+            .unwrap();
+
+        let parts = store.policy_parts().unwrap();
+        assert_eq!(parts.custom_roles.len(), 1);
+        assert_eq!(parts.direct["human:account:01B"][0].scope, scoped);
+        assert_eq!(parts.mappings, [mapping]);
+        assert!(parts.local_groups["team"].contains("human:account:01B"));
+        assert_eq!(
+            parts.disabled,
+            ["human:oidc:bob".to_owned(), "human:account:01A".to_owned()].into()
+        );
+        let policy = Policy::new(parts);
+        assert_eq!(
+            policy.role_ids("human:account:01B", &[]),
+            ["deployer", "viewer"]
+        );
+
+        // Removing is durable across a reopen.
+        store.set_assignments("human:account:01B", &[]).unwrap();
+        assert!(store.delete_role("deployer").unwrap());
+        assert!(!store.delete_role("deployer").unwrap());
+        assert!(store.delete_group("team").unwrap());
+        drop(store);
+        let store = Store::open(dir.path()).unwrap();
+        let parts = store.policy_parts().unwrap();
+        assert!(parts.custom_roles.is_empty() && parts.direct.is_empty());
+        assert!(parts.local_groups.is_empty());
     }
 
     #[test]

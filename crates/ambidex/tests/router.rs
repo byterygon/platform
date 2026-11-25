@@ -424,6 +424,157 @@ async fn missing_permission_is_denied() {
     assert_eq!(api.runs.load(Ordering::SeqCst), 0);
 }
 
+/// Resolves `connection` from the input into a server-side target; `gone` is a handle that does
+/// not exist.
+struct ConnTargets;
+
+impl ambidex::Targets for ConnTargets {
+    fn target(
+        &self,
+        session: &Session,
+        meta: &ProcedureMeta,
+        input: &Value,
+    ) -> Result<Option<TargetRef>, ErrorPayload> {
+        match input.get("connection").and_then(Value::as_str) {
+            Some("gone") => Err(ErrorPayload::new(Code::NotFound, "no such connection")),
+            Some(conn) => Ok(Some(TargetRef::new(
+                "profile",
+                format!("{conn}-of-{}-for-{}", session.id, meta.name),
+            ))),
+            None => Ok(None),
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_dispatch_check_gets_the_target_the_server_builds() {
+    let policy = Policy {
+        known: vec!["demo.read", "demo.drop"],
+        granted: vec!["demo.read", "demo.drop"],
+        ..Policy::default()
+    };
+    let log = Arc::new(MemoryAuditLog::new());
+    let router = Router::new(policy.clone())
+        .with_audit(Arc::clone(&log))
+        .with_targets(ConnTargets);
+    router.mount(DemoApi::default()).unwrap();
+    // `echo` names no connection: no target.
+    call(&router, human(), "demo.echo", json!({"text": "hi"}))
+        .await
+        .unwrap();
+    assert_eq!(policy.seen()[0].target, None);
+    // `dropTable` does: the dispatch check sees the resolved target (and the handler's re-check
+    // its own).
+    let err = call(
+        &router,
+        human(),
+        "demo.dropTable",
+        json!({"connection": "c1", "password": "x"}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, Code::ApprovalRequired);
+    assert_eq!(
+        policy.seen()[1].target,
+        Some(TargetRef::new("profile", "c1-of-s-1-for-demo.dropTable"))
+    );
+    let records = log.records();
+    assert!(
+        records
+            .iter()
+            .any(|r| r.entry.target
+                == Some(TargetRef::new("profile", "c1-of-s-1-for-demo.dropTable"))),
+        "the admission entry names the target"
+    );
+    // A resolver's refusal ends the call before the authorizer runs.
+    let seen = policy.seen().len();
+    let err = call(
+        &router,
+        human(),
+        "demo.dropTable",
+        json!({"connection": "gone", "password": "x"}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, Code::NotFound);
+    assert_eq!(policy.seen().len(), seen);
+}
+
+#[tokio::test]
+async fn denial_details_name_the_permission_target_and_reason() {
+    struct Deny(Reason);
+    impl Authorizer for Deny {
+        async fn check(&self, _req: &AuthzRequest<'_>) -> Decision {
+            Decision::Deny {
+                reason: self.0.clone(),
+            }
+        }
+    }
+    let cases = [
+        (
+            Reason::MissingPermission {
+                perm: "demo.drop".into(),
+            },
+            "missing",
+        ),
+        (
+            Reason::OutOfScope {
+                perm: "demo.drop".into(),
+            },
+            "scope",
+        ),
+        (
+            Reason::UnknownPermission {
+                perm: "demo.drop".into(),
+            },
+            "unknown",
+        ),
+        (Reason::TenantMismatch, "policy"),
+        (
+            Reason::Policy {
+                message: "secret internals".into(),
+            },
+            "policy",
+        ),
+    ];
+    for (reason, kind) in cases {
+        let router = Router::new(Deny(reason))
+            .with_audit(MemoryAuditLog::new())
+            .with_targets(ConnTargets)
+            .with_denial_details();
+        router.mount(DemoApi::default()).unwrap();
+        let err = call(
+            &router,
+            human(),
+            "demo.dropTable",
+            json!({"connection": "c1", "password": "x"}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, Code::PermissionDenied);
+        assert_eq!(
+            err.details,
+            Some(json!({
+                "perm": "demo.drop",
+                "target": {"kind": "profile", "id": "c1-of-s-1-for-demo.dropTable"},
+                "reason": kind,
+            }))
+        );
+    }
+    // Without a target the details leave it out; without `with_denial_details` there are none.
+    let router = Router::new(Deny(Reason::TenantMismatch))
+        .with_audit(MemoryAuditLog::new())
+        .with_denial_details();
+    router.mount(DemoApi::default()).unwrap();
+    let err = call(&router, human(), "demo.echo", json!({"text": "hi"}))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.details,
+        Some(json!({"perm": "demo.read", "reason": "policy"}))
+    );
+}
+
 #[tokio::test]
 async fn authorization_runs_before_input_decoding() {
     let policy = Policy::default();

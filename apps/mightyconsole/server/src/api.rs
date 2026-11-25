@@ -299,7 +299,7 @@ fn store_failed(e: impl std::fmt::Display) -> ToolError {
 impl MeApi {
     /// Who is signed in on this connection, and what the session still needs (a password change,
     /// a TOTP enrolment). Always allowed; a call counts as activity for the idle timeout.
-    #[rpc::query(perm = "app.read", risk = Risk::Read)]
+    #[rpc::query(perm = "app.self", risk = Risk::Read)]
     async fn me(&self, ctx: Ctx, _input: Empty) -> ToolResult<Me> {
         let user = ctx.principal().id.clone();
         let login = ambidex_axum::login_session_of(&ctx.session().id).to_owned();
@@ -349,7 +349,7 @@ impl AccountApi {
     /// `mustChangePassword`.
     #[rpc::mutation(
         name = "changePassword",
-        perm = "app.account",
+        perm = "app.self",
         risk = Risk::Write,
         redact = ["current", "new"]
     )]
@@ -403,7 +403,7 @@ fn totp_error(e: ambidex_axum::accounts::TotpError) -> ToolError {
 impl TotpApi {
     /// Starts setting up TOTP: a new key, shown once as an `otpauth://` URI and its QR image,
     /// kept for 10 minutes until `confirm`. Replaces nothing until then.
-    #[rpc::mutation(perm = "app.account", risk = Risk::Write)]
+    #[rpc::mutation(perm = "app.self", risk = Risk::Write)]
     async fn begin(&self, ctx: Ctx, _input: Empty) -> ToolResult<TotpEnrolmentOutput> {
         let accounts = the_accounts(&self.0)?;
         let enrolment = accounts
@@ -417,7 +417,7 @@ impl TotpApi {
     }
 
     /// Turns TOTP on with a code from the new key, and answers 10 recovery codes, shown once.
-    #[rpc::mutation(perm = "app.account", risk = Risk::Write, redact = ["code"])]
+    #[rpc::mutation(perm = "app.self", risk = Risk::Write, redact = ["code"])]
     async fn confirm(&self, ctx: Ctx, input: TotpConfirmInput) -> ToolResult<RecoveryCodes> {
         let accounts = the_accounts(&self.0)?;
         let login = ambidex_axum::login_session_of(&ctx.session().id).to_owned();
@@ -432,7 +432,7 @@ impl TotpApi {
 
     /// Removes the caller's TOTP and recovery codes; needs the current password. Refused when
     /// `auth.require_totp` applies to the account.
-    #[rpc::mutation(perm = "app.account", risk = Risk::Write, redact = ["current"])]
+    #[rpc::mutation(perm = "app.self", risk = Risk::Write, redact = ["current"])]
     async fn remove(&self, ctx: Ctx, input: TotpRemoveInput) -> ToolResult<Empty> {
         let accounts = the_accounts(&self.0)?;
         accounts

@@ -754,6 +754,12 @@ impl NatsObjApi {
     }
 
     /// The upload `id` of this session.
+    /// Ends an upload: its entry and its link to the connection.
+    fn forget(&self, session: &ambidex::Session, id: &str) {
+        self.uploads.remove(id);
+        self.hub.unlink(&session.id, "uploadId", id);
+    }
+
     fn upload(&self, ctx: &Ctx, id: &str) -> Result<Entry, ToolError> {
         self.uploads
             .get(id)
@@ -930,6 +936,9 @@ impl NatsObjApi {
             last_used: Instant::now(),
             over: false,
         };
+        // The Authorizer finds the upload's connection, and so its target, from `uploadId`.
+        self.hub
+            .link(&ctx.session().id, &input.conn_id, "uploadId", &upload_id);
         self.uploads.lock().insert(
             upload_id.clone(),
             Arc::new(Slot {
@@ -964,7 +973,7 @@ impl NatsObjApi {
         }
         u.last_used = Instant::now();
         if handle(&self.hub, &ctx, &u.conn_id).is_err() {
-            self.uploads.remove(&input.upload_id);
+            self.forget(ctx.session(), &input.upload_id);
             u.discard().await;
             return Err(ToolError::connection_gone(TOOL).into());
         }
@@ -999,7 +1008,7 @@ impl NatsObjApi {
             .into());
         }
         if let Err(e) = u.write(&data).await {
-            self.uploads.remove(&input.upload_id);
+            self.forget(ctx.session(), &input.upload_id);
             u.discard().await;
             return Err(e.into());
         }
@@ -1036,7 +1045,7 @@ impl NatsObjApi {
         if let Some(expected) = input.sha256.as_deref().filter(|s| !s.trim().is_empty()) {
             let digest = u.sha.clone().finalize();
             if !digest_matches(expected, &digest) {
-                self.uploads.remove(&input.upload_id);
+                self.forget(ctx.session(), &input.upload_id);
                 u.discard().await;
                 return Err(ToolError::invalid(
                     TOOL,
@@ -1047,7 +1056,7 @@ impl NatsObjApi {
             }
         }
         let out = u.commit().await;
-        self.uploads.remove(&input.upload_id);
+        self.forget(ctx.session(), &input.upload_id);
         match out {
             Ok(info) => {
                 u.over = true;
@@ -1064,7 +1073,7 @@ impl NatsObjApi {
     #[rpc::mutation(name = "uploadAbort", perm = "nats.write", risk = Risk::Write)]
     async fn upload_abort(&self, ctx: Ctx, input: NatsObjUploadIdInput) -> ToolResult<Empty> {
         if let Ok(entry) = self.upload(&ctx, &input.upload_id) {
-            self.uploads.remove(&input.upload_id);
+            self.forget(ctx.session(), &input.upload_id);
             let mut u = entry.upload.lock().await;
             if !u.over {
                 u.discard().await;

@@ -198,8 +198,9 @@ pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};
 pub use message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
 pub use procedure::{Agent, AuditMode, ProcedureKind, ProcedureMeta};
 pub use router::{
-    Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
-    StreamHandler, SubscriptionHandler, input_digest,
+    Api, ApprovalRequired, Approvals, Ctx, DeniedTarget, Handler, PermissionDeniedDetails,
+    Procedure, RegistryError, Rejected, Router, StreamHandler, SubscriptionHandler, Targets,
+    input_digest,
 };
 pub use schemars;
 pub use security_types;

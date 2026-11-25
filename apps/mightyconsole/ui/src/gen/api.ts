@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:9d23d845cd072628d243bae01f8bcd67d3c79faf5931f7e4d3eac4530549827f";
+export const SCHEMA_HASH = "sha256:c70b8bbc0a101299e7a6f187563da12633cad893f73d4724d6f9aca52ba817c0";
 
 // ---- Types
 
@@ -4529,7 +4529,7 @@ export const procedures: Api = {
       changePassword: {
         name: "app.account.changePassword",
         kind: "mutation",
-        perm: "app.account",
+        perm: "app.self",
         risk: "Write",
         agent: "hidden",
         deprecated: false,
@@ -4540,7 +4540,7 @@ export const procedures: Api = {
         begin: {
           name: "app.account.totp.begin",
           kind: "mutation",
-          perm: "app.account",
+          perm: "app.self",
           risk: "Write",
           agent: "hidden",
           deprecated: false,
@@ -4550,7 +4550,7 @@ export const procedures: Api = {
         confirm: {
           name: "app.account.totp.confirm",
           kind: "mutation",
-          perm: "app.account",
+          perm: "app.self",
           risk: "Write",
           agent: "hidden",
           deprecated: false,
@@ -4560,7 +4560,7 @@ export const procedures: Api = {
         remove: {
           name: "app.account.totp.remove",
           kind: "mutation",
-          perm: "app.account",
+          perm: "app.self",
           risk: "Write",
           agent: "hidden",
           deprecated: false,
@@ -4592,7 +4592,7 @@ export const procedures: Api = {
     me: {
       name: "app.me",
       kind: "query",
-      perm: "app.read",
+      perm: "app.self",
       risk: "Read",
       agent: "hidden",
       deprecated: false,
@@ -4627,7 +4627,7 @@ export const procedures: Api = {
       exec: {
         name: "docker.containers.exec",
         kind: "stream",
-        perm: "docker.write",
+        perm: "docker.exec",
         risk: "Write",
         agent: "hidden",
         deprecated: false,
@@ -4638,7 +4638,7 @@ export const procedures: Api = {
         download: {
           name: "docker.containers.files.download",
           kind: "stream",
-          perm: "docker.read",
+          perm: "docker.files.read",
           risk: "Read",
           agent: "hidden",
           deprecated: false,
@@ -4658,7 +4658,7 @@ export const procedures: Api = {
         read: {
           name: "docker.containers.files.read",
           kind: "query",
-          perm: "docker.read",
+          perm: "docker.files.read",
           risk: "Read",
           agent: "hidden",
           deprecated: false,
@@ -5971,7 +5971,7 @@ export const procedures: Api = {
       terminate: {
         name: "temporal.activities.terminate",
         kind: "mutation",
-        perm: "temporal.write",
+        perm: "temporal.destroy",
         risk: "Destructive",
         agent: "hidden",
         deprecated: false,
@@ -6097,7 +6097,7 @@ export const procedures: Api = {
       delete: {
         name: "temporal.schedules.delete",
         kind: "mutation",
-        perm: "temporal.write",
+        perm: "temporal.destroy",
         risk: "Destructive",
         agent: "hidden",
         deprecated: false,
@@ -6323,7 +6323,7 @@ export const procedures: Api = {
       reset: {
         name: "temporal.workflows.reset",
         kind: "mutation",
-        perm: "temporal.write",
+        perm: "temporal.destroy",
         risk: "Destructive",
         agent: "hidden",
         deprecated: false,
@@ -6353,7 +6353,7 @@ export const procedures: Api = {
       terminate: {
         name: "temporal.workflows.terminate",
         kind: "mutation",
-        perm: "temporal.write",
+        perm: "temporal.destroy",
         risk: "Destructive",
         agent: "hidden",
         deprecated: false,

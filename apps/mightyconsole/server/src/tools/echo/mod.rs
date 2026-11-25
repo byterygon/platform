@@ -261,7 +261,9 @@ impl EchoApi {
     ) -> ToolResult<EchoShellSummary> {
         let session = ctx.session().id.clone();
         let (handle, _busy) = self.0.busy::<EchoClient>(&session, TOOL, &input.conn_id)?;
-        let mut terminal = self.0.open_terminal(&session, TOOL, &input.terminal_id)?;
+        let mut terminal =
+            self.0
+                .open_terminal(&session, TOOL, &input.conn_id, &input.terminal_id)?;
         let out = |text: &[u8]| {
             let mut chunk = Vec::with_capacity(text.len() + 1);
             chunk.push(STDOUT);

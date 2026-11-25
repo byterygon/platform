@@ -178,7 +178,7 @@ pub async fn run(
     let workdir = short_text("workdir", input.workdir.as_deref())?;
     check_size(input.cols, input.rows)?;
     let (handle, _busy) = hub.busy::<DockerClient>(&session, TOOL, &input.conn_id)?;
-    let mut terminal = hub.open_terminal(&session, TOOL, &input.terminal_id)?;
+    let mut terminal = hub.open_terminal(&session, TOOL, &input.conn_id, &input.terminal_id)?;
     let engine = &handle.value.engine;
 
     let console = engine.api >= CONSOLE_SIZE_API;

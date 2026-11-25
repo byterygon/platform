@@ -1051,7 +1051,7 @@ impl DockerContainersApi {
 
     /// A process in the container on a TTY (`bytes`: channel 1, then the output); its input
     /// through `term.*` on `terminalId`. Ends with the exit code.
-    #[rpc::stream(perm = "docker.write", risk = Risk::Write, timeout_max = "12h")]
+    #[rpc::stream(perm = "docker.exec", risk = Risk::Write, timeout_max = "12h")]
     async fn exec(
         &self,
         ctx: Ctx,

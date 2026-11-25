@@ -196,7 +196,7 @@ async fn a_person_signs_in_uses_the_console_and_signs_out() {
     assert_eq!(info.user, "human:oidc:alice");
     assert_eq!(info.groups, ["ops"]);
 
-    // Calls are allowed to the signed-in person (allow-all until roles, TSK-138).
+    // The default role lets the signed-in person use the console.
     let browser = Browser {
         cookie: session.clone(),
         csrf: csrf.clone(),
@@ -254,6 +254,42 @@ async fn a_failed_sign_in_returns_to_the_page_with_its_code() {
     assert_eq!(answer.status, 303);
     assert_eq!(answer.header("location"), Some("/?login_error=invalid"));
     assert!(t.server.login_sessions().is_empty());
+}
+
+#[tokio::test]
+async fn an_oidc_user_is_recorded_and_a_disabled_one_is_refused() {
+    let (t, idp, _dir) = signed_in_server().await;
+    sign_in(&t, &idp, "%2F").await;
+    let user = t
+        .server
+        .store()
+        .oidc_user("human:oidc:alice")
+        .unwrap()
+        .expect("the first sign-in makes the record");
+    assert_eq!(user.groups, ["ops"]);
+    assert!(!user.disabled);
+    // The principal carries the roles in force at the sign-in, for the audit log.
+    let info = &t.server.login_sessions().list()[0];
+    assert_eq!(info.user, "human:oidc:alice");
+
+    // Disabled in the store (as `admin.users.disable` will): the next sign-in is refused.
+    t.server
+        .store()
+        .update_oidc_user("human:oidc:alice", |u| u.disabled = true)
+        .unwrap()
+        .unwrap();
+    let start = t.request("GET", "/auth/login", HOST, &[]).await;
+    let binding = set_cookie_value(&start, LOGIN_COOKIE).unwrap();
+    let at_idp = idp_get(&idp, start.header("location").unwrap()).await;
+    let back = url::Url::parse(at_idp.header("location").unwrap()).unwrap();
+    let callback = format!("{}?{}", back.path(), back.query().unwrap());
+    let cookie = format!("{LOGIN_COOKIE}={binding}");
+    let answer = t
+        .request("GET", &callback, HOST, &[("Cookie", &cookie)])
+        .await;
+    assert_eq!(answer.status, 303, "{}", answer.body);
+    assert_eq!(answer.header("location"), Some("/?login_error=disabled"));
+    assert_eq!(t.server.login_sessions().len(), 1, "only the first session");
 }
 
 #[tokio::test]
