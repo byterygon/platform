@@ -36,6 +36,7 @@
 pub mod catalogue;
 pub mod completeness;
 pub mod confirm;
+pub mod limits;
 pub mod policy;
 pub mod targets;
 

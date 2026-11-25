@@ -35,7 +35,7 @@ import { HostKeyDialog } from "./dialogs/HostKeyDialog";
 import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, MoveProfilesDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { moveToServer } from "@/profiles/move";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
-import { describeError } from "./messages";
+import { describeError, diagnosticLine } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
 import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./shortcuts";
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
@@ -277,7 +277,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   const note = useCallback(
     (error: unknown): DescribedError => {
       const d = describeError(error);
-      if (d.correlationId) dispatch({ type: "diagnostic", line: `${new Date().toISOString()} ${d.code ?? ""} ${d.correlationId} ${d.title}` });
+      const line = diagnosticLine(d, new Date());
+      if (line) dispatch({ type: "diagnostic", line });
       return d;
     },
     [dispatch],

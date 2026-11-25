@@ -113,6 +113,35 @@ impl Store {
         Ok(out)
     }
 
+    /// How many personal profiles `user` keeps and the bytes of their rows, leaving out
+    /// `except` (the profile being replaced). Reads only each row's owner.
+    pub fn personal_usage(
+        &self,
+        user: &str,
+        except: Option<&str>,
+    ) -> Result<(usize, usize), WriteError> {
+        #[derive(Deserialize)]
+        struct Owned {
+            owner: Ownership,
+        }
+        let read = self.db().begin_read().map_err(store_err)?;
+        let table = read.open_table(PROFILES).map_err(store_err)?;
+        let (mut count, mut bytes) = (0, 0);
+        for row in table.iter().map_err(store_err)? {
+            let (key, value) = row.map_err(store_err)?;
+            if Some(key.value()) == except {
+                continue;
+            }
+            let owned: Owned = serde_json::from_slice(value.value())
+                .map_err(|e| store_err(format!("a profile row does not read: {e}")))?;
+            if matches!(&owned.owner, Ownership::Personal { user: u } if u == user) {
+                count += 1;
+                bytes += value.value().len();
+            }
+        }
+        Ok((count, bytes))
+    }
+
     pub fn profile(&self, id: &str) -> Result<Option<StoredProfile>, WriteError> {
         let read = self.db().begin_read().map_err(store_err)?;
         let table = read.open_table(PROFILES).map_err(store_err)?;

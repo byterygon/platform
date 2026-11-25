@@ -1612,6 +1612,42 @@ fn every_secret_field_goes_through_the_secret_store() {
     }
 }
 
+/// Every call that carries a secret from the browser has a budget (TSK-141): Test connection's
+/// draft tests the smaller one, and only `term.write` (keystrokes) is left out.
+#[test]
+fn every_procedure_that_carries_a_secret_has_a_budget() {
+    use mightyconsole_server::authz::limits::{Budget, UNCOUNTED};
+    let procedures = codegen_router().procedures();
+    let mut tests: Vec<&str> = procedures
+        .iter()
+        .filter(|m| Budget::of(m) == Some(Budget::Test))
+        .map(|m| m.name.as_str())
+        .collect();
+    tests.sort_unstable();
+    assert_eq!(
+        tests,
+        [
+            "docker.test",
+            "echo.test",
+            "langgraph.test",
+            "messaging.registry.test",
+            "nats.test",
+            "temporal.test",
+            "temporal.testCodec",
+        ]
+    );
+    for meta in &procedures {
+        if !meta.redact.is_empty() {
+            assert!(
+                Budget::of(meta).is_some() || UNCOUNTED.contains(&meta.name.as_str()),
+                "{} carries a secret and has no budget",
+                meta.name
+            );
+        }
+    }
+    assert_eq!(UNCOUNTED, ["term.write"]);
+}
+
 /// The top-level input fields of a procedure in the manifest.
 fn input_fields_of(manifest: &Value, procedure: &Value) -> Vec<String> {
     let input = &procedure["input"];
