@@ -105,7 +105,14 @@ BACKUP AND RESTORE
   and the audit chain; --check-secrets also decrypts every stored secret with the configured
   keys and names the ones that fail. Then provide the keys and start the server on DIR.
 
-The server keeps no connection settings: profiles live in the browser.
+OUTBOUND
+  What a connection profile may make the server reach ([outbound] in the configuration file):
+  allow = [...] (when set, only these) and deny = [...] (never these; wins), each an address,
+  a network (10.0.0.0/8), a host name or *.domain. Link-local and cloud metadata addresses
+  (169.254.169.254, ...) are never reached unless an allow network names them; private and
+  loopback addresses are reached unless the rules say otherwise.
+
+Connection profiles and their secrets (write-only, encrypted) live in the store.
 ";
 
 /// What the command line asked for.

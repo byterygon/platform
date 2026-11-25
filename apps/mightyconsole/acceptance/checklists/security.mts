@@ -3,9 +3,9 @@
 // sessions" (TSK-136), "Audit" (TSK-137: the log, its events, the sensitive reads, verify and
 // rotation, and the checkpoint with the key of TSK-139), the built-in accounts and the default
 // administrator (TSK-142), Authorization and Destroy (TSK-138), and from TSK-139 the keys of the
-// secret store (the Start item about them, rotation). The parts other tasks own are
-// `manual` checks naming them; the rest of the Start section (TSK-141) and the Secrets section come
-// with their tasks. Until TSK-139 moves profiles to the server, every connection is the caller's
+// secret store (the Start item about them, rotation), and TSK-141's: the rest of Start, redaction,
+// the abuse limits, the outbound policy, the browser rules, every destroy per role and the codec
+// endpoint. The parts other tasks own are `manual` checks naming them. Until TSK-139 moves profiles to the server, every connection is the caller's
 // own (DOC-25 Open question 22): what roles do on shared profiles is proved by the server's tests,
 // and on the lab once shared profiles exist.
 import { cargo, command, manual, vitest } from "../checklist.mts";
@@ -25,7 +25,7 @@ export default {
   task: "TSK-141",
   title: "Security (DOC-25 section 6)",
   builtWhen: "apps/mightyconsole/server/src/config.rs",
-  lab: ["idp"],
+  lab: ["idp", "temporal"],
   items: [
     {
       id: "login",
@@ -254,6 +254,88 @@ export default {
         cargo("a_destroy_needs_a_confirmed_challenge_even_on_ones_own_connection", { label: "the Authorizer: no destroy without a confirmed challenge, used once" }),
         cargo("containers_are_listed_acted_on_and_their_logs_split_by_stream", { label: "over the wire: a Docker remove answered and sent again" }),
         vitest("test/confirmations.test.tsx"),
+      ],
+    },
+    {
+      id: "start-refused",
+      text: "(TSK-141, Start) With auth.accounts = false and no OIDC, or auth.default_admin = false and no pinned admin mapping, the start is refused with its message; a non-loopback listener with the generated certificate starts with the warning. Every failed condition is named at once, before anything is created.",
+      checks: [
+        cargo("accounts_off_without_oidc_refuses_the_start", { label: "auth.accounts = false without [auth.oidc]" }),
+        cargo("default_admin_off_without_a_pinned_admin_refuses_the_start", { label: "auth.default_admin = false without a pinned admin" }),
+        cargo("a_pinned_admin_with_a_scope_is_not_an_administrator_everywhere", { label: "a scoped admin mapping is not enough; an unscoped one is" }),
+        cargo("every_failed_condition_is_reported_at_once_before_anything_is_created", { label: "four failed conditions, four messages, nothing created; config check says the same" }),
+        cargo("a_data_directory_or_keys_directory_others_can_write_to_refuses_the_start"),
+        cargo("a_configuration_file_others_can_write_to_refuses_the_start"),
+        cargo("an_oidc_configuration_that_does_not_load_refuses_the_start_and_says_which_part"),
+        cargo("a_server_already_running_on_the_data_directory_refuses_the_start"),
+        cargo("a_non_loopback_start_with_the_generated_certificate_starts_with_the_warning"),
+        cargo("a_non_loopback_start_with_an_operator_certificate_has_no_warning"),
+        cargo("a_loopback_start_with_the_generated_certificate_has_no_warning", { label: "and the data directory made 0700" }),
+      ],
+    },
+    {
+      id: "start-audit",
+      text: "(TSK-141, Start) A tampered audit log refuses the start; --audit-new-chain starts a new chain that names the old one.",
+      checks: [
+        cargo("a_tampered_log_refuses_the_start_and_names_the_file"),
+        cargo("the_server_rotates_its_log_and_a_new_chain_follows_a_broken_one"),
+      ],
+    },
+    {
+      id: "secrets-redaction",
+      text: "(TSK-141) No response, error, log line or audit entry contains a seeded secret, through every tool's connect, test and form; nor the store's plaintext, a panic message or a Debug format.",
+      checks: [
+        cargo("no_seeded_secret_leaves_the_server_anywhere", { label: "passwords, cookies, CSRF tokens and every tool's secrets through every path, malformed and at a closed port" }),
+        cargo("debug_formats_hold_no_secret"),
+        vitest("test/diagnostics.test.ts"),
+      ],
+    },
+    {
+      id: "secrets-import",
+      text: "(TSK-139) The browser import moves every profile and its secrets, removes them from IndexedDB, and resumes after a failure half way.",
+      checks: [vitest("test/profiles-move.test.ts")],
+    },
+    {
+      id: "secrets-backup",
+      text: "(TSK-139) A backup restored into a new directory with the keys connects; without the keys it refuses to start.",
+      checks: [cargo("a_backup_restores_with_its_keys_and_refuses_to_start_without_them")],
+    },
+    {
+      id: "limits",
+      text: "(TSK-141) Test connection with typed credentials has a budget per person, shared by their tabs; a call without a secret is not counted; personal profiles have a quota in number and in bytes; every procedure that carries a secret has a budget.",
+      checks: [
+        cargo("test_connection_with_typed_credentials_has_a_budget_per_person"),
+        cargo("personal_profiles_have_a_quota_in_number"),
+        cargo("personal_profiles_have_a_quota_in_bytes"),
+        cargo("every_procedure_that_carries_a_secret_has_a_budget"),
+      ],
+    },
+    {
+      id: "outbound",
+      text: "(TSK-141) Every tool's connection goes through the outbound policy: the cloud metadata address is refused by default, an address outside [outbound] allow and a host in [outbound] deny are refused, and no server code connects around the policy.",
+      checks: [
+        cargo("every_tool_connects_through_the_outbound_policy", { label: "NATS, its registry, Temporal (frontend and codec), Docker over SSH, LangGraph" }),
+        cargo("every_outbound_connection_goes_through_here", { label: "the source check" }),
+        cargo("deny_wins_allow_narrows_and_only_a_network_lifts_a_built_in_refusal"),
+      ],
+    },
+    {
+      id: "browser",
+      text: "(TSK-141) Every answer carries nosniff, no-referrer and frame-ancestors 'none' (the page its full CSP); the session cookie is __Host-, Secure, HttpOnly, SameSite=Strict and has no Max-Age; the upgrade is refused for another Host, another or no Origin and no session.",
+      checks: [cargo("every_answer_carries_the_browser_rules")],
+    },
+    {
+      id: "destroy-every-procedure",
+      text: "(TSK-141) Every Destructive procedure of every tool refuses a viewer and an operator, asks an administrator to confirm, and lets the confirmed call through once for that person and input.",
+      checks: [cargo("every_destructive_procedure_is_guarded_for_every_role")],
+    },
+    {
+      id: "codec",
+      text: "(TSK-141, DOC-25 Open question 9) The codec endpoint refuses a caller without a token unless the profile allows it, and audits every request as codec.decode or codec.encode with the token as a hash prefix.",
+      checks: [
+        cargo("a_caller_without_a_token_is_served_only_when_the_profile_allows_it", { features: ["lab-tests"], label: "against the lab's Temporal" }),
+        cargo("a_codec_request_is_by_system_codec_with_the_documented_detail"),
+        cargo("the_audit_names_a_token_by_its_hash_prefix_only"),
       ],
     },
   ],

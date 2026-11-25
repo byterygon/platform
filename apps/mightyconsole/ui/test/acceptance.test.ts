@@ -48,8 +48,10 @@ describe("acceptance checklists", () => {
       // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items,
       // TSK-142 the built-in accounts and the default administrator.
       // TSK-138 added the seven Authorization and Destroy items; TSK-139 start-keys,
-      // secrets-rotation, secrets-shared and secrets-target.
-      ["security", "TSK-141", 23],
+      // secrets-rotation, secrets-shared and secrets-target. TSK-141 the rest of Start, redaction,
+      // TSK-139's import and backup, the limits, outbound, the browser rules, every destroy and the
+      // codec endpoint.
+      ["security", "TSK-141", 33],
     ]);
   });
 

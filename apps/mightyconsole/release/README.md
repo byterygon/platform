@@ -113,11 +113,13 @@ accept or trust the certificate. To avoid the warning, give your own certificate
 
 ## Where things live
 
-- **Connection profiles, including their passwords and keys, live in your browser** (IndexedDB of
-  `https://localhost:7443`), not on the server. Each browser, browser profile and origin has its
-  own: another port or host name starts empty, and clearing the site's data deletes them. Back
-  them up with **Settings > Export all profiles** and restore them with **Import profiles**
-  (secrets are left out of an export unless you tick the box).
+- **Connection profiles and their secrets live on the server**, in `store.redb` in its data
+  directory, the secrets encrypted with the server's key (below). A secret is write-only: once
+  saved, no page, answer or log shows it again; the server uses it to connect on your behalf.
+  Profiles an earlier version kept in the browser move once, with **Move my profiles to the
+  server**, which the page offers while the browser still holds some (it saves a backup first and
+  resumes if it stops half way). **Settings > Export all profiles** saves their settings, never
+  their secrets.
 - **The server keeps its certificate, the accounts (`store.redb`) and the audit log** in its data
   directory: `$MIGHTYCONSOLE_DATA` if set, else `~/.local/share/mightyconsole` (Linux),
   `~/Library/Application Support/mightyconsole` (macOS), `%APPDATA%\mightyconsole` (Windows), or
@@ -151,6 +153,48 @@ accept or trust the certificate. To avoid the warning, give your own certificate
   the keys and start the server on `NEW_DIR`. Without the keys the restored server does not start.
 - Live connections are held in the server's memory for the browser tab that opened them and are
   released when the tab closes, on Disconnect, or after 10 minutes without use.
+
+## Run it securely
+
+The server refuses to start in an unsafe configuration and says, all at once, every condition that
+failed (`mightyconsole-server config check` makes the same checks without starting, and
+`--online` also asks the identity provider): someone must be able to sign in (built-in accounts or
+`[auth.oidc]`, and an administrator: the default one or a pinned `[[auth.group_roles]]` mapping
+of `admin` without a scope); the OIDC configuration must load; the data directory, `keys/` and
+`config.toml` must not be writable by others (it makes the data directory with mode 0700); every
+key must load; the audit log must verify (`--audit-new-chain` moves a broken one aside and starts a
+new chain that names it). Beyond that:
+
+- **Certificate.** On another machine's network, give a real certificate (`--tls-cert`,
+  `--tls-key`). With the generated one the server starts but warns: a first visitor cannot tell
+  this server from someone in between.
+- **Sign-up.** Anyone who reaches the server can create an account (`[auth] signup = "open"`),
+  which starts as a `member` with personal profiles only. On a wide network set `signup = "off"`
+  and make the accounts yourself, or sign in through your identity provider.
+- **What a profile may reach.** The server never connects to link-local or cloud metadata
+  addresses (169.254.169.254 and the like). Everything else, your private networks and the
+  server's own machine included, is reachable by default; narrow it in `DATA/config.toml`:
+
+  ```toml
+  [outbound]
+  allow = ["10.20.0.0/16", "*.corp.example"]   # when set, only these
+  deny  = ["127.0.0.0/8", "::1"]               # never these; wins over allow
+  ```
+
+  A refused connection says which rule refused it.
+- **Limits.** Sign-in is limited per account (5 wrong passwords lock it for 15 minutes) and per
+  client address; Test connection with typed credentials is limited to 20 a minute per person;
+  a person keeps at most 200 personal profiles (64 MiB). Behind a reverse proxy every request
+  comes from the proxy's address, so the per-address limits are shared by everyone: keep the
+  per-account ones, or put the server on its own address.
+- **The codec endpoint** (Temporal, "Serve as a codec endpoint") asks Temporal whether the
+  caller's token may read the namespace, and refuses a caller without a token unless the
+  profile's **Allow callers without a token** is on (only for a Temporal without authentication).
+- **Audit.** Every sign-in, write, destroy, sensitive read, refused call and codec request is in
+  the hash-chained log in `audit/`; `mightyconsole-server audit verify` checks it. A copy to a
+  syslog collector (`[audit.syslog]`) survives someone who can write the data directory.
+- **The data directory is the keys to the server**: whoever can write it can run `reset-admin`.
+  Keep it, and the secret key's file, readable by the server's user only.
 
 ## Stop it
 
