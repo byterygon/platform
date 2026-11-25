@@ -163,7 +163,8 @@ export function ConnectionList(props: ConnectionListProps) {
           label: p.name,
           icon: <ProfileIcon tool={tool} status={conn.status} color={p.color} />,
           meta: (
-            <span className="flex items-center gap-inline-sm">
+            // The stored profile's id (the Temporal codec endpoint's path names it).
+            <span className="flex items-center gap-inline-sm" data-profile-id={p.id}>
               <span className="sr-only">{conn.status}</span>
               {conn.status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
               {state?.kind === "newer" ? (
