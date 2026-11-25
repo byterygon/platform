@@ -415,6 +415,33 @@
       ],
       "type": "string"
     },
+    "AdminRevokeInput": {
+      "description": "One of: a session, every session of a user, or every session but the caller's.",
+      "properties": {
+        "all": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "AppEvent": {
       "description": "Pushed on `app.events` (spec §2.7). One subscription per page.",
       "oneOf": [
@@ -619,6 +646,28 @@
       "required": [
         "enabled",
         "uri"
+      ],
+      "type": "object"
+    },
+    "AssignmentInput": {
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "scope": {
+          "default": null,
+          "description": "`null` or left out: everywhere.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "role"
       ],
       "type": "object"
     },
@@ -920,6 +969,22 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "CataloguePermission": {
+      "properties": {
+        "perm": {
+          "type": "string"
+        },
+        "targetKind": {
+          "description": "`any`, `tenant` or `profile`: what a role's scope must cover for it to count.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "perm",
+        "targetKind"
+      ],
       "type": "object"
     },
     "ChangePasswordInput": {
@@ -2517,6 +2582,44 @@
       ],
       "type": "object"
     },
+    "CreateUserInput": {
+      "properties": {
+        "displayName": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "groups": {
+          "default": null,
+          "description": "Local groups to add the account to (without `local:`).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/$defs/AssignmentInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "username"
+      ],
+      "type": "object"
+    },
     "DecodeInput": {
       "properties": {
         "bytes": {
@@ -2621,6 +2724,22 @@
       },
       "required": [
         "codec"
+      ],
+      "type": "object"
+    },
+    "DeleteUserInput": {
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "username": {
+          "description": "The account's user name: what the person types to confirm; must match the account.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId",
+        "username"
       ],
       "type": "object"
     },
@@ -3952,6 +4071,116 @@
       ],
       "type": "string"
     },
+    "GroupCreateInput": {
+      "properties": {
+        "members": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Without `local:`; 1 to 256 characters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "GroupMembersInput": {
+      "properties": {
+        "members": {
+          "description": "Principal ids.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "members"
+      ],
+      "type": "object"
+    },
+    "GroupNameInput": {
+      "properties": {
+        "name": {
+          "description": "The local group's name; what the person types to confirm a delete.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "GroupsListOutput": {
+      "properties": {
+        "etag": {
+          "description": "Send it back with `admin.groups.set`; a stale one is a conflict.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "localGroups": {
+          "items": {
+            "$ref": "#/$defs/LocalGroup"
+          },
+          "type": "array"
+        },
+        "mappings": {
+          "items": {
+            "$ref": "#/$defs/MappingRow.Output"
+          },
+          "type": "array"
+        },
+        "pinned": {
+          "description": "`[[auth.group_roles]]` of the configuration: read-only.",
+          "items": {
+            "$ref": "#/$defs/MappingRow.Output"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "etag",
+        "mappings",
+        "pinned",
+        "localGroups"
+      ],
+      "type": "object"
+    },
+    "GroupsSetInput": {
+      "properties": {
+        "etag": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mappings": {
+          "description": "Replaces every editable mapping.",
+          "items": {
+            "$ref": "#/$defs/MappingRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "etag",
+        "mappings"
+      ],
+      "type": "object"
+    },
     "HeaderEncoding": {
       "enum": [
         "text",
@@ -4778,6 +5007,24 @@
       ],
       "type": "string"
     },
+    "LocalGroup": {
+      "properties": {
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "members"
+      ],
+      "type": "object"
+    },
     "LocalSchema": {
       "description": "A schema the user added to a profile (spec §4.2, `extras.schemas`).",
       "properties": {
@@ -4852,6 +5099,61 @@
       "required": [
         "decoded",
         "failed"
+      ],
+      "type": "object"
+    },
+    "MappingRow": {
+      "description": "A group mapping on the wire.",
+      "properties": {
+        "group": {
+          "description": "`idp:<name>` or `local:<name>`.",
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "scope": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "group",
+        "role"
+      ],
+      "type": "object"
+    },
+    "MappingRow.Output": {
+      "description": "A group mapping on the wire.",
+      "properties": {
+        "group": {
+          "description": "`idp:<name>` or `local:<name>`.",
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "scope": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "group",
+        "role",
+        "scope"
       ],
       "type": "object"
     },
@@ -5093,6 +5395,13 @@
             "null"
           ]
         },
+        "email": {
+          "description": "An OIDC user's e-mail; shown only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "idleExpiresMs": {
           "description": "When the session ends without activity, and at the latest (Unix ms).",
           "format": "uint64",
@@ -5111,8 +5420,26 @@
           "description": "Only the TOTP enrolment and `app.me` work until it is done (`auth.require_totp`).",
           "type": "boolean"
         },
+        "permissions": {
+          "description": "What those roles grant, and where, for the UI to adapt. `app.self` is implied and not\nlisted. On their own personal profiles a person holds every permission of the tool.",
+          "items": {
+            "$ref": "#/$defs/PermissionGrant"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "description": "The roles in force on this session, and how each reached the person (DOC-25 §3.3.7).",
+          "items": {
+            "$ref": "#/$defs/RoleGrant"
+          },
+          "type": "array"
+        },
         "session": {
           "description": "The login session (`ls_…`), as the session lists show it.",
+          "type": "string"
+        },
+        "tenant": {
+          "description": "The server's tenant (`auth.tenant`).",
           "type": "string"
         },
         "totp": {
@@ -5142,7 +5469,11 @@
         "mustChangePassword",
         "mustEnrolTotp",
         "idleExpiresMs",
-        "absoluteExpiresMs"
+        "absoluteExpiresMs",
+        "email",
+        "tenant",
+        "roles",
+        "permissions"
       ],
       "type": "object"
     },
@@ -9083,6 +9414,31 @@
       ],
       "type": "object"
     },
+    "PermissionGrant": {
+      "description": "A permission a user holds, and where.",
+      "properties": {
+        "everywhere": {
+          "description": "Held everywhere (an unscoped assignment grants it).",
+          "type": "boolean"
+        },
+        "perm": {
+          "type": "string"
+        },
+        "scope": {
+          "description": "Otherwise, the scope entries it is held in.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "perm",
+        "everywhere",
+        "scope"
+      ],
+      "type": "object"
+    },
     "Poller": {
       "properties": {
         "identity": {
@@ -9902,6 +10258,25 @@
       ],
       "type": "object"
     },
+    "ResetPasswordInput": {
+      "properties": {
+        "removeTotp": {
+          "default": null,
+          "description": "Also remove the account's TOTP and recovery codes.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId"
+      ],
+      "type": "object"
+    },
     "ResetReapply": {
       "description": "Which signals a reset re-applies to the new run.",
       "oneOf": [
@@ -9959,6 +10334,142 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "RevokedOutput": {
+      "properties": {
+        "revoked": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revoked"
+      ],
+      "type": "object"
+    },
+    "RoleGrant": {
+      "description": "A role in force for a user, and how it reached them.",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "scope": {
+          "description": "`null`: everywhere.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "`default`, `direct`, `group:<idp:…|local:…>` or `pinned`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "scope",
+        "via"
+      ],
+      "type": "object"
+    },
+    "RoleIdInput": {
+      "properties": {
+        "roleId": {
+          "description": "The role id; what the person types to confirm a delete.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "roleId"
+      ],
+      "type": "object"
+    },
+    "RoleInfo": {
+      "properties": {
+        "builtIn": {
+          "description": "`member`, `viewer`, `operator`, `admin`: not editable.",
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "builtIn",
+        "permissions"
+      ],
+      "type": "object"
+    },
+    "RoleInput": {
+      "properties": {
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`[a-z][a-z0-9-]{1,31}`, not a built-in one.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "permissions": {
+          "description": "From the catalogue; a role with `docker.exec` or `k8s.exec` also gets `term.write`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "permissions"
+      ],
+      "type": "object"
+    },
+    "RolesListOutput": {
+      "properties": {
+        "catalogue": {
+          "items": {
+            "$ref": "#/$defs/CataloguePermission"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/$defs/RoleInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "roles",
+        "catalogue"
+      ],
       "type": "object"
     },
     "Run": {
@@ -11423,6 +11934,131 @@
       ],
       "type": "object"
     },
+    "SessionIdInput": {
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionRow": {
+      "description": "A live login session.",
+      "properties": {
+        "absoluteExpiresMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "client": {
+          "description": "The client address it signed in from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "current": {
+          "description": "The caller's own session.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "`ls_…`.",
+          "type": "string"
+        },
+        "idleExpiresMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastActivityMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "method": {
+          "description": "`password`, `totp` or `oidc`.",
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "user",
+        "method",
+        "createdMs",
+        "lastActivityMs",
+        "idleExpiresMs",
+        "absoluteExpiresMs",
+        "client",
+        "current"
+      ],
+      "type": "object"
+    },
+    "SessionsOutput": {
+      "properties": {
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/SessionRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "type": "object"
+    },
+    "SetRolesInput": {
+      "properties": {
+        "assignments": {
+          "description": "Replaces the user's direct assignments.",
+          "items": {
+            "$ref": "#/$defs/AssignmentInput"
+          },
+          "type": "array"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId",
+        "assignments"
+      ],
+      "type": "object"
+    },
+    "SetupLinkOutput": {
+      "description": "A one-time setup link to hand to the person (DOC-25 §3.2.6): it sets the account's password.",
+      "properties": {
+        "expiresMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId",
+        "url",
+        "expiresMs"
+      ],
+      "type": "object"
+    },
     "SignalDirection": {
       "enum": [
         "received",
@@ -12760,6 +13396,188 @@
       ],
       "type": "object"
     },
+    "UserIdInput": {
+      "properties": {
+        "userId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId"
+      ],
+      "type": "object"
+    },
+    "UserSummary": {
+      "description": "A user as the administrator sees them.",
+      "properties": {
+        "createdMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "defaultAdmin": {
+          "description": "The default administrator (cannot be deleted; its `admin` is pinned).",
+          "type": "boolean"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "groups": {
+          "description": "The IdP's groups at the last sign-in (OIDC users).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "`human:account:<id>` or `human:oidc:<sub>`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`account` or `oidc`.",
+          "type": "string"
+        },
+        "lastSeenMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "localGroups": {
+          "description": "The local groups they are a member of.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "locked": {
+          "description": "A built-in account locked after wrong passwords.",
+          "type": "boolean"
+        },
+        "roles": {
+          "description": "Their roles in force (IdP groups as of the last sign-in).",
+          "items": {
+            "$ref": "#/$defs/RoleGrant"
+          },
+          "type": "array"
+        },
+        "sessions": {
+          "description": "Live sessions.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "totp": {
+          "type": "boolean"
+        },
+        "username": {
+          "description": "A built-in account's user name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "username",
+        "displayName",
+        "email",
+        "groups",
+        "localGroups",
+        "roles",
+        "disabled",
+        "locked",
+        "totp",
+        "defaultAdmin",
+        "createdMs",
+        "lastSeenMs",
+        "sessions"
+      ],
+      "type": "object"
+    },
+    "UsersListInput": {
+      "properties": {
+        "disabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "group": {
+          "default": null,
+          "description": "In this group (`idp:<name>` or `local:<name>`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offset": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "role": {
+          "default": null,
+          "description": "Holds this role (any way).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "default": null,
+          "description": "Matches the id, user name, name or e-mail (case-insensitive).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UsersListOutput": {
+      "properties": {
+        "total": {
+          "description": "Users matching the filter.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "users": {
+          "description": "At most 500, in id order, from `offset`.",
+          "items": {
+            "$ref": "#/$defs/UserSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "users",
+        "total"
+      ],
+      "type": "object"
+    },
     "ValueCut": {
       "description": "A value that was left out of a reply because it was over its share.",
       "properties": {
@@ -13921,6 +14739,468 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/GroupMembersInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.groups.addMembers",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/GroupCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.groups.create",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/GroupNameInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.groups.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.groups.list",
+      "output": {
+        "$ref": "#/$defs/GroupsListOutput"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/GroupMembersInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.groups.removeMembers",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/GroupsSetInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.groups.set",
+      "output": {
+        "$ref": "#/$defs/GroupsListOutput"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RoleInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.roles.create",
+      "output": {
+        "$ref": "#/$defs/RoleInfo"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RoleIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.roles.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RoleIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.roles.get",
+      "output": {
+        "$ref": "#/$defs/RoleInfo"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.roles.list",
+      "output": {
+        "$ref": "#/$defs/RolesListOutput"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RoleInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.roles.update",
+      "output": {
+        "$ref": "#/$defs/RoleInfo"
+      },
+      "perm": "admin.roles.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.sessions.list",
+      "output": {
+        "$ref": "#/$defs/SessionsOutput"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AdminRevokeInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.sessions.revoke",
+      "output": {
+        "$ref": "#/$defs/RevokedOutput"
+      },
+      "perm": "admin.sessions.revoke",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/CreateUserInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.create",
+      "output": {
+        "$ref": "#/$defs/SetupLinkOutput"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DeleteUserInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UserIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.disable",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UserIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.enable",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UserIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.users.get",
+      "output": {
+        "$ref": "#/$defs/UserSummary"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UsersListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "admin.users.list",
+      "output": {
+        "$ref": "#/$defs/UsersListOutput"
+      },
+      "perm": "admin.users.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ResetPasswordInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.resetPassword",
+      "output": {
+        "$ref": "#/$defs/SetupLinkOutput"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SetRolesInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.setRoles",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UserIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "admin.users.unlock",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "admin.users.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ChangePasswordInput"
       },
       "kind": "mutation",
@@ -14103,6 +15383,48 @@
       "perm": "app.self",
       "redact": [],
       "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "app.sessions.list",
+      "output": {
+        "$ref": "#/$defs/SessionsOutput"
+      },
+      "perm": "app.self",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SessionIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.sessions.revoke",
+      "output": {
+        "$ref": "#/$defs/RevokedOutput"
+      },
+      "perm": "app.self",
+      "redact": [],
+      "risk": "Write",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -17839,5 +19161,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:96ae02d6a30ac3501b4a250ac36d250ca25a51f43d4ada8389e8b75545e90291"
+  "schema_hash": "sha256:6de6f524980becf48145685994aeb64b65c4047c0007b52b85af9f8980d0baa7"
 }

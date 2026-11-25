@@ -80,7 +80,7 @@ export default {
       text: "(TSK-136) Revoking a session (own and by an administrator) ends its streams at once.",
       checks: [
         conformance("by session and by user", "a_revoked_session_ends_its_connections"),
-        manual("app.sessions.revoke and admin.sessions.revoke: TSK-138 (they call the store's revocation, tested here)"),
+        cargo("sessions_are_listed_and_revoked_own_and_by_an_administrator", { label: "app.sessions.revoke and admin.sessions.revoke (TSK-138)" }),
       ],
     },
     {
@@ -125,7 +125,8 @@ export default {
         cargo("the_digest_does_not_depend_on_the_secret", { label: "the digest covers the redacted input" }),
         cargo("sign_in_a_refused_sign_in_and_sign_out_are_in_the_audit_log", { label: "sign-in, refused sign-in, sign-out" }),
         cargo("the_sensitive_reads_are_the_ones_the_spec_names", { label: "the sensitive reads are marked on the procedures, and are the spec's list" }),
-        manual("a refused call by role, the destroy confirmation and a role change leave their entries: TSK-138 (the entries are written by the router and the management procedures; the sink keeps every refusal, tested in the unit tests of audit.rs)"),
+        cargo("a_refusal_by_role_and_a_role_change_are_in_the_audit_log", { label: "a refusal by role and a role change (TSK-138)" }),
+        manual("the destroy confirmation: the nats checklist's `audit` item (TSK-138 checks there the refusal with its approval id and the confirmation)"),
         manual("a Kubernetes Secret reveal: with the Kubernetes tool (TSK-82), its procedure carries audit = \"always\""),
       ],
     },
@@ -155,6 +156,7 @@ export default {
         cargo("every_built_in_role_on_every_tool", { label: "every built-in role against procedures of every tool" }),
         cargo("without_profiles_personal_the_roles_bind_on_browser_profiles", { label: "over the wire: PermissionDenied names the permission, the target and the reason" }),
         cargo("the_right_phrase_allows_the_same_call_once", { label: "the destroy confirmation" }),
+        cargo("the_idp_groups_decide_what_each_lab_user_may_do", { features: ["lab-tests"], label: "lab users through Dex: an administrator, a viewer and a user with no role, by their groups" }),
         manual("viewer, operator and administrator signed in through the lab's IdP on a shared profile: TSK-139 (shared profiles on the server; until then every connection is the caller's own)"),
       ],
     },
@@ -182,6 +184,16 @@ export default {
         cargo("a_stored_personal_profile_is_its_owners_alone"),
         cargo("a_member_has_every_right_on_their_own_connection"),
         manual("host-access fields need profiles.hostAccess when a profile is saved: TSK-139 (profiles.create and update)"),
+      ],
+    },
+    {
+      id: "authz-role-change",
+      text: "(TSK-138) Removing a user's role revokes their sessions; the last administrator cannot be removed.",
+      checks: [
+        cargo("an_administrator_assigns_roles_and_a_lost_permission_ends_the_session"),
+        cargo("the_last_administrator_cannot_be_removed"),
+        cargo("custom_roles_and_group_mappings", { label: "custom roles, group mappings with an etag, local groups" }),
+        cargo("accounts_are_made_reset_and_deleted_by_an_administrator", { label: "accounts made with a setup link, reset, unlocked, deleted after the confirmation" }),
       ],
     },
     {

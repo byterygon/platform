@@ -34,6 +34,8 @@ pub struct AppState {
     pub accounts: Option<crate::sessions::McAccounts>,
     /// The destroy confirmations, for `app.confirmations.*`.
     pub confirmations: Arc<crate::authz::confirm::Confirmations>,
+    /// Roles and users, for `app.me` (`None` only in the codegen router).
+    pub management: Option<Arc<crate::management::Management>>,
 }
 
 /// A tool built into the server.
@@ -230,6 +232,15 @@ pub struct Me {
     /// When the session ends without activity, and at the latest (Unix ms).
     pub idle_expires_ms: u64,
     pub absolute_expires_ms: u64,
+    /// An OIDC user's e-mail; shown only.
+    pub email: Option<String>,
+    /// The server's tenant (`auth.tenant`).
+    pub tenant: String,
+    /// The roles in force on this session, and how each reached the person (DOC-25 §3.3.7).
+    pub roles: Vec<crate::admin_api::RoleGrant>,
+    /// What those roles grant, and where, for the UI to adapt. `app.self` is implied and not
+    /// listed. On their own personal profiles a person holds every permission of the tool.
+    pub permissions: Vec<crate::admin_api::PermissionGrant>,
 }
 
 /// Input of `app.account.changePassword`.
@@ -322,7 +333,35 @@ impl MeApi {
             }
             _ => None,
         };
+        let (roles, permissions, email) = match &self.0.management {
+            Some(m) => {
+                let policy = m.policy.current();
+                let in_force = policy.in_force(&user, &session.groups);
+                let email = if account.is_none() {
+                    let store = Arc::clone(&m.store);
+                    let id = user.clone();
+                    tokio::task::spawn_blocking(move || store.oidc_user(&id))
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .flatten()
+                        .and_then(|u| u.email)
+                } else {
+                    None
+                };
+                (
+                    crate::admin_api::role_grants(&in_force),
+                    crate::admin_api::permission_grants(&policy, &in_force),
+                    email,
+                )
+            }
+            None => (Vec::new(), Vec::new(), None),
+        };
         Ok(Me {
+            tenant: ctx.principal().tenant.to_string(),
+            roles,
+            permissions,
+            email,
             user,
             session: session.id,
             method: session.method.as_str().to_owned(),

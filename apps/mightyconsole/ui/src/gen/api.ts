@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:96ae02d6a30ac3501b4a250ac36d250ca25a51f43d4ada8389e8b75545e90291";
+export const SCHEMA_HASH = "sha256:6de6f524980becf48145685994aeb64b65c4047c0007b52b85af9f8980d0baa7";
 
 // ---- Types
 
@@ -116,6 +116,11 @@ started: boolean, };
 export type ActivityStatus = "Running" | "Completed" | "Failed" | "Canceled" | "Terminated" | "TimedOut" | "Paused" | "Unspecified";
 
 /**
+ * One of: a session, every session of a user, or every session but the caller's.
+ */
+export type AdminRevokeInput = { sessionId?: string | null, userId?: string | null, all?: boolean | null, };
+
+/**
  * Pushed on `app.events` (spec §2.7). One subscription per page.
  */
 export type AppEvent = { "kind": "ConnectionStatus", tool: string, connId: string, status: ConnectionState, message?: string, } | { "kind": "StreamProgress", streamId: string, 
@@ -175,6 +180,12 @@ export type Archival = { enabled: boolean,
  * The archive's URI when one is set.
  */
 uri: string, };
+
+export type AssignmentInput = { role: string, 
+/**
+ * `null` or left out: everywhere.
+ */
+scope?: Array<string> | null, };
 
 export type Assistant = { assistantId: string, graphId: string, name: string, description?: string, version?: number, config: JsonValue, context: JsonValue, metadata: JsonValue, createdAt: string, updatedAt: string, 
 /**
@@ -243,6 +254,12 @@ export type CalendarForm = { second?: string | null, minute?: string | null, hou
  * 0 is Sunday.
  */
 dayOfWeek?: string | null, comment?: string | null, };
+
+export type CataloguePermission = { perm: string, 
+/**
+ * `any`, `tenant` or `profile`: what a role's scope must cover for it to count.
+ */
+targetKind: string, };
 
 /**
  * Input of `app.account.changePassword`.
@@ -773,6 +790,12 @@ export type ContainersStatsSummary = { samples: number,
  */
 dropped: number, };
 
+export type CreateUserInput = { username: string, displayName?: string | null, roles?: Array<AssignmentInput> | null, 
+/**
+ * Local groups to add the account to (without `local:`).
+ */
+groups?: Array<string> | null, };
+
 export type DecodeInput = { connId?: string | null, 
 /**
  * The bytes, base64.
@@ -789,6 +812,12 @@ export type DecodeOptions = { key?: CodecChoice, value?: CodecChoice,
 maxPayloadBytes?: number | null, };
 
 export type DecodeOutput = { codec: CodecId, text?: string, json?: JsonValue, schemaRef?: string, error?: string, };
+
+export type DeleteUserInput = { userId: string, 
+/**
+ * The account's user name: what the person types to confirm; must match the account.
+ */
+username: string, };
 
 /**
  * `docker.host.df`: the host's disk usage per kind.
@@ -1165,6 +1194,40 @@ metadata?: JsonValue, };
 
 export type GraphNodeKind = "start" | "end" | "node";
 
+export type GroupCreateInput = { 
+/**
+ * Without `local:`; 1 to 256 characters.
+ */
+name: string, members?: Array<string> | null, };
+
+export type GroupMembersInput = { name: string, 
+/**
+ * Principal ids.
+ */
+members: Array<string>, };
+
+export type GroupNameInput = { 
+/**
+ * The local group's name; what the person types to confirm a delete.
+ */
+name: string, };
+
+export type GroupsListOutput = { 
+/**
+ * Send it back with `admin.groups.set`; a stale one is a conflict.
+ */
+etag: number, mappings: Array<MappingRow>, 
+/**
+ * `[[auth.group_roles]]` of the configuration: read-only.
+ */
+pinned: Array<MappingRow>, localGroups: Array<LocalGroup>, };
+
+export type GroupsSetInput = { etag: number, 
+/**
+ * Replaces every editable mapping.
+ */
+mappings: Array<MappingRow>, };
+
 export type HeaderEncoding = "text" | "base64";
 
 /**
@@ -1444,6 +1507,8 @@ timestampUs: number, };
  */
 export type Latest = "latest";
 
+export type LocalGroup = { name: string, members: Array<string>, };
+
 /**
  * A schema the user added to a profile (spec §4.2, `extras.schemas`).
  */
@@ -1462,6 +1527,15 @@ export type LocalSchemaFiles = Array<SchemaFile> | { descriptorSetBase64: string
  * How many messages a mapping decoded, and how many of them failed (this session).
  */
 export type MappingCount = { decoded: number, failed: number, };
+
+/**
+ * A group mapping on the wire.
+ */
+export type MappingRow = { 
+/**
+ * `idp:<name>` or `local:<name>`.
+ */
+group: string, role: string, scope?: Array<string> | null, };
 
 /**
  * A mapping's counts this session.
@@ -1565,7 +1639,24 @@ mustEnrolTotp: boolean,
 /**
  * When the session ends without activity, and at the latest (Unix ms).
  */
-idleExpiresMs: number, absoluteExpiresMs: number, };
+idleExpiresMs: number, absoluteExpiresMs: number, 
+/**
+ * An OIDC user's e-mail; shown only.
+ */
+email: string | null, 
+/**
+ * The server's tenant (`auth.tenant`).
+ */
+tenant: string, 
+/**
+ * The roles in force on this session, and how each reached the person (DOC-25 §3.3.7).
+ */
+roles: Array<RoleGrant>, 
+/**
+ * What those roles grant, and where, for the UI to adapt. `app.self` is implied and not
+ * listed. On their own personal profiles a person holds every permission of the tool.
+ */
+permissions: Array<PermissionGrant>, };
 
 /**
  * One §5.1 row as JSON.
@@ -2539,6 +2630,19 @@ bytes: number,
  */
 truncated: boolean, stopped?: Stopped, ms: number, };
 
+/**
+ * A permission a user holds, and where.
+ */
+export type PermissionGrant = { perm: string, 
+/**
+ * Held everywhere (an unscoped assignment grants it).
+ */
+everywhere: boolean, 
+/**
+ * Otherwise, the scope entries it is held in.
+ */
+scope: Array<string>, };
+
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
 
 /**
@@ -2853,6 +2957,12 @@ export type RemoteError = {
  */
 code: string, name?: string, detail?: string, };
 
+export type ResetPasswordInput = { userId: string, 
+/**
+ * Also remove the account's TOTP and recovery codes.
+ */
+removeTotp?: boolean | null, };
+
 /**
  * Which signals a reset re-applies to the new run.
  */
@@ -2866,6 +2976,45 @@ export type RetryPolicyForm = { initialInterval?: string | null, backoffCoeffici
  * 0 or absent: unlimited.
  */
 maximumAttempts?: number | null, nonRetryableErrorTypes?: Array<string> | null, };
+
+export type RevokedOutput = { revoked: number, };
+
+/**
+ * A role in force for a user, and how it reached them.
+ */
+export type RoleGrant = { role: string, 
+/**
+ * `null`: everywhere.
+ */
+scope: Array<string> | null, 
+/**
+ * `default`, `direct`, `group:<idp:…|local:…>` or `pinned`.
+ */
+via: string, };
+
+export type RoleIdInput = { 
+/**
+ * The role id; what the person types to confirm a delete.
+ */
+roleId: string, };
+
+export type RoleInfo = { id: string, name: string, description: string, 
+/**
+ * `member`, `viewer`, `operator`, `admin`: not editable.
+ */
+builtIn: boolean, permissions: Array<string>, };
+
+export type RoleInput = { 
+/**
+ * `[a-z][a-z0-9-]{1,31}`, not a built-in one.
+ */
+id: string, name: string, description?: string | null, 
+/**
+ * From the catalogue; a role with `docker.exec` or `k8s.exec` also gets `term.write`.
+ */
+permissions: Array<string>, };
+
+export type RolesListOutput = { roles: Array<RoleInfo>, catalogue: Array<CataloguePermission>, };
 
 export type Run = { runId: string, threadId: string, assistantId: string, 
 /**
@@ -3331,6 +3480,42 @@ export type SeenTaskQueue = { name: string, source: TaskQueueSource,
  */
 error?: string, };
 
+export type SessionIdInput = { sessionId: string, };
+
+/**
+ * A live login session.
+ */
+export type SessionRow = { 
+/**
+ * `ls_…`.
+ */
+id: string, user: string, 
+/**
+ * `password`, `totp` or `oidc`.
+ */
+method: string, createdMs: number, lastActivityMs: number, idleExpiresMs: number, absoluteExpiresMs: number, 
+/**
+ * The client address it signed in from.
+ */
+client: string | null, 
+/**
+ * The caller's own session.
+ */
+current: boolean, };
+
+export type SessionsOutput = { sessions: Array<SessionRow>, };
+
+export type SetRolesInput = { userId: string, 
+/**
+ * Replaces the user's direct assignments.
+ */
+assignments: Array<AssignmentInput>, };
+
+/**
+ * A one-time setup link to hand to the person (DOC-25 §3.2.6): it sets the account's password.
+ */
+export type SetupLinkOutput = { userId: string, url: string, expiresMs: number, };
+
 export type SignalDirection = "received" | "sent";
 
 /**
@@ -3764,6 +3949,73 @@ export type UpdateStateOutput = {
  */
 checkpointId?: string, checkpoint: JsonValue, };
 
+export type UserIdInput = { userId: string, };
+
+/**
+ * A user as the administrator sees them.
+ */
+export type UserSummary = { 
+/**
+ * `human:account:<id>` or `human:oidc:<sub>`.
+ */
+id: string, 
+/**
+ * `account` or `oidc`.
+ */
+kind: string, 
+/**
+ * A built-in account's user name.
+ */
+username: string | null, displayName: string, email: string | null, 
+/**
+ * The IdP's groups at the last sign-in (OIDC users).
+ */
+groups: Array<string>, 
+/**
+ * The local groups they are a member of.
+ */
+localGroups: Array<string>, 
+/**
+ * Their roles in force (IdP groups as of the last sign-in).
+ */
+roles: Array<RoleGrant>, disabled: boolean, 
+/**
+ * A built-in account locked after wrong passwords.
+ */
+locked: boolean, totp: boolean, 
+/**
+ * The default administrator (cannot be deleted; its `admin` is pinned).
+ */
+defaultAdmin: boolean, createdMs: number | null, lastSeenMs: number | null, 
+/**
+ * Live sessions.
+ */
+sessions: number, };
+
+export type UsersListInput = { 
+/**
+ * Matches the id, user name, name or e-mail (case-insensitive).
+ */
+text?: string | null, 
+/**
+ * Holds this role (any way).
+ */
+role?: string | null, 
+/**
+ * In this group (`idp:<name>` or `local:<name>`).
+ */
+group?: string | null, disabled?: boolean | null, offset?: number | null, };
+
+export type UsersListOutput = { 
+/**
+ * At most 500, in id order, from `offset`.
+ */
+users: Array<UserSummary>, 
+/**
+ * Users matching the filter.
+ */
+total: number, };
+
 /**
  * A value that was left out of a reply because it was over its share.
  */
@@ -4119,6 +4371,28 @@ export interface ProcedureDef<
 
 /** Every procedure by full name. */
 export interface Procedures {
+  readonly "admin.groups.addMembers": ProcedureDef<"mutation", GroupMembersInput, Empty, ToolError>;
+  readonly "admin.groups.create": ProcedureDef<"mutation", GroupCreateInput, Empty, ToolError>;
+  readonly "admin.groups.delete": ProcedureDef<"mutation", GroupNameInput, Empty, ToolError>;
+  readonly "admin.groups.list": ProcedureDef<"query", Empty, GroupsListOutput, ToolError>;
+  readonly "admin.groups.removeMembers": ProcedureDef<"mutation", GroupMembersInput, Empty, ToolError>;
+  readonly "admin.groups.set": ProcedureDef<"mutation", GroupsSetInput, GroupsListOutput, ToolError>;
+  readonly "admin.roles.create": ProcedureDef<"mutation", RoleInput, RoleInfo, ToolError>;
+  readonly "admin.roles.delete": ProcedureDef<"mutation", RoleIdInput, Empty, ToolError>;
+  readonly "admin.roles.get": ProcedureDef<"query", RoleIdInput, RoleInfo, ToolError>;
+  readonly "admin.roles.list": ProcedureDef<"query", Empty, RolesListOutput, ToolError>;
+  readonly "admin.roles.update": ProcedureDef<"mutation", RoleInput, RoleInfo, ToolError>;
+  readonly "admin.sessions.list": ProcedureDef<"query", Empty, SessionsOutput, ToolError>;
+  readonly "admin.sessions.revoke": ProcedureDef<"mutation", AdminRevokeInput, RevokedOutput, ToolError>;
+  readonly "admin.users.create": ProcedureDef<"mutation", CreateUserInput, SetupLinkOutput, ToolError>;
+  readonly "admin.users.delete": ProcedureDef<"mutation", DeleteUserInput, Empty, ToolError>;
+  readonly "admin.users.disable": ProcedureDef<"mutation", UserIdInput, Empty, ToolError>;
+  readonly "admin.users.enable": ProcedureDef<"mutation", UserIdInput, Empty, ToolError>;
+  readonly "admin.users.get": ProcedureDef<"query", UserIdInput, UserSummary, ToolError>;
+  readonly "admin.users.list": ProcedureDef<"query", UsersListInput, UsersListOutput, ToolError>;
+  readonly "admin.users.resetPassword": ProcedureDef<"mutation", ResetPasswordInput, SetupLinkOutput, ToolError>;
+  readonly "admin.users.setRoles": ProcedureDef<"mutation", SetRolesInput, Empty, ToolError>;
+  readonly "admin.users.unlock": ProcedureDef<"mutation", UserIdInput, Empty, ToolError>;
   readonly "app.account.changePassword": ProcedureDef<"mutation", ChangePasswordInput, Empty, ToolError>;
   readonly "app.account.totp.begin": ProcedureDef<"mutation", Empty, TotpEnrolmentOutput, ToolError>;
   readonly "app.account.totp.confirm": ProcedureDef<"mutation", TotpConfirmInput, RecoveryCodes, ToolError>;
@@ -4128,6 +4402,8 @@ export interface Procedures {
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
   readonly "app.me": ProcedureDef<"query", Empty, Me, ToolError>;
+  readonly "app.sessions.list": ProcedureDef<"query", Empty, SessionsOutput, ToolError>;
+  readonly "app.sessions.revoke": ProcedureDef<"mutation", SessionIdInput, RevokedOutput, ToolError>;
   readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
   readonly "docker.containers.exec": ProcedureDef<"stream", ContainersExecInput, ContainersExecSummary, ToolError>;
@@ -4303,6 +4579,38 @@ export interface Procedures {
 
 /** The procedures nested by name segment, as the client exposes them. */
 export interface Api {
+  readonly admin: {
+    readonly groups: {
+      readonly addMembers: Procedures["admin.groups.addMembers"];
+      readonly create: Procedures["admin.groups.create"];
+      readonly delete: Procedures["admin.groups.delete"];
+      readonly list: Procedures["admin.groups.list"];
+      readonly removeMembers: Procedures["admin.groups.removeMembers"];
+      readonly set: Procedures["admin.groups.set"];
+    };
+    readonly roles: {
+      readonly create: Procedures["admin.roles.create"];
+      readonly delete: Procedures["admin.roles.delete"];
+      readonly get: Procedures["admin.roles.get"];
+      readonly list: Procedures["admin.roles.list"];
+      readonly update: Procedures["admin.roles.update"];
+    };
+    readonly sessions: {
+      readonly list: Procedures["admin.sessions.list"];
+      readonly revoke: Procedures["admin.sessions.revoke"];
+    };
+    readonly users: {
+      readonly create: Procedures["admin.users.create"];
+      readonly delete: Procedures["admin.users.delete"];
+      readonly disable: Procedures["admin.users.disable"];
+      readonly enable: Procedures["admin.users.enable"];
+      readonly get: Procedures["admin.users.get"];
+      readonly list: Procedures["admin.users.list"];
+      readonly resetPassword: Procedures["admin.users.resetPassword"];
+      readonly setRoles: Procedures["admin.users.setRoles"];
+      readonly unlock: Procedures["admin.users.unlock"];
+    };
+  };
   readonly app: {
     readonly account: {
       readonly changePassword: Procedures["app.account.changePassword"];
@@ -4319,6 +4627,10 @@ export interface Api {
     readonly events: Procedures["app.events"];
     readonly info: Procedures["app.info"];
     readonly me: Procedures["app.me"];
+    readonly sessions: {
+      readonly list: Procedures["app.sessions.list"];
+      readonly revoke: Procedures["app.sessions.revoke"];
+    };
   };
   readonly docker: {
     readonly compose: {
@@ -4579,6 +4891,236 @@ export interface Api {
 
 /** The procedure table to pass to the runtime's `createClient`. */
 export const procedures: Api = {
+  admin: {
+    groups: {
+      addMembers: {
+        name: "admin.groups.addMembers",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      create: {
+        name: "admin.groups.create",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      delete: {
+        name: "admin.groups.delete",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "admin.groups.list",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      removeMembers: {
+        name: "admin.groups.removeMembers",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      set: {
+        name: "admin.groups.set",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    roles: {
+      create: {
+        name: "admin.roles.create",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      delete: {
+        name: "admin.roles.delete",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "admin.roles.get",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "admin.roles.list",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      update: {
+        name: "admin.roles.update",
+        kind: "mutation",
+        perm: "admin.roles.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    sessions: {
+      list: {
+        name: "admin.sessions.list",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      revoke: {
+        name: "admin.sessions.revoke",
+        kind: "mutation",
+        perm: "admin.sessions.revoke",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    users: {
+      create: {
+        name: "admin.users.create",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      delete: {
+        name: "admin.users.delete",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      disable: {
+        name: "admin.users.disable",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      enable: {
+        name: "admin.users.enable",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "admin.users.get",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "admin.users.list",
+        kind: "query",
+        perm: "admin.users.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      resetPassword: {
+        name: "admin.users.resetPassword",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      setRoles: {
+        name: "admin.users.setRoles",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      unlock: {
+        name: "admin.users.unlock",
+        kind: "mutation",
+        perm: "admin.users.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+  },
   app: {
     account: {
       changePassword: {
@@ -4675,6 +5217,28 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+    sessions: {
+      list: {
+        name: "app.sessions.list",
+        kind: "query",
+        perm: "app.self",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      revoke: {
+        name: "app.sessions.revoke",
+        kind: "mutation",
+        perm: "app.self",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
     },
   },
   docker: {

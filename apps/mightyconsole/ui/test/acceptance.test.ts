@@ -46,8 +46,8 @@ describe("acceptance checklists", () => {
       // DOC-25 section 6, run with the idp profile; TSK-136 wired the login items, the other
       // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items,
       // TSK-142 the built-in accounts and the default administrator.
-      // TSK-138 added the six Authorization and Destroy items.
-      ["security", "TSK-141", 18],
+      // TSK-138 added the seven Authorization and Destroy items.
+      ["security", "TSK-141", 19],
     ]);
   });
 

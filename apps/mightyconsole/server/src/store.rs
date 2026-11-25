@@ -680,6 +680,29 @@ impl Store {
         Ok(out)
     }
 
+    /// Deletes an account and frees its user name; `false` when there was none.
+    pub fn delete_account(&self, id: &str) -> Result<bool, StoreError> {
+        let write = self.db.begin_write().map_err(err)?;
+        let removed = {
+            let mut accounts = write.open_table(ACCOUNTS).map_err(err)?;
+            let removed = accounts
+                .remove(id)
+                .map_err(err)?
+                .map(|v| decode(v.value()))
+                .transpose()?;
+            if let Some(account) = &removed {
+                write
+                    .open_table(USERNAMES)
+                    .map_err(err)?
+                    .remove(account.username.as_str())
+                    .map_err(err)?;
+            }
+            removed.is_some()
+        };
+        write.commit().map_err(err)?;
+        Ok(removed)
+    }
+
     /// Changes an account in one transaction; `change` answers what to return. `None` when the
     /// account does not exist. The user name cannot change here.
     pub fn update_account<T>(
