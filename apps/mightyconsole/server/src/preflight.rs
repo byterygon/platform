@@ -61,7 +61,29 @@ pub fn run(config: &ServeConfig) -> Preflight {
     out.report.extend(report);
     out.problems.extend(problems);
     audit_log(config, &mut out);
+    out.report.push(outbound_report(&config.outbound));
     out
+}
+
+fn outbound_report(policy: &crate::core::outbound::Policy) -> String {
+    format!(
+        "outbound: {}; {} deny rule(s); link-local and cloud metadata addresses refused{}",
+        if policy.is_narrowed() {
+            format!("only {} allow rule(s)", policy.allow.len())
+        } else {
+            "every address".to_owned()
+        },
+        policy.deny.len(),
+        if policy
+            .allow
+            .iter()
+            .any(|r| matches!(r, crate::core::outbound::Rule::Net(..)))
+        {
+            " unless an allow network names them"
+        } else {
+            ""
+        }
+    )
 }
 
 /// What the operator should know at start although nothing is wrong (DOC-25 §3.6.2 point 3).

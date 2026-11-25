@@ -102,6 +102,22 @@ pub struct FileConfig {
     pub secrets: SecretsSection,
     #[serde(default)]
     pub policy: PolicySection,
+    #[serde(default)]
+    pub outbound: OutboundSection,
+}
+
+/// `[outbound]` (TSK-141, DOC-25 Open question 27): what a profile may make the server reach.
+/// Rules are addresses, networks (`10.0.0.0/8`), host names or `*.domain`; see
+/// [`crate::core::outbound`].
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutboundSection {
+    /// When set, only these are reached.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Never reached; wins over `allow`.
+    #[serde(default)]
+    pub deny: Vec<String>,
 }
 
 /// `[policy]` (DOC-25 §3.6.1).

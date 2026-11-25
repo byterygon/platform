@@ -13,7 +13,6 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::header::{CONTENT_LENGTH, CONTENT_TYPE, HOST, USER_AGENT};
 use hyper::{Method, Request, StatusCode};
 use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -78,7 +77,7 @@ impl S3Error {
     }
 }
 
-type Https = hyper_rustls::HttpsConnector<HttpConnector>;
+type Https = hyper_rustls::HttpsConnector<crate::core::outbound::Connector>;
 
 pub struct S3Client {
     http: Client<Https, Full<Bytes>>,
@@ -120,10 +119,8 @@ impl S3Client {
         } else {
             plain_config()
         };
-        let mut tcp = HttpConnector::new();
-        tcp.enforce_http(false);
-        tcp.set_connect_timeout(Some(CONNECT_TIMEOUT));
-        tcp.set_nodelay(true);
+        // Through the server's outbound policy (TSK-141): the address connected to is checked.
+        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT));
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()

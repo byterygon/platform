@@ -170,8 +170,12 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
             .tls_config(tls_config(profile, &tls, &address)?)
             .map_err(|e| tls_error(&e))?;
     }
+    // Through the server's outbound policy (TSK-141); tonic wraps its TLS around it.
     let channel = endpoint
-        .connect()
+        .connect_with_connector(crate::core::outbound::Connector::new(
+            super::TOOL,
+            Some(CONNECT_TIMEOUT),
+        ))
         .await
         .map_err(|e| connect_error(&address, tls.enabled, &e))?;
     let payload_codec = super::codec_client::PayloadCodec::from_profile(

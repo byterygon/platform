@@ -527,6 +527,8 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
     let policy = config::PolicySettings {
         allow_personal_profiles: file.policy.allow_personal_profiles.unwrap_or(true),
     };
+    let outbound =
+        crate::core::outbound::Policy::from_lists(&file.outbound.allow, &file.outbound.deny)?;
     let mut audit = config::audit_settings(file.audit)?;
     audit.new_chain = flags.audit_new_chain;
     Ok(ServeConfig {
@@ -543,6 +545,7 @@ fn parse_serve(args: impl Iterator<Item = String>, env: &Env) -> Result<ServeCon
         audit,
         secrets,
         policy,
+        outbound,
     })
 }
 

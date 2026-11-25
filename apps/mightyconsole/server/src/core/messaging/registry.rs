@@ -150,6 +150,14 @@ impl RegistryProfile {
             tls,
             client_key_pem,
             timeout,
+            // Through the server's outbound policy (TSK-141).
+            resolve: Some(Arc::new(|host: String, port: u16| {
+                Box::pin(async move {
+                    crate::core::outbound::resolve(SYSTEM, &host, port)
+                        .await
+                        .map_err(|e| e.message)
+                })
+            })),
         };
         RegistryClient::new(&config).map_err(|e| {
             let field = e.field.clone().unwrap_or_else(|| "url".into());

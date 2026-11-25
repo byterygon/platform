@@ -3904,6 +3904,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tower-service",
  "ts-rs",
  "url",
  "zeroize",
