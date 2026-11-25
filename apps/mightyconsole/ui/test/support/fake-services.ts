@@ -407,9 +407,11 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
         record("echo.connect", input);
         if (server.connectGate) await server.connectGate;
         reachable();
-        if (input.profile.token === "wrong") throw new RpcError("Unauthenticated", "the token was rejected", { correlation_id: "corr-1", details: { kind: "Auth", system: "echo", message: "the token was rejected", retryable: false } });
+        const profile = input.profile;
+        if (!profile) throw new Error("the fake connects with the profile the browser sends");
+        if (profile.token === "wrong") throw new RpcError("Unauthenticated", "the token was rejected", { correlation_id: "corr-1", details: { kind: "Auth", system: "echo", message: "the token was rejected", retryable: false } });
         const connId = `conn-${++ids}`;
-        const greeting = input.profile.greeting ?? `hello from ${input.profile.name}`;
+        const greeting = profile.greeting ?? `hello from ${profile.name}`;
         server.handles.set(connId, { greeting });
         return { connId, greeting, schemaIssues: [] };
       },
@@ -482,7 +484,9 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
       connect: async (input: api.DockerConnectInput) => {
         record("docker.connect", input);
         reachable();
-        const trusted = input.profile.hostKey;
+        const profile = input.profile;
+        if (!profile) throw new Error("the fake connects with the profile the browser sends");
+        const trusted = profile.hostKey;
         if (trusted?.fingerprintSha256 !== FAKE_HOST_KEY.fingerprintSha256) {
           const changed = trusted != null;
           throw new RpcError("FailedPrecondition", changed ? "the host key of build-host changed" : "build-host is not trusted yet", {
@@ -492,8 +496,8 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
         }
         const connId = `d${++ids}`;
         server.handles.set(connId, { greeting: "docker" });
-        server.dockerProfiles.set(connId, input.profile);
-        return { connId, host: fakeHostInfo(input.profile) };
+        server.dockerProfiles.set(connId, profile);
+        return { connId, host: fakeHostInfo(profile) };
       },
       disconnect: async (input: api.DockerConnIdInput) => {
         record("docker.disconnect", input);

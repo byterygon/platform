@@ -63,7 +63,14 @@ pub struct ConnectDockerProfile {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DockerConnectInput {
-    pub profile: ConnectDockerProfile,
+    /// The stored profile to connect with (DOC-25 §3.4.7).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile: Option<ConnectDockerProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]

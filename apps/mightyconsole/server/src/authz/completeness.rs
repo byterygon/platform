@@ -9,7 +9,8 @@
 //! - its permission does not follow the risk rule: a tool's procedure carries `<tool>.read`,
 //!   `<tool>.write` or `<tool>.destroy` by its risk, except the procedures in [`EXCEPTIONS`];
 //!   another namespace's procedure carries one of the permissions [`NAMESPACES`] lists for it;
-//! - it takes a handle (`connId`, `terminalId`, `uploadId`), a profile (`profile`, `profileId`)
+//! - it takes a handle (`connId`, `terminalId`, `uploadId`), a profile (`profile`, `profileId`,
+//!   a `<tool>.test`'s `draft` and `basedOn`)
 //!   or a `namespace` and its permission's target kind is not `profile`, or the reverse: its
 //!   target kind is `profile` and it takes none of them (it could never be allowed). The shared
 //!   codec procedures (`messaging.*`) are the one exception: they work on a handle of any tool,
@@ -76,12 +77,14 @@ pub const NAMESPACES: [(&str, &[&str]); 9] = [
 ];
 
 /// Input fields that name what a call acts on.
-pub const TARGET_FIELDS: [&str; 6] = [
+pub const TARGET_FIELDS: [&str; 8] = [
     "connId",
     "terminalId",
     "uploadId",
     "profile",
     "profileId",
+    "draft",
+    "basedOn",
     "namespace",
 ];
 

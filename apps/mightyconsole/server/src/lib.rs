@@ -896,6 +896,8 @@ impl Server {
             Arc::clone(&hub),
             config.policy.allow_personal_profiles,
         ));
+        let stored: Arc<dyn core::stored::StoredProfiles> = profile_service.clone();
+        hub.set_stored_profiles(&stored);
         let state = Arc::new(AppState {
             hub: Arc::clone(&hub),
             facts: ServerFacts {

@@ -12,12 +12,14 @@
 //! - A change of a target field removes the secrets of its group unless the same call sets them
 //!   (§3.4.8, [`spec::ToolSpec::secrets_to_unbind`]).
 //! - Host-access fields need `profiles.hostAccess` to be saved.
+//! - Deleting a profile, or giving it to another user, ends its live connections.
 //! - Every change is pushed on `app.events` as `ProfileChanged { id, tool }` to the sessions that
 //!   may see the profile.
 //!
 //! The procedures are in [`api`]; [`StoreOwners`] tells the Authorizer whose a profile is.
 
 pub mod api;
+pub mod connect;
 pub mod spec;
 pub mod table;
 
@@ -635,6 +637,7 @@ impl ProfileService {
             return Err(invalid("name", "is not the profile's name"));
         }
         self.store.delete_profile(id)?;
+        self.hub.release_profile(id, "the profile was deleted");
         self.changed(&current);
         Ok(())
     }
@@ -759,6 +762,9 @@ impl ProfileService {
             let stored = self
                 .store
                 .put_profile(next, Some(current.etag), |_, _| Ok(()))?;
+            // The previous owner's connections end with their right to use it.
+            self.hub
+                .release_profile(id, "the profile was given to another user");
             self.changed(&current);
             self.changed(&stored);
             done += 1;

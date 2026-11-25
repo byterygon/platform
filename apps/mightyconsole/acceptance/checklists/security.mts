@@ -94,7 +94,7 @@ export default {
       text: "(TSK-142) Built-in accounts: sign-up gives a member who can add and use a personal profile and sees no shared one until added to a group; a wrong password and an unknown user get the same answer; five failures lock the account and the audit says so; TOTP sign-in works, a reused code is refused, a recovery code works once; a setup link works once and expires; a sign-in POST from another origin is refused; auth.signup = off hides and refuses sign-up.",
       checks: [
         cargo("sign_up_signs_in_a_member_who_can_work", { label: "sign-up through the page's token, the session, app.me, sign-out; auth.signup, auth.login, auth.logout in the log without the password" }),
-        manual("a member adds and uses a personal profile and sees no shared one until added to a group: TSK-138 and TSK-139 (roles, server-side profiles)"),
+        cargo("a_member_uses_their_own_profile_and_sees_shared_ones_once_a_group_lets_them", { label: "a member adds and uses a personal profile and sees no shared one until a local group maps them to viewer" }),
         accounts("the same answer and the same cost", "wrong_password_and_unknown_user_look_the_same"),
         accounts("five failures lock the account (the lockout event), and it ends", "five_failures_lock_the_account_for_fifteen_minutes"),
         cargo("a_session_leaves_the_calls_the_spec_lists_and_never_a_value", { label: "the audit entries' format (auth.lockout and auth.signup go through the same event log)" }),
@@ -134,7 +134,7 @@ export default {
       checks: [
         cargo("sighup_rotates_to_a_new_key_and_the_old_one_can_then_go", { label: "SIGHUP: a reload without the old key is refused; with the new key first every entry moves (secrets.rewrap start and end); then the old key goes" }),
         cargo("rotation_with_calls_running_loses_nothing", { label: "rotation with calls running, and a restart half way (the job resumes)" }),
-        manual("every profile still connects after the rotation: with profiles on the server (TSK-139, a later batch)"),
+        cargo("a_stored_profile_still_connects_after_a_key_rotation", { label: "a stored profile connects with its secret after a rotation moved every entry to the new key" }),
       ],
     },
     {
@@ -143,7 +143,7 @@ export default {
       checks: [
         cargo("a_viewer_uses_a_shared_profile_whose_password_they_never_see", { label: "a viewer sees and may use a shared profile, its secrets' status but never their values; a member without the tool's read sees nothing" }),
         cargo("a_personal_profile_is_its_owners_alone_and_its_secret_is_never_answered", { label: "a personal profile is its owner's alone; no answer holds a value; the value is not in store.redb in clear" }),
-        manual("the viewer's connection runs with the stored password: connect by profile reference (TSK-139, the next batch)"),
+        cargo("connect_names_a_stored_profile_and_the_server_opens_its_secret", { label: "connect by profile reference: the stored token is the one used; a viewer connects with a shared profile, a member without echo.read and another user do not; deleting the profile ends its connections; no token in the audit log" }),
       ],
     },
     {
@@ -152,6 +152,7 @@ export default {
       checks: [
         cargo("a_viewer_uses_a_shared_profile_whose_password_they_never_see", { label: "a changed host removes the password (removedSecrets), the registry's token stays; set again in the same call it is kept" }),
         cargo("a_changed_target_unbinds_the_secrets_of_its_group_only", { label: "each tool's target fields and the secrets they guard" }),
+        cargo("test_connection_uses_draft_secrets_once_and_stored_ones_only_on_the_same_target", { label: "Test connection: a draft's secrets for the call only (not in the audit log); the stored ones fill it only for an editor and only while the draft keeps its target" }),
       ],
     },
     {
@@ -196,7 +197,7 @@ export default {
         cargo("without_profiles_personal_the_roles_bind_on_browser_profiles", { label: "over the wire: PermissionDenied names the permission, the target and the reason" }),
         cargo("the_right_phrase_allows_the_same_call_once", { label: "the destroy confirmation" }),
         cargo("the_idp_groups_decide_what_each_lab_user_may_do", { features: ["lab-tests"], label: "lab users through Dex: an administrator, a viewer and a user with no role, by their groups" }),
-        manual("viewer, operator and administrator signed in through the lab's IdP on a shared profile: TSK-139 (shared profiles on the server; until then every connection is the caller's own)"),
+        cargo("idp_users_on_a_shared_profile_act_by_their_roles", { features: ["lab-tests"], label: "lab users through Dex on a shared profile: the viewer reads and is refused echo.write, the administrator writes, the user with no role cannot connect (the lab's groups map no operator)" }),
       ],
     },
     {
@@ -205,7 +206,7 @@ export default {
       checks: [
         cargo("scopes_limit_a_role_to_profiles_and_namespaces", { label: "inside, outside, the whole profile, no target" }),
         command("the scope matcher (security-types)", ["cargo", "test", "-p", "security-types", "--lib", "--", "scope::"], { requires: ["cargo"] }),
-        manual("a lab user whose group maps to a role limited to one Temporal namespace: TSK-139 (a scope names a profile stored on the server)"),
+        manual("a lab user whose group maps to a role limited to one namespace of a stored Temporal profile (`<profileId>/ns:lab`), with the lab's IdP and Temporal up together: refused in `default` and in the cluster-wide namespace list"),
       ],
     },
     {
@@ -222,7 +223,7 @@ export default {
         cargo("a_browser_held_profile_is_the_callers_own"),
         cargo("a_stored_personal_profile_is_its_owners_alone"),
         cargo("a_member_has_every_right_on_their_own_connection"),
-        manual("host-access fields need profiles.hostAccess when a profile is saved: TSK-139 (profiles.create and update)"),
+        manual("host-access fields need profiles.hostAccess when a profile is saved: the check is in profiles.create, update and test (profiles/spec.rs), but no tool built so far has such a field; it is checked with the Kubernetes exec plugin (TSK-82) and command hops (DOC-23)"),
       ],
     },
     {

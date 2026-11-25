@@ -100,6 +100,14 @@ export default {
   lab: ["nats"],
   items: [
     {
+      id: "stored-profile",
+      text: "(TSK-139, DOC-25 §3.4.7) A profile stored on the server connects by reference: the server opens its secrets, which the browser never holds; Test connection uses the draft's secrets for that call only, and the stored ones only while the draft keeps its target.",
+      lab: true,
+      checks: [
+        lab("a_stored_profile_connects_with_its_secrets_and_a_draft_is_tested_once"),
+      ],
+    },
+    {
       id: "connect",
       text: "Connect with none, user and password, token, nkey and creds; wrong credentials give Auth; TLS against the lab CA.",
       lab: true,

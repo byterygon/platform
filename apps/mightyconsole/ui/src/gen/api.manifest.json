@@ -2860,12 +2860,25 @@
     "DockerConnectInput": {
       "properties": {
         "profile": {
-          "$ref": "#/$defs/ConnectDockerProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectDockerProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
+        },
+        "profileId": {
+          "default": null,
+          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "DockerConnectOutput": {
@@ -2994,12 +3007,25 @@
     "EchoConnectInput": {
       "properties": {
         "profile": {
-          "$ref": "#/$defs/ConnectEchoProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectEchoProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
+        },
+        "profileId": {
+          "default": null,
+          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "EchoConnectOutput": {
@@ -4979,12 +5005,25 @@
     "LanggraphConnectInput": {
       "properties": {
         "profile": {
-          "$ref": "#/$defs/ConnectLanggraphProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectLanggraphProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
+        },
+        "profileId": {
+          "default": null,
+          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "LanggraphConnectOutput": {
@@ -6201,12 +6240,25 @@
     "NatsConnectInput": {
       "properties": {
         "profile": {
-          "$ref": "#/$defs/ConnectNatsProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectNatsProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
+        },
+        "profileId": {
+          "default": null,
+          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "NatsConnectOutput": {
@@ -13254,12 +13306,25 @@
     "TemporalConnectInput": {
       "properties": {
         "profile": {
-          "$ref": "#/$defs/ConnectTemporalProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectTemporalProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `profileId`."
+        },
+        "profileId": {
+          "default": null,
+          "description": "The stored profile to connect with (DOC-25 §3.4.7).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "TemporalConnectOutput": {
@@ -13309,6 +13374,26 @@
     "TemporalTestCodecInput": {
       "description": "\"Test codec\" in the profile sheet: the draft profile, and the namespace to sample (the\nprofile's when empty).",
       "properties": {
+        "basedOn": {
+          "default": null,
+          "description": "The stored profile the form edits, whose secrets fill those the draft leaves empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestDraft"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The profile form's draft (DOC-25 §3.4.7), as `temporal.test` takes it."
+        },
         "namespace": {
           "default": null,
           "type": [
@@ -13317,12 +13402,17 @@
           ]
         },
         "profile": {
-          "$ref": "#/$defs/ConnectTemporalProfile"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectTemporalProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A profile the browser sends, until the UI moves to stored profiles; not with `draft`."
         }
       },
-      "required": [
-        "profile"
-      ],
       "type": "object"
     },
     "TemporalTestCodecOutput": {
@@ -13491,6 +13581,37 @@
       "required": [
         "terminalId",
         "data"
+      ],
+      "type": "object"
+    },
+    "TestDraft": {
+      "description": "The profile form's draft, for `<tool>.test`.",
+      "properties": {
+        "extras": {
+          "default": null
+        },
+        "fields": {
+          "description": "The record's `fields` (DOC-21 §4.2), without secrets."
+        },
+        "name": {
+          "default": null,
+          "description": "The profile's name as typed; \"draft\" when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The secrets typed in the form, by field path: used for this call only, never stored,\nlogged or audited. `{}` when none was typed.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "fields",
+        "secrets"
       ],
       "type": "object"
     },
@@ -13997,6 +14118,26 @@
       "required": [
         "id",
         "version"
+      ],
+      "type": "object"
+    },
+    "ToolTestInput": {
+      "description": "Input of every `<tool>.test`.",
+      "properties": {
+        "basedOn": {
+          "default": null,
+          "description": "The stored profile the form edits, whose secrets fill those the draft leaves empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft": {
+          "$ref": "#/$defs/TestDraft"
+        }
+      },
+      "required": [
+        "draft"
       ],
       "type": "object"
     },
@@ -16823,6 +16964,30 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ToolTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.test",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "docker.read",
+      "redact": [
+        "draft.secrets"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -17036,6 +17201,30 @@
       "risk": "Write",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ToolTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "echo.test",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "echo.read",
+      "redact": [
+        "draft.secrets"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     },
     {
       "agent": "hidden",
@@ -17470,6 +17659,30 @@
       },
       "perm": "langgraph.read",
       "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ToolTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.test",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.read",
+      "redact": [
+        "draft.secrets"
+      ],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -18980,6 +19193,30 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ToolTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.test",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.read",
+      "redact": [
+        "draft.secrets"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -19780,6 +20017,30 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ToolTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.test",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.read",
+      "redact": [
+        "draft.secrets"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -19795,6 +20056,7 @@
       },
       "perm": "temporal.read",
       "redact": [
+        "draft.secrets",
         "profile.clientKeyPem",
         "profile.apiKey",
         "profile.s3AccessKeyId",
@@ -20189,5 +20451,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:de01ce6f3e37d5f6b7d5ed77a4308f5cd48112646d1a5888d88d43ba730ac8fb"
+  "schema_hash": "sha256:6abc6e4f8f1eb7616ca8921838b93c3fa0ca5370ecd6d4bed4effea2abc65c24"
 }

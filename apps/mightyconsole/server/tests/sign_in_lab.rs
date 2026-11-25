@@ -335,3 +335,57 @@ async fn the_idp_groups_decide_what_each_lab_user_may_do() {
     assert_eq!(a.result(2).await["revoked"], 1);
     assert_eq!(b.client.expect_goaway().await.code, Code::Unauthenticated);
 }
+
+/// DOC-25 §6 "authz-roles" on a shared profile (TSK-139): through the lab's IdP, a viewer
+/// connects with a shared profile and reads, but its writes are refused naming the permission;
+/// an administrator writes; a user with no role cannot connect.
+#[tokio::test]
+async fn idp_users_on_a_shared_profile_act_by_their_roles() {
+    use mightyconsole_server::authz::policy::GroupMapping;
+    use security_types::Scope;
+    let t = lab_server_with(|config| {
+        config.auth.default_role = None;
+        for (group, role) in [("idp:mc-admins", "admin"), ("idp:mc-viewers", "viewer")] {
+            config.auth.group_roles.push(GroupMapping {
+                group: group.into(),
+                role: role.into(),
+                scope: Scope::everywhere(),
+            });
+        }
+    })
+    .await;
+    let (alice, _) = sign_in(&t, "alice", "%2F").await;
+    let mut a = tab_of(&t, &alice).await;
+    a.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": {}, "secrets": { "token": "team-token" } }),
+    )
+    .await;
+    let team = a.result(1).await["id"].as_str().unwrap().to_owned();
+    let produce = |conn: &str| json!({ "connId": conn, "value": { "codec": "utf8", "text": "m" } });
+
+    let (bob, _) = sign_in(&t, "bob", "%2F").await;
+    let mut b = tab_of(&t, &bob).await;
+    b.call(1, "echo.connect", json!({ "profileId": team }))
+        .await;
+    let conn = b.result(1).await["connId"].as_str().unwrap().to_owned();
+    b.call(2, "echo.ping", json!({ "connId": conn, "text": "x" }))
+        .await;
+    b.result(2).await;
+    b.call(3, "echo.messages.produce", produce(&conn)).await;
+    let err = b.error(3, Code::PermissionDenied).await;
+    assert_eq!(err.details.unwrap()["perm"], "echo.write");
+
+    a.call(2, "echo.connect", json!({ "profileId": team }))
+        .await;
+    let conn = a.result(2).await["connId"].as_str().unwrap().to_owned();
+    a.call(3, "echo.messages.produce", produce(&conn)).await;
+    a.result(3).await;
+
+    let (carol, _) = sign_in(&t, "carol", "%2F").await;
+    let mut c = tab_of(&t, &carol).await;
+    c.call(1, "echo.connect", json!({ "profileId": team }))
+        .await;
+    c.error(1, Code::PermissionDenied).await;
+}

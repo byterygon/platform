@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import type { TemporalTestCodecOutput } from "@/gen/api";
+import type { ConnectTemporalProfile, TemporalTestCodecOutput } from "@/gen/api";
 import { readRouterConfig } from "@/app/router";
 import type { ConnectionFormProps } from "../types";
 import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, payloadCodecOf, profile, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, codecEndpointOf, codecServerOf, externalStorageOf, tlsOf } from "./profile";
@@ -29,7 +29,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
     setTesting(true);
     setTested(null);
     try {
-      setTested(await client.temporal.testCodec({ profile: profile.toConnect(draft()) as Parameters<typeof client.temporal.testCodec>[0]["profile"], namespace: null }));
+      setTested(await client.temporal.testCodec({ profile: profile.toConnect(draft()) as ConnectTemporalProfile, namespace: null }));
     } catch (e) {
       setTested({ failed: e instanceof Error ? e.message : String(e) });
     } finally {

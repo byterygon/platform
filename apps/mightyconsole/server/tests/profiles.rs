@@ -6,6 +6,7 @@
 mod support;
 
 use ambidex::Code;
+use mightyconsole_server::StartOptions;
 use serde_json::{Value, json};
 use support::*;
 
@@ -375,4 +376,313 @@ async fn a_change_is_pushed_to_the_sessions_that_may_see_the_profile() {
             .await,
         "a member without docker.read is not told"
     );
+}
+
+#[tokio::test]
+async fn connect_names_a_stored_profile_and_the_server_opens_its_secret() {
+    let t = start_with_durable_audit(StartOptions::default()).await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let mut mia = user_with_role(&t, &mut a, 1, "human:oidc:mia", "member").await;
+    let mut noor = user_with_role(&t, &mut a, 2, "human:oidc:noor", "member").await;
+    let mut viewer = user_with_role(&t, &mut a, 3, "human:oidc:vic", "viewer").await;
+
+    // echo refuses the token "wrong": the stored token is the one the connection uses.
+    mia.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Mine", "owner": { "kind": "personal" }, "fields": {}, "secrets": { "token": "wrong" } }),
+    )
+    .await;
+    let id = mia.result(1).await["id"].as_str().unwrap().to_owned();
+    mia.call(2, "echo.connect", json!({ "profileId": id }))
+        .await;
+    let refused = mia.error(2, Code::Unauthenticated).await;
+    assert!(refused.message.contains("token"), "{}", refused.message);
+    mia.call(
+        3,
+        "secrets.set",
+        json!({ "owner": { "kind": "profile", "id": id }, "field": "token", "value": SECRET }),
+    )
+    .await;
+    mia.result(3).await;
+    mia.call(4, "echo.connect", json!({ "profileId": id }))
+        .await;
+    let out = mia.result(4).await;
+    no_secret(&out);
+    assert_eq!(out["greeting"], "hello from Mine");
+    let conn = out["connId"].as_str().unwrap().to_owned();
+
+    // A personal profile is its owner's: nobody else connects with it.
+    noor.call(1, "echo.connect", json!({ "profileId": id }))
+        .await;
+    noor.error(1, Code::PermissionDenied).await;
+    viewer
+        .call(1, "echo.connect", json!({ "profileId": id }))
+        .await;
+    viewer.error(1, Code::PermissionDenied).await;
+    // A profile is named or sent, not both; and it is a profile of the tool connecting.
+    mia.call(
+        5,
+        "echo.connect",
+        json!({ "profileId": id, "profile": { "name": "x" } }),
+    )
+    .await;
+    mia.error(5, Code::InvalidArgument).await;
+
+    // A shared profile: whoever holds echo.read connects with a token they never see; a
+    // member (no echo.read) does not.
+    a.call(
+        4,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": { "greeting": "hi team" }, "secrets": { "token": SECRET } }),
+    )
+    .await;
+    let team = a.result(4).await["id"].as_str().unwrap().to_owned();
+    viewer
+        .call(2, "echo.connect", json!({ "profileId": team }))
+        .await;
+    let out = viewer.result(2).await;
+    no_secret(&out);
+    assert_eq!(out["greeting"], "hi team");
+    noor.call(2, "echo.connect", json!({ "profileId": team }))
+        .await;
+    noor.error(2, Code::PermissionDenied).await;
+    viewer
+        .call(3, "nats.connect", json!({ "profileId": team }))
+        .await;
+    let wrong_tool = viewer.error(3, Code::InvalidArgument).await;
+    assert!(
+        wrong_tool.message.contains("echo profile"),
+        "{}",
+        wrong_tool.message
+    );
+
+    // Deleting the profile ends its live connections.
+    mia.confirmed(6, "profiles.delete", json!({ "id": id, "name": "Mine" }))
+        .await;
+    mia.result(6).await;
+    mia.call(7, "echo.ping", json!({ "connId": conn, "text": "x" }))
+        .await;
+    mia.error(7, Code::NotFound).await;
+    // Gone: no owner is left, so roles decide, and a member has no echo.read.
+    mia.call(8, "echo.connect", json!({ "profileId": id }))
+        .await;
+    mia.error(8, Code::PermissionDenied).await;
+
+    // The audit log names the profile, never the token.
+    let dir = mightyconsole_server::audit::audit_dir(t._dir.path());
+    let log: String = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|f| std::fs::read_to_string(f.unwrap().path()).unwrap_or_default())
+        .collect();
+    assert!(log.contains("echo.connect"), "the connects are audited");
+    assert!(!log.contains(SECRET), "a secret in the audit log");
+}
+
+#[tokio::test]
+async fn test_connection_uses_draft_secrets_once_and_stored_ones_only_on_the_same_target() {
+    let t = start_with_durable_audit(StartOptions::default()).await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let mut mia = user_with_role(&t, &mut a, 1, "human:oidc:mia", "member").await;
+    let mut viewer = user_with_role(&t, &mut a, 2, "human:oidc:vic", "viewer").await;
+
+    // A draft's own secret: used for the call, stored nowhere.
+    mia.call(
+        1,
+        "echo.test",
+        json!({ "draft": { "name": "New", "fields": {}, "secrets": { "token": "wrong" } } }),
+    )
+    .await;
+    mia.error(1, Code::Unauthenticated).await;
+    mia.call(
+        2,
+        "echo.test",
+        json!({ "draft": { "fields": {}, "secrets": { "token": SECRET } } }),
+    )
+    .await;
+    no_secret(&mia.result(2).await);
+    // A secret in the draft's fields is refused, as a save refuses it.
+    mia.call(
+        3,
+        "echo.test",
+        json!({ "draft": { "fields": { "token": "x" }, "secrets": {} } }),
+    )
+    .await;
+    mia.error(3, Code::InvalidArgument).await;
+
+    // basedOn: the stored secret fills the draft's empty one for whoever may edit the profile,
+    // while the draft keeps the target (§3.4.8; every profile's `routeId` is one).
+    mia.call(
+        4,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Mine", "owner": { "kind": "personal" }, "fields": {}, "secrets": { "token": "wrong" } }),
+    )
+    .await;
+    let id = mia.result(4).await["id"].as_str().unwrap().to_owned();
+    mia.call(
+        5,
+        "echo.test",
+        json!({ "draft": { "fields": {}, "secrets": {} }, "basedOn": id }),
+    )
+    .await;
+    mia.error(5, Code::Unauthenticated).await;
+    mia.call(
+        6,
+        "echo.test",
+        json!({ "draft": { "fields": {}, "secrets": { "token": SECRET } }, "basedOn": id }),
+    )
+    .await;
+    mia.result(6).await;
+    // Another route: the stored "wrong" is not sent, so the draft connects without a token.
+    mia.call(
+        7,
+        "echo.test",
+        json!({ "draft": { "fields": { "routeId": "R9" }, "secrets": {} }, "basedOn": id }),
+    )
+    .await;
+    mia.result(7).await;
+
+    // A viewer may use a shared profile but not edit it: its secrets never fill a draft; and
+    // testing needs profiles.personal or profiles.manage, which every built-in role holds.
+    a.call(
+        3,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": {}, "secrets": { "token": "wrong" } }),
+    )
+    .await;
+    let team = a.result(3).await["id"].as_str().unwrap().to_owned();
+    viewer
+        .call(
+            1,
+            "echo.test",
+            json!({ "draft": { "fields": {}, "secrets": {} }, "basedOn": team }),
+        )
+        .await;
+    viewer.result(1).await;
+    a.call(
+        4,
+        "echo.test",
+        json!({ "draft": { "fields": {}, "secrets": {} }, "basedOn": team }),
+    )
+    .await;
+    a.error(4, Code::Unauthenticated).await;
+
+    // The draft's secrets are in no audit entry.
+    let dir = mightyconsole_server::audit::audit_dir(t._dir.path());
+    let log: String = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|f| std::fs::read_to_string(f.unwrap().path()).unwrap_or_default())
+        .collect();
+    assert!(log.contains("echo.test"), "the tests are audited");
+    assert!(!log.contains(SECRET), "a draft secret in the audit log");
+}
+
+/// DOC-25 §6 "Secrets": after a key rotation every profile still connects.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stored_profile_still_connects_after_a_key_rotation() {
+    use mightyconsole_server::secrets::crypto::Kek;
+    use mightyconsole_server::secrets::keys::{
+        KeySource, SecretsSettings, key_file_text, write_private_file,
+    };
+    let t = start().await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    a.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": {}, "secrets": { "token": "wrong" } }),
+    )
+    .await;
+    let id = a.result(1).await["id"].as_str().unwrap().to_owned();
+
+    // The key the server generated beside its data, and a new one first.
+    let generated = std::fs::read_dir(t._dir.path().join("keys"))
+        .unwrap()
+        .map(|f| f.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "key"))
+        .expect("the generated key");
+    let new = Kek::generate().unwrap();
+    let new_path = t._dir.path().join("new.key");
+    write_private_file(&new_path, key_file_text(&new).as_bytes()).unwrap();
+    t.server
+        .reload_secrets(&SecretsSettings {
+            keys: vec![KeySource::File(new_path), KeySource::File(generated)],
+        })
+        .await
+        .unwrap();
+    eventually("every entry under the new key", || {
+        mightyconsole_server::secrets::entries_by_key(t.server.store())
+            .unwrap()
+            .into_iter()
+            .all(|(kek, _)| kek == new.id())
+    })
+    .await;
+    // The stored token still opens: echo refuses it, as it did before.
+    a.call(2, "echo.connect", json!({ "profileId": id })).await;
+    a.error(2, Code::Unauthenticated).await;
+}
+
+/// DOC-25 §6 "accounts": a member adds and uses a personal profile, and sees no shared one until
+/// a group gives them the tool's read.
+#[tokio::test]
+async fn a_member_uses_their_own_profile_and_sees_shared_ones_once_a_group_lets_them() {
+    let t = start().await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let mut mo = user_with_role(&t, &mut a, 1, "human:oidc:mo", "member").await;
+    mo.call(
+        1,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Mine", "owner": { "kind": "personal" }, "fields": { "greeting": "mine" } }),
+    )
+    .await;
+    let mine = mo.result(1).await["id"].as_str().unwrap().to_owned();
+    mo.call(2, "echo.connect", json!({ "profileId": mine }))
+        .await;
+    assert_eq!(mo.result(2).await["greeting"], "mine");
+
+    a.call(
+        2,
+        "profiles.create",
+        json!({ "tool": "echo", "name": "Team", "owner": { "kind": "shared" }, "fields": {} }),
+    )
+    .await;
+    let team = a.result(2).await["id"].as_str().unwrap().to_owned();
+    mo.call(3, "profiles.list", json!({ "tool": "echo" })).await;
+    let ids: Vec<Value> = mo.result(3).await["profiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].clone())
+        .collect();
+    assert_eq!(ids, [json!(mine)]);
+    mo.call(4, "echo.connect", json!({ "profileId": team }))
+        .await;
+    mo.error(4, Code::PermissionDenied).await;
+
+    // A local group mapped to the viewer role.
+    a.call(
+        3,
+        "admin.groups.create",
+        json!({ "name": "team", "members": ["human:oidc:mo"] }),
+    )
+    .await;
+    a.result(3).await;
+    a.call(4, "admin.groups.list", json!({})).await;
+    let etag = a.result(4).await["etag"].as_u64().unwrap();
+    a.call(
+        5,
+        "admin.groups.set",
+        json!({ "etag": etag, "mappings": [{ "group": "local:team", "role": "viewer" }] }),
+    )
+    .await;
+    a.result(5).await;
+    mo.call(5, "profiles.list", json!({ "tool": "echo" })).await;
+    assert_eq!(mo.result(5).await["profiles"].as_array().unwrap().len(), 2);
+    mo.call(6, "echo.connect", json!({ "profileId": team }))
+        .await;
+    mo.result(6).await;
 }

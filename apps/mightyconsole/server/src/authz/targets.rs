@@ -9,7 +9,9 @@
 //! - `terminalId`: the target of the handle the terminal was opened on;
 //! - `uploadId`: the handle a NATS upload runs on;
 //! - `id` of a `profiles.*` call and `owner.id` of a `secrets.*` call: the stored profile;
-//! - `profile` (a `<tool>.connect`, `temporal.testCodec`): the profile the browser sends;
+//! - `profileId` (a `<tool>.connect`) and `basedOn` (a `<tool>.test`): the stored profile;
+//! - `profile` (a `<tool>.connect`, `temporal.testCodec`): the profile the browser sends, and
+//!   `draft` (a `<tool>.test` with no `basedOn`): the caller's own draft, both as below;
 //! - then, for a tool with namespaces ([`catalogue::NAMESPACED_TOOLS`]), the input's
 //!   `namespace` below that target.
 //!
@@ -154,7 +156,12 @@ impl Targets for McTargets {
             self.handle(&session.id, namespace, &conn_id)?
         } else if let Some(id) = stored_profile(&meta.name, input) {
             crate::profiles::target_of(id)
-        } else if input.get("profile").is_some_and(Value::is_object)
+        } else if let Some(id) = text(input, "profileId").or_else(|| text(input, "basedOn"))
+            && catalogue::TOOLS.contains(&namespace)
+        {
+            crate::profiles::target_of(id)
+        } else if (input.get("profile").is_some_and(Value::is_object)
+            || input.get("draft").is_some_and(Value::is_object))
             && catalogue::TOOLS.contains(&namespace)
         {
             browser(namespace)

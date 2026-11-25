@@ -43,6 +43,7 @@ use self::client::{
 use crate::core::messaging::record::MessageRecord;
 use crate::core::messaging::tail::{self, Feed, PushBuffer, TailRequest, TailSummary};
 use crate::core::messaging::{decode_row, tool_error};
+use crate::core::stored::ToolTestInput;
 use crate::core::{Empty, Handle, Hub, RemoteError, ToolError, ToolErrorKind, ToolResult};
 
 /// The tool's id and namespace.
@@ -59,7 +60,14 @@ pub const MAX_SUBJECTS: usize = 32;
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NatsConnectInput {
-    pub profile: ConnectNatsProfile,
+    /// The stored profile to connect with (DOC-25 §3.4.7).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// A profile the browser sends, until the UI moves to stored profiles; not with `profileId`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile: Option<ConnectNatsProfile>,
 }
 
 /// What the server said about itself when the client connected (`INFO`).
@@ -430,7 +438,10 @@ impl NatsApi {
         audit = "always",
     )]
     async fn connect(&self, ctx: Ctx, input: NatsConnectInput) -> ToolResult<NatsConnectOutput> {
-        let profile = input.profile;
+        let (profile, target) = self
+            .0
+            .connect_profile(&ctx, TOOL, input.profile, input.profile_id)
+            .await?;
         let prepared = options(&profile)?;
         // Checked before connecting: a registry the profile cannot use fails the connect.
         let registry = match &profile.schema_registry {
@@ -450,7 +461,7 @@ impl NatsApi {
         let server = NatsServerInfo::from(nats.server_info());
         let session = ctx.session().id.clone();
         let client = NatsClient::new(nats, &profile, &prepared);
-        let handle = self.0.insert(&session, TOOL, Arc::new(client));
+        let handle = self.0.insert_for(&session, TOOL, Arc::new(client), target);
         let _ = slot.set((session.clone(), handle.conn_id.clone()));
         let (registry, wire_format_on) = match registry {
             // NATS looks for the wire format only on the subjects the profile lists.
@@ -471,6 +482,28 @@ impl NatsApi {
             server,
             schema_issues,
         })
+    }
+
+    /// Test connection of the profile form: the draft connects (its registry included) and
+    /// nothing is kept.
+    #[rpc::mutation(perm = "nats.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
+    async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
+        let (profile, _) = self
+            .0
+            .test_profile::<ConnectNatsProfile>(&ctx, TOOL, input)
+            .await?;
+        let prepared = options(&profile)?;
+        if let Some(r) = &profile.schema_registry {
+            r.client()?;
+        }
+        let nats = prepared
+            .options
+            .clone()
+            .connect(prepared.servers.clone())
+            .await
+            .map_err(|e| connect_error(e, prepared.auth, &prepared.server_text))?;
+        drop(nats);
+        Ok(Empty {})
     }
 
     /// Releases the connection and ends its streams; idempotent.

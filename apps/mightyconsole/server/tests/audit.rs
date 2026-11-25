@@ -193,8 +193,9 @@ async fn a_tampered_log_refuses_the_start_and_names_the_file() {
     assert!(err.to_string().contains("no data directory"), "{err}");
 }
 
-/// The sensitive reads are the ones DOC-25 §3.5.2 names: the classification is on the procedure,
-/// and this is the one place a change to the list shows up.
+/// The sensitive reads are the ones DOC-25 §3.5.2 names (and §3.4.7's `<tool>.test`, Test
+/// connection with a draft): the classification is on the procedure, and this is the one place a
+/// change to the list shows up.
 #[test]
 fn the_sensitive_reads_are_the_ones_the_spec_names() {
     let router = codegen_router();
@@ -211,14 +212,19 @@ fn the_sensitive_reads_are_the_ones_the_spec_names() {
             "docker.connect",
             "docker.containers.files.download",
             "docker.containers.files.read",
+            "docker.test",
             "echo.connect",
+            "echo.test",
             "langgraph.connect",
+            "langgraph.test",
             "langgraph.values.download",
             "messaging.registry.test",
             "nats.connect",
             "nats.obj.get",
+            "nats.test",
             "temporal.connect",
             "temporal.payload.download",
+            "temporal.test",
             "temporal.workflows.downloadHistory",
         ]
     );

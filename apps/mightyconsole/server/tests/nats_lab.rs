@@ -2568,3 +2568,64 @@ async fn filter_throughput_on_orders() {
         println!("{name:<40} {best:>10.0} messages/s (best of 30, {scanned} messages)");
     }
 }
+
+/// TSK-139 (DOC-25 §3.4.7): a stored profile connects with the secrets the server opens; Test
+/// connection uses a draft's secrets once, and the stored ones only on the same target.
+#[tokio::test]
+async fn a_stored_profile_connects_with_its_secrets_and_a_draft_is_tested_once() {
+    let (_t, mut tab) = setup().await;
+    let c = creds();
+    let password = tab
+        .store_profile(
+            "nats",
+            "lab password",
+            json!({ "servers": [c["url"]], "auth": "userPassword", "user": c["user"] }),
+            json!({ "password": c["password"] }),
+        )
+        .await;
+    tab.call(11, "nats.connect", json!({ "profileId": password }))
+        .await;
+    assert_eq!(tab.result(11).await["server"]["serverName"], "lab");
+    // An nkey seed over TLS with the lab CA, and a .creds file: secrets the server keeps.
+    let nkey = tab
+        .store_profile(
+            "nats",
+            "lab nkey",
+            json!({ "servers": ["tls://127.0.0.1:4222"], "auth": "nkey", "tls": { "enabled": true, "caPem": file(s(&c["caFile"])) } }),
+            json!({ "nkeySeed": file(s(&c["nkeySeedFile"])).trim() }),
+        )
+        .await;
+    tab.call(12, "nats.connect", json!({ "profileId": nkey }))
+        .await;
+    let conn = s(&tab.result(12).await["connId"]).to_owned();
+    let info = call(&mut tab, 13, "nats.server.info", json!({ "connId": conn })).await;
+    assert_eq!(info["connection"]["auth"], "nkey");
+    let jwt = tab
+        .store_profile(
+            "nats",
+            "lab creds",
+            json!({ "servers": [c["credsUrl"]], "auth": "creds" }),
+            json!({ "creds": file(s(&c["credsFile"])) }),
+        )
+        .await;
+    tab.call(14, "nats.connect", json!({ "profileId": jwt }))
+        .await;
+    assert_eq!(tab.result(14).await["server"]["serverName"], "lab-jwt");
+
+    // Test connection: a wrong draft password is Auth; an empty one takes the stored one.
+    let draft = |servers: &Value, typed: Value| json!({ "draft": { "fields": { "servers": [servers], "auth": "userPassword", "user": c["user"] }, "secrets": typed }, "basedOn": password });
+    tab.call(
+        15,
+        "nats.test",
+        draft(&c["url"], json!({ "password": "wrong" })),
+    )
+    .await;
+    tab.error(15, Code::Unauthenticated).await;
+    tab.call(16, "nats.test", draft(&c["url"], json!({}))).await;
+    tab.result(16).await;
+    // Pointed at another server, the draft gets no stored password: nothing is sent.
+    tab.call(17, "nats.test", draft(&c["tokenUrl"], json!({})))
+        .await;
+    let err = tab.error(17, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "password");
+}

@@ -95,6 +95,14 @@ export default {
   lab: ["temporal"],
   items: [
     {
+      id: "stored-profile",
+      text: "(TSK-139, DOC-25 §3.4.7) A profile stored on the server connects by reference: the server opens its secrets, which the browser never holds; Test connection uses the draft's secrets for that call only, and the stored ones only while the draft keeps its target.",
+      lab: true,
+      checks: [
+        ...lab("a_stored_temporal_profile_connects_and_its_codec_authorization_stays_on_the_server"),
+      ],
+    },
+    {
       id: "workflows",
       text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging. TSK-105 (DOC-21 §3.7): a workflow opened from the list takes a step in the same tab; the navigation row shows the profile, the namespace, Workflows, the workflow and its view; Back's list names the steps; the namespace segment lists the cluster's namespaces and switching keeps the view; a link to a profile this browser lacks shows its page.",
       lab: true,

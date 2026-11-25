@@ -76,6 +76,14 @@ export default {
   lab: ["docker"],
   items: [
     {
+      id: "stored-profile",
+      text: "(TSK-139, DOC-25 §3.4.7) A profile stored on the server connects by reference: the server opens its secrets, which the browser never holds; Test connection uses the draft's secrets for that call only, and the stored ones only while the draft keeps its target.",
+      lab: true,
+      checks: [
+        lab("a_stored_profile_logs_in_with_its_secrets_and_a_draft_keeps_its_target"),
+      ],
+    },
+    {
       id: "host-key",
       text: "First connect shows the host key fingerprint and connects only after Trust; a changed key is refused until replaced; private key, key with passphrase, password and agent all work.",
       lab: true,

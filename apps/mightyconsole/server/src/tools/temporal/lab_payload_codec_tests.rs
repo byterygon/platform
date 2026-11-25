@@ -184,7 +184,9 @@ async fn an_encode_failure_fails_the_action() {
 async fn test_codec_reports_the_sample() {
     let c = codec();
     let input: super::types::TemporalTestCodecInput = serde_json::from_value(json!({ "profile": profile(Some(json!({ "enabled": true, "endpoint": c["endpoint"] })), c["authorization"].as_str()) })).unwrap();
-    let report = super::codec_client::test(&input).await.unwrap();
+    let report = super::codec_client::test(input.profile.as_ref().unwrap(), None)
+        .await
+        .unwrap();
     assert_eq!(report.namespace, "lab");
     assert_eq!(report.codec, "127.0.0.1:8234");
     assert!(report.sampled >= 1, "{report:?}");

@@ -482,6 +482,7 @@ fn the_procedures_of_the_spec() {
                 Some(Duration::from_secs(300)),
             ),
         ),
+        ("docker.test", Mutation, "docker.read", Risk::Read, defaults),
         (
             "docker.volumes.inspect",
             Query,
@@ -532,6 +533,7 @@ fn the_procedures_of_the_spec() {
         ("echo.messages.tail", Stream, "echo.read", Risk::Read, live),
         ("echo.ping", Query, "echo.read", Risk::Read, defaults),
         ("echo.shell", Stream, "echo.write", Risk::Write, live),
+        ("echo.test", Mutation, "echo.read", Risk::Read, defaults),
         ("echo.ticks", Stream, "echo.read", Risk::Read, live),
         // LangGraph, spec §11.4.
         (
@@ -637,6 +639,7 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        ("langgraph.test", Mutation, LG_READ, Risk::Read, defaults),
         (
             "langgraph.threads.create",
             Mutation,
@@ -1077,6 +1080,7 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        ("nats.test", Mutation, "nats.read", Risk::Read, defaults),
         // Profiles on the server and their write-only secrets (DOC-25 §3.4.7, TSK-139).
         (
             "profiles.create",
@@ -1342,6 +1346,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.test",
+            Mutation,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.testCodec",
             Mutation,
             "temporal.read",
@@ -1516,7 +1527,13 @@ fn the_procedures_of_the_spec() {
         ]
     );
     // Test codec takes the same draft profile, secrets and all.
-    assert_eq!(redact("temporal.testCodec"), redact("temporal.connect"));
+    let mut codec = vec!["draft.secrets".to_owned()];
+    codec.extend(redact("temporal.connect"));
+    assert_eq!(redact("temporal.testCodec"), codec);
+    // Test connection's draft secrets are used for the call only (DOC-25 §3.4.7).
+    for tool in ["echo", "nats", "temporal", "docker", "langgraph"] {
+        assert_eq!(redact(&format!("{tool}.test")), ["draft.secrets"], "{tool}");
+    }
     assert_eq!(
         redact("nats.connect"),
         [
