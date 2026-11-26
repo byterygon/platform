@@ -31,6 +31,7 @@ import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { AccessPage, AccessProvider, type AccessValue, DeniedTab } from "./access-ui";
 import { type Refusal, holdsAnywhere, refusalBefore, toolOpen, toolPerm } from "./access";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AccountMenu, SessionsDialog } from "./account-menu";
 import { AdminDialog } from "./admin/AdminDialog";
 import { AuditDialog } from "./audit/AuditDialog";
@@ -39,7 +40,8 @@ import { MyAccessDialog } from "./my-access";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { HostKeyDialog } from "./dialogs/HostKeyDialog";
-import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, MoveProfilesDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
+import { MoveDialog, type MovePlan, type MoveRun } from "./dialogs/MoveDialog";
+import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { moveToServer } from "@/profiles/move";
 import { reloadSshHosts, sshHosts } from "@/profiles/ssh-hosts";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
@@ -360,18 +362,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   // --- The browser's own profiles, to move to the server (DOC-25 §3.4.9) -------------------------
 
   const [browserProfiles, setBrowserProfiles] = useState<ProfileRecord[]>([]);
-  const movePrompted = useRef(false);
-  useEffect(() => {
-    if (browserProfiles.length === 0 || movePrompted.current) return;
-    movePrompted.current = true;
-    toast.add({
-      title: `${browserProfiles.length} profile${browserProfiles.length === 1 ? " is" : "s are"} kept in this browser`,
-      description: "Move them to the server, where their secrets are stored encrypted. Until then they are not listed.",
-      type: "info",
-      timeout: 0,
-      actionProps: { children: "Move to the server", onClick: () => dispatch({ type: "dialog", dialog: { kind: "moveProfiles" } }) },
-    });
-  }, [browserProfiles, toast, dispatch]);
+  // The bar offers the move once the person is signed in and the browser still holds profiles; Later hides it for this visit.
+  const [moveBarHidden, setMoveBarHidden] = useState(false);
   const reloadBrowserProfiles = useCallback(async () => {
     try {
       const loaded = await loadProfiles(storage, schemaOf);
@@ -1132,18 +1124,18 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = exportFileName();
+    const name = exportFileName();
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return name;
   };
 
-  const doMove = async (shared: ReadonlySet<string>) => {
-    const result = await moveToServer(client, storage, browserProfiles, shared, (m) => dispatch({ type: "remapProfile", from: m.from, to: m.to }));
+  const doMove = async (plan: MovePlan, run: MoveRun) => {
+    const result = await moveToServer(client, storage, browserProfiles, plan.shared, (m) => dispatch({ type: "remapProfile", from: m.from, to: m.to }), { only: plan.only, names: plan.names, signal: run.signal, onProgress: run.onProgress });
     await reloadProfiles();
     await reloadBrowserProfiles();
-    if (result.failed) throw result.failed.error;
-    closeDialog();
-    toast.add({ title: `Moved ${result.moved.length} profile${result.moved.length === 1 ? "" : "s"} to the server`, description: "This browser keeps no secret now.", type: "success" });
+    return result;
   };
 
   const doDelete = async (id: string) => {
@@ -1246,6 +1238,22 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             }}
             onLater={laterExpiry}
           />
+        ) : null}
+        {browserProfiles.length > 0 && !moveBarHidden && dialog.kind !== "moveProfiles" ? (
+          <Alert layout="banner" intent="info" data-testid="move-bar">
+            <AlertTitle>
+              {browserProfiles.length === 1 ? "1 connection profile is" : `${browserProfiles.length} connection profiles are`} still saved only in this browser, with {browserProfiles.length === 1 ? "its" : "their"} secrets in plain text.
+            </AlertTitle>
+            <AlertDescription>Move {browserProfiles.length === 1 ? "it" : "them"} to the server: the secrets get encrypted there. Until then {browserProfiles.length === 1 ? "it is" : "they are"} not listed.</AlertDescription>
+            <AlertActions>
+              <Button size="small" onClick={() => dispatch({ type: "dialog", dialog: { kind: "moveProfiles" } })}>
+                Move my profiles…
+              </Button>
+              <Button size="small" appearance="subtle" onClick={() => setMoveBarHidden(true)}>
+                Later
+              </Button>
+            </AlertActions>
+          </Alert>
         ) : null}
         <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
           <SidebarTrigger />
@@ -1555,7 +1563,17 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       <DiscardChangesDialog open={leaving !== null || blocker.status === "blocked"} onKeep={keepEditing} onDiscard={discardChanges} />
       <CloseTabDialog open={closing !== undefined} title={closing?.title ?? ""} onCancel={closeDialog} onClose={() => closing && closeTab(closing.id, true)} />
       <ExportDialog open={dialog.kind === "export"} onOpenChange={(open) => !open && closeDialog()} count={exportCount} onExport={doExport} />
-      <MoveProfilesDialog open={dialog.kind === "moveProfiles"} onOpenChange={(open) => !open && closeDialog()} records={browserProfiles} toolLabel={(id) => toolById(tools, id)?.label ?? id} onBackup={doBackup} onMove={doMove} />
+      <MoveDialog
+        open={dialog.kind === "moveProfiles"}
+        onOpenChange={(open) => !open && closeDialog()}
+        records={browserProfiles}
+        existing={profiles}
+        toolLabel={(id) => toolById(tools, id)?.label ?? id}
+        target={(r) => toolById(tools, r.tool)?.targetOf?.(r) ?? r.name}
+        canShare={session.me ? holdsAnywhere(session.me, "profiles.manage") : false}
+        onBackup={doBackup}
+        onMove={doMove}
+      />
       <ImportDialog open={dialog.kind === "import"} onOpenChange={(open) => !open && closeDialog()} plan={(text) => planImport(text, profiles, schemaOf)} onImport={doImport} toolLabel={(id) => toolById(tools, id)?.label ?? id} />
       <SettingsDialog
         open={dialog.kind === "settings"}

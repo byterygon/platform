@@ -5,7 +5,7 @@
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, test } from "vitest";
-import { moveToServer, toMove } from "@/profiles/move";
+import { moveNames, moveToServer, toMove } from "@/profiles/move";
 import type { ProfileRecord } from "@/profiles/record";
 import { MemoryStorage, openStorage } from "@/profiles/storage";
 import { createFakeServices } from "./support/fake-services";
@@ -140,5 +140,75 @@ describe("export files carry the SSH hosts their profiles name, never a secret",
     const plan = planImport(JSON.stringify(file), [], (tool) => (tool === "docker" ? docker : undefined));
     expect(plan.hosts.map((h) => h.id)).toEqual(["H1"]);
     expect(plan.rows[0]?.skipReason).toBeNull();
+  });
+});
+
+describe("what the dialog adds (TSK-135 §8, TSK-140 batch 4c)", () => {
+  test("Stop ends the run before the next record; the ones left keep their secrets and a second run resumes", async () => {
+    const browser = await seeded();
+    const fake = createFakeServices(new MemoryStorage());
+    const client = fake.services.client;
+    const stop = new AbortController();
+    const seen: string[] = [];
+    const first = await moveToServer(client, browser, await browser.listProfiles(), new Set(), (m) => {
+      if (m.from === "01A") stop.abort();
+    }, { signal: stop.signal, onProgress: (p) => seen.push(`${p.index + 1}/${p.total} ${p.record.name}`) });
+    expect(first).toMatchObject({ stopped: true, cleared: false });
+    expect(first.failed).toBeUndefined();
+    expect(first.moved.map((m) => m.from)).toEqual(["01A"]);
+    expect(seen).toEqual(["1/3 orders"]);
+    const after = await browser.listProfiles();
+    expect(after.find((r) => r.id === "01B")).toEqual(RECORDS[1]);
+    expect(after.find((r) => r.id === "01C")).toEqual(RECORDS[2]);
+    const second = await moveToServer(client, browser, await browser.listProfiles());
+    expect(second.moved.map((m) => m.from)).toEqual(["01B", "01C"]);
+    expect(second.cleared).toBe(true);
+    expect(fake.server.calls.filter((c) => c.procedure === "profiles.import").length).toBe(3);
+  });
+
+  test("a stopped signal before the first record moves nothing", async () => {
+    const browser = await seeded();
+    const fake = createFakeServices(new MemoryStorage());
+    const stop = new AbortController();
+    stop.abort();
+    const result = await moveToServer(fake.services.client, browser, await browser.listProfiles(), new Set(), undefined, { signal: stop.signal });
+    expect(result).toEqual({ moved: [], stopped: true, cleared: false });
+    expect((await browser.listProfiles()).every((r) => r.importedAs === undefined)).toBe(true);
+  });
+
+  test("only the chosen records move; the others stay in the browser with their secrets and the stores are not cleared", async () => {
+    const browser = await seeded();
+    const fake = createFakeServices(new MemoryStorage());
+    const result = await moveToServer(fake.services.client, browser, await browser.listProfiles(), new Set(), undefined, { only: new Set(["01A", "01C"]) });
+    expect(result.moved.map((m) => m.from)).toEqual(["01A", "01C"]);
+    expect(result.cleared).toBe(false);
+    const left = await browser.listProfiles();
+    expect(toMove(left).map((r) => r.id)).toEqual(["01B"]);
+    expect(left.find((r) => r.id === "01B")).toEqual(RECORDS[1]);
+  });
+
+  test("a record moves under the name the dialog chose, and the server holds that name", async () => {
+    const browser = await seeded();
+    const fake = createFakeServices(new MemoryStorage());
+    const result = await moveToServer(fake.services.client, browser, await browser.listProfiles(), new Set(), undefined, { only: new Set(["01C"]), names: { "01C": "sample-mine" } });
+    expect(result.moved.length).toBe(1);
+    const [onServer] = await fake.storage.listProfiles();
+    expect(onServer).toMatchObject({ name: "sample-mine", tool: "echo" });
+    // The browser's record keeps its own name; only where it went is recorded.
+    expect((await browser.listProfiles()).find((r) => r.id === "01C")).toMatchObject({ name: "sample", importedAs: result.moved[0]!.to });
+  });
+
+  test("a name the server already has gets -mine, then -mine-2, also among the records of one move", () => {
+    const recs = [
+      { id: "a", tool: "nats", name: "nats-prod" },
+      { id: "b", tool: "nats", name: "nats-dev" },
+      { id: "c", tool: "docker", name: "nats-prod" },
+      { id: "d", tool: "nats", name: "Nats-Prod" },
+    ];
+    const names = moveNames(recs, [{ tool: "nats", name: "nats-prod" }, { tool: "nats", name: "nats-prod-mine" }]);
+    expect(names["a"]).toEqual({ name: "nats-prod-mine-2", renamed: true });
+    expect(names["b"]).toEqual({ name: "nats-dev", renamed: false });
+    expect(names["c"]).toEqual({ name: "nats-prod", renamed: false });
+    expect(names["d"]).toEqual({ name: "Nats-Prod-mine-3", renamed: true });
   });
 });
