@@ -947,6 +947,532 @@
       ],
       "type": "object"
     },
+    "AuditBreak": {
+      "description": "The first place the chain breaks.",
+      "properties": {
+        "file": {
+          "description": "The segment file's name.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`edited`, `deleted`, `reordered`, `gap`, `head cut`, `truncated tail` or `unparsable`.",
+          "type": "string"
+        },
+        "line": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "seq",
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
+    "AuditDetailRow": {
+      "description": "A readable value of an entry's detail.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "AuditFilter": {
+      "description": "What the screen's filters mean (every field is optional).",
+      "properties": {
+        "action": {
+          "default": null,
+          "description": "The start of the action name: a tool (`nats.`) or a procedure.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromMs": {
+          "default": null,
+          "description": "Earliest time, Unix ms.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "includeStarted": {
+          "default": null,
+          "description": "Also the admission entries (`Started`) that have a completion; off by default, so a call\nis one row.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "outcome": {
+          "default": null,
+          "description": "`allowed`, `refused` or `failed`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "principal": {
+          "default": null,
+          "description": "Part of a principal id (who), case-insensitive.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "risk": {
+          "default": null,
+          "description": "`Read`, `Write` or `Destructive`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sensitiveOnly": {
+          "default": null,
+          "description": "Only the sensitive reads.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "toMs": {
+          "default": null,
+          "description": "Latest time, Unix ms.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AuditGetInput": {
+      "description": "Input of `audit.get`.",
+      "properties": {
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq"
+      ],
+      "type": "object"
+    },
+    "AuditListInput": {
+      "description": "Input of `audit.list`.",
+      "properties": {
+        "cursor": {
+          "default": null,
+          "description": "The `next` of the previous page; absent for the newest.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuditFilter"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "At most 500; 100 when left out.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AuditListOutput": {
+      "description": "Output of `audit.list`.",
+      "properties": {
+        "next": {
+          "description": "Send it back for the next page; `null` at the oldest record.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "records": {
+          "description": "Newest first.",
+          "items": {
+            "$ref": "#/$defs/AuditRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "records",
+        "next"
+      ],
+      "type": "object"
+    },
+    "AuditPrincipalRow": {
+      "description": "A principal of the acting chain.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "session"
+      ],
+      "type": "object"
+    },
+    "AuditRecordView": {
+      "description": "Output of `audit.get`: the entry, its hashes and everything it holds (digests, never values).",
+      "properties": {
+        "approvalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delivery": {
+          "description": "What the client received (a completion entry).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "items": {
+            "$ref": "#/$defs/AuditDetailRow"
+          },
+          "type": "array"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "inputDigest": {
+          "description": "Over the redacted input.",
+          "type": "string"
+        },
+        "parentCorrelationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prevHash": {
+          "type": "string"
+        },
+        "principals": {
+          "items": {
+            "$ref": "#/$defs/AuditPrincipalRow"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "description": "Why a refusal was refused, as the log records it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "row": {
+          "$ref": "#/$defs/AuditRow"
+        },
+        "statementDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tenant": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "row",
+        "tenant",
+        "principals",
+        "reason",
+        "approvalId",
+        "inputDigest",
+        "statementDigest",
+        "delivery",
+        "parentCorrelationId",
+        "detail",
+        "prevHash",
+        "hash"
+      ],
+      "type": "object"
+    },
+    "AuditRow": {
+      "description": "One entry of the log as a row of the list.",
+      "properties": {
+        "action": {
+          "description": "The procedure or event name, e.g. `nats.js.streams.delete`, `auth.login`.",
+          "type": "string"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "errorCode": {
+          "description": "The error code of a failed call.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "description": "`allowed`, `refused` or `failed`.",
+          "type": "string"
+        },
+        "perm": {
+          "type": "string"
+        },
+        "phase": {
+          "description": "`started` for an admission entry, else `done`.",
+          "type": "string"
+        },
+        "risk": {
+          "description": "`Read`, `Write` or `Destructive`.",
+          "type": "string"
+        },
+        "sensitive": {
+          "description": "A read the log keeps because it is sensitive.",
+          "type": "boolean"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "session": {
+          "type": "string"
+        },
+        "target": {
+          "description": "`kind/id` of the target, when the call had one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "user": {
+          "description": "The acting principal's id, nearest in the chain.",
+          "type": "string"
+        },
+        "userKind": {
+          "description": "`human`, `agent`, `plugin` or `system`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "timeMs",
+        "user",
+        "session",
+        "userKind",
+        "action",
+        "perm",
+        "target",
+        "risk",
+        "sensitive",
+        "outcome",
+        "errorCode",
+        "phase",
+        "durationMs",
+        "correlationId"
+      ],
+      "type": "object"
+    },
+    "AuditStatusOutput": {
+      "description": "Output of `audit.status`.",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "checkpointMs": {
+          "description": "When the checkpoint was written, Unix ms, and the record it names.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "checkpointSeq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "oldestTimeMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "records": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "refusing": {
+          "description": "Why the log refuses writes, when it does.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "segments": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "segments",
+        "bytes",
+        "maxBytes",
+        "oldestTimeMs",
+        "records",
+        "refusing",
+        "checkpointMs",
+        "checkpointSeq"
+      ],
+      "type": "object"
+    },
+    "AuditVerifyOutput": {
+      "description": "Output of `audit.verify`.",
+      "properties": {
+        "broken": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuditBreak"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkedMs": {
+          "description": "When the check ended, Unix ms.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "checkpoint": {
+          "description": "`intact`, `not checked` (its key is not loaded), `absent` (no checkpoint yet), or `none`\n(this server has no key for one).",
+          "type": "string"
+        },
+        "headSeq": {
+          "description": "The last record's `seq`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ok": {
+          "description": "The chain is intact and, when there is a key, so is its checkpoint.",
+          "type": "boolean"
+        },
+        "records": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "segments": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unfinished": {
+          "description": "Admissions with no completion: calls whose outcome is unknown.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "records",
+        "segments",
+        "headSeq",
+        "unfinished",
+        "checkpoint",
+        "broken",
+        "checkedMs"
+      ],
+      "type": "object"
+    },
     "Auto": {
       "description": "`\"auto\"` in a [`CodecChoice`].",
       "enum": [
@@ -15957,6 +16483,92 @@
     },
     {
       "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AuditGetInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "audit.get",
+      "output": {
+        "$ref": "#/$defs/AuditRecordView"
+      },
+      "perm": "audit.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AuditListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "audit.list",
+      "output": {
+        "$ref": "#/$defs/AuditListOutput"
+      },
+      "perm": "audit.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "audit.status",
+      "output": {
+        "$ref": "#/$defs/AuditStatusOutput"
+      },
+      "perm": "audit.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "audit.verify",
+      "output": {
+        "$ref": "#/$defs/AuditVerifyOutput"
+      },
+      "perm": "audit.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 300000,
+      "timeout_max_ms": 600000
+    },
+    {
+      "agent": "hidden",
       "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
@@ -20145,5 +20757,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:2900824085b69c9bc90a9ec60a3b27574d500bb80a7f72ae2c1a59508f1f891c"
+  "schema_hash": "sha256:3addab27b6a69e4bf588e5bfdf22ec4bf395d519d45f2c65fa3f5521ee77d109"
 }

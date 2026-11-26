@@ -673,3 +673,119 @@ async fn a_backup_closes_the_active_segment_and_names_every_record() {
     let again = sink.close_for_backup().unwrap();
     assert_eq!(again.segments.len(), 2);
 }
+
+// Reading the log for people: `audit.list`, `audit.get` and `audit.verify` (DOC-25 §3.5.5, §3.5.7).
+
+use audit_jsonl::reader::{self, Cursor, Filter, OutcomeFilter};
+
+fn none(_: &str) -> bool {
+    false
+}
+
+/// Every record of a log of `n`, a page of `limit` at a time, newest first.
+fn all_pages(dir: &Path, filter: &Filter, limit: usize) -> Vec<u64> {
+    let mut seqs = Vec::new();
+    let mut cursor: Option<Cursor> = None;
+    for _ in 0..1000 {
+        let page = reader::page(dir, filter, cursor, limit, &none).unwrap();
+        assert!(page.records.len() <= limit);
+        seqs.extend(page.records.iter().map(|r| r.seq));
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => return seqs,
+        }
+    }
+    panic!("the pages never ended");
+}
+
+#[tokio::test]
+async fn pages_run_newest_first_across_segments_and_cover_every_record_once() {
+    let (dir, _) = log_of(40, small(2_000)).await;
+    assert!(files(dir.path()).len() >= 5);
+    for limit in [1, 3, 7, 40, 500] {
+        let seqs = all_pages(dir.path(), &Filter::default(), limit);
+        assert_eq!(seqs, (0..40).rev().collect::<Vec<u64>>(), "limit {limit}");
+    }
+}
+
+#[tokio::test]
+async fn a_filter_keeps_what_matches_and_a_time_range_skips_segments() {
+    let (dir, _) = log_of(40, small(2_000)).await;
+    // Entry i is at T0 + i minutes.
+    let range = Filter {
+        from_ms: Some(T0 + 10 * 60_000),
+        to_ms: Some(T0 + 14 * 60_000),
+        ..Filter::default()
+    };
+    assert_eq!(all_pages(dir.path(), &range, 2), vec![14, 13, 12, 11, 10]);
+    let by_user = Filter {
+        principal: Some("ALICE".into()),
+        action_prefix: Some("nats.kv".into()),
+        risk: Some(Risk::Write),
+        ..Filter::default()
+    };
+    assert_eq!(all_pages(dir.path(), &by_user, 100).len(), 40);
+    let nobody = Filter {
+        principal: Some("bob".into()),
+        ..Filter::default()
+    };
+    assert!(all_pages(dir.path(), &nobody, 100).is_empty());
+    let refused = Filter {
+        outcome: Some(OutcomeFilter::Refused),
+        ..Filter::default()
+    };
+    assert!(all_pages(dir.path(), &refused, 100).is_empty());
+    let sensitive = reader::page(
+        dir.path(),
+        &Filter {
+            sensitive_only: true,
+            ..Filter::default()
+        },
+        None,
+        10,
+        &|a| a == "nats.kv.put",
+    )
+    .unwrap();
+    assert_eq!(sensitive.records.len(), 10);
+}
+
+#[tokio::test]
+async fn a_record_is_found_by_its_number_and_a_missing_one_is_none() {
+    let (dir, _) = log_of(25, small(2_000)).await;
+    for seq in [0, 7, 24] {
+        assert_eq!(reader::get(dir.path(), seq).unwrap().unwrap().seq, seq);
+    }
+    assert!(reader::get(dir.path(), 25).unwrap().is_none());
+    assert!(
+        reader::get(&dir.path().join("nothing"), 0)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn the_sink_verifies_its_own_log_while_it_is_open_and_names_the_break_in_a_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = TestClock::at(T0);
+    let sink = SegmentedSink::open(dir.path(), options(&clock, small(2_000))).unwrap();
+    for i in 0..30 {
+        sink.append(entry(i, T0 + i * 60_000)).await.unwrap();
+    }
+    let out = sink.verify_log().unwrap();
+    assert!(out.broken.is_none(), "{:?}", out.broken);
+    assert_eq!(out.records, 30);
+    assert!(out.segments >= 4);
+    assert_eq!(out.head.map(|(seq, _)| seq), Some(29));
+    assert!(out.checkpoint.is_none(), "no key, no checkpoint to check");
+    // A line changed in the middle of an older segment is the first break, with its place.
+    let all = files(dir.path());
+    let victim = &all[1];
+    let text = fs::read_to_string(victim)
+        .unwrap()
+        .replacen("nats.kv.put", "nats.kv.get", 1);
+    fs::write(victim, text).unwrap();
+    let out = sink.verify_log().unwrap();
+    let broken = out.broken.expect("a break");
+    assert_eq!(broken.kind, BreakKind::Edited);
+    assert_eq!(broken.file, *victim);
+}

@@ -96,6 +96,24 @@ pub struct BackupSet {
     pub head: Option<(u64, Digest)>,
 }
 
+/// What [`SegmentedSink::verify_log`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyOutcome {
+    /// Records checked (0 when the chain breaks before the end of the check).
+    pub records: u64,
+    pub segments: usize,
+    /// The last record's `seq` and hash.
+    pub head: Option<(u64, Digest)>,
+    /// Correlation ids of admissions without a completion.
+    pub unfinished: Vec<String>,
+    pub retentions: usize,
+    pub new_chains: usize,
+    /// What the checkpoint said; `None` when the log has no key to check it with.
+    pub checkpoint: Option<Verdict>,
+    /// The first break, when there is one.
+    pub broken: Option<crate::check::Break>,
+}
+
 /// A snapshot for `audit.status` (DOC-25 §3.5.7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentStatus {
@@ -360,6 +378,73 @@ impl SegmentedSink {
                     .then(|| "the audit log is full".to_owned())
             }),
         }
+    }
+
+    /// Checks the whole log as `audit verify` does (DOC-25 §3.5.5): the chain across the files,
+    /// then the checkpoint with the keys this sink holds. Reads the files while the sink goes on
+    /// writing; a write in progress at the very end of the newest file is read again once.
+    pub fn verify_log(&self) -> io::Result<VerifyOutcome> {
+        let run = || -> io::Result<VerifyOutcome> {
+            let dir = &self.inner.dir;
+            let files = segment_files(dir)?;
+            let io_error = |path: PathBuf, error: io::Error| {
+                io::Error::new(error.kind(), format!("{}: {error}", path.display()))
+            };
+            match check_files(&files) {
+                Err(CheckError::Io { path, error }) => Err(io_error(path, error)),
+                Err(CheckError::Broken(b)) => Ok(VerifyOutcome {
+                    records: 0,
+                    segments: files.len(),
+                    head: None,
+                    unfinished: Vec::new(),
+                    retentions: 0,
+                    new_chains: 0,
+                    checkpoint: None,
+                    broken: Some(*b),
+                }),
+                Ok(checked) => {
+                    let keys = Arc::clone(
+                        &self
+                            .inner
+                            .checkpoint
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner()),
+                    );
+                    let (checkpoint, broken) = if keys.is_empty() {
+                        (None, None)
+                    } else {
+                        match check_checkpoint(dir, &files, &checked, &keys) {
+                            Ok(verdict) => (Some(verdict), None),
+                            Err(CheckError::Io { path, error }) => {
+                                return Err(io_error(path, error));
+                            }
+                            Err(CheckError::Broken(b)) => (None, Some(*b)),
+                        }
+                    };
+                    Ok(VerifyOutcome {
+                        records: checked.records,
+                        segments: checked.segments.len(),
+                        head: checked.head,
+                        unfinished: checked.unfinished,
+                        retentions: checked.retentions,
+                        new_chains: checked.new_chains,
+                        checkpoint,
+                        broken,
+                    })
+                }
+            }
+        };
+        let first = run()?;
+        // A line being written when the newest file was read looks unparsable once.
+        if first
+            .broken
+            .as_ref()
+            .is_some_and(|b| b.kind == crate::check::BreakKind::Unparsable)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            return run();
+        }
+        Ok(first)
     }
 
     /// Replaces the checkpoint's keys (a key rotation) and writes a checkpoint with the new
