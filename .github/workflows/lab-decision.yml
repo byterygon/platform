@@ -8,6 +8,9 @@ name: Lab decision
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # TSK-150: in the merge queue the decision was made on the pull request; this passes there, so the
+  # queue never waits for it if the check is made required.
+  merge_group:
 
 permissions:
   contents: read
@@ -22,13 +25,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - if: ${{ github.event_name == 'merge_group' }}
+        run: echo "The merge queue: the lab decision was made on the pull request." | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           node-version: 24
       - name: The pull request has a lab label when its change needs the lab
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}

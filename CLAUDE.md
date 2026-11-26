@@ -23,7 +23,9 @@ summarises what a session needs when Notion is unavailable.
   (the scope `node scripts/affected.mjs` prints as `lab_tools`), `lab:<tool>` (a scope you choose;
   `lab:all` for every tool) or `lab:none` (say why in the description). The lab runs on a PR only
   with a label, and the "Lab decision" check fails a PR that needs it and has none.
-- Rebase on `main` before opening the PR. Keep edits to shared files (`Cargo.toml`, lockfiles,
+- Rebase on `main` before opening the PR; after that, only on a conflict. Merging is
+  `gh pr merge <n>`, which adds the PR to the merge queue (TSK-150; never `--admin`): never rebase
+  only because the branch is behind `main`. Keep edits to shared files (`Cargo.toml`, lockfiles,
   CI) minimal and list them in the PR description.
 - Put the task link in the PR, the PR link in the task, and add a **Work Log** entry when done.
 
