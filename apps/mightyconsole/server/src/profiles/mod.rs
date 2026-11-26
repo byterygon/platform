@@ -229,8 +229,23 @@ fn check_color(color: &Option<String>) -> Result<(), ProfileError> {
 
 /// The size of a record's `fields` and `extras`, as JSON.
 fn record_bytes(fields: &Value, extras: &Value) -> usize {
-    serde_json::to_vec(fields).map_or(0, |v| v.len())
-        + serde_json::to_vec(extras).map_or(0, |v| v.len())
+    json_len(fields) + json_len(extras)
+}
+
+/// The length of `value` as compact JSON (what `serde_json::to_vec` writes), counted without
+/// writing it out: a record is up to [`MAX_RECORD_BYTES`]. `Value`'s `Display` is serde_json's
+/// own code, so a test build runs it optimised (`profile.dev.package.serde_json`, TSK-156).
+fn json_len(value: &Value) -> usize {
+    struct Count(usize);
+    impl std::fmt::Write for Count {
+        fn write_str(&mut self, s: &str) -> std::fmt::Result {
+            self.0 += s.len();
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    std::fmt::write(&mut count, format_args!("{value}")).expect("counting cannot fail");
+    count.0
 }
 
 /// `fields` and `extras` are objects, small enough, and `fields` holds no secret.
@@ -890,5 +905,29 @@ impl ProfileOwners for StoreOwners {
             },
             Ownership::Shared => ProfileOwner::Shared,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::json_len;
+
+    #[test]
+    fn json_len_is_the_length_serde_json_writes() {
+        for value in [
+            json!({}),
+            json!(null),
+            json!({ "servers": ["nats://a:4222"], "n": 1.5, "on": true }),
+            json!({ "quote\"and\\slash": "line\nbreak\ttab\u{1}", "é": "日本語 🦀" }),
+            json!({ "blob": "x".repeat(70_000), "nested": [[{ "a": [] }]] }),
+        ] {
+            assert_eq!(
+                json_len(&value),
+                serde_json::to_vec(&value).unwrap().len(),
+                "{value}"
+            );
+        }
     }
 }

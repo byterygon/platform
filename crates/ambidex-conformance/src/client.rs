@@ -61,7 +61,7 @@ impl Client {
 
     /// Sends `frames` encoded back to back in one chunk, so the engine reads them in one go.
     pub async fn send(&mut self, frames: &[Frame]) {
-        let bytes = frames.iter().flat_map(encode).collect();
+        let bytes = frames.iter().map(encode).collect::<Vec<_>>().concat();
         self.send_bytes(bytes).await;
     }
 
