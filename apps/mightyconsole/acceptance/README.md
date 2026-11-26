@@ -30,7 +30,9 @@ A tool that is not built yet is skipped as a whole, saying so: `docker` waits fo
 
 In CI the lab job restores a Rust cache that the "Lab cache" workflow saves on main from
 `prebuild.sh` (TSK-148): the cargo targets the checklists build, one line per package and feature
-set. A new `cargo` check with another package or feature set adds its line there.
+set. The lab job also runs it in the background while the lab comes up, for the run's checklists
+(`prebuild.sh foundation messaging ...`, TSK-149). A new `cargo` check with another package or
+feature set adds its line there.
 
 ## Evidence
 

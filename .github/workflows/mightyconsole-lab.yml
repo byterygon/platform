@@ -99,27 +99,7 @@ jobs:
             docker stats --no-stream --format "{{.Name}} {{.CPUPerc}} {{.MemUsage}}" 2>/dev/null | sort -k2 -rn | head -5
             sleep 15
           done' >> "$out" 2>&1 &
-      # The tools as arguments ("all": none, which lab.mts reads as every tool).
-      - name: Up
-        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
-        env:
-          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
-        run: node apps/mightyconsole/lab/lab.mts up $LAB_TOOLS
-      - name: Check
-        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
-        env:
-          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
-        run: node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
-      - name: Seeds are idempotent
-        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
-        env:
-          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
-        run: |
-          node apps/mightyconsole/lab/lab.mts seed $LAB_TOOLS
-          node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
-      - name: LangGraph with no egress
-        if: ${{ steps.tools.outputs.lab_tools == 'all' || contains(format(' {0} ', steps.tools.outputs.lab_tools), ' langgraph ') }}
-        run: node apps/mightyconsole/lab/lab.mts langgraph-offline
+      # TSK-149: before Up, so the build below can start; it reads only the tools.
       - name: Checklists to run
         id: checklists
         env:
@@ -168,10 +148,66 @@ jobs:
           key: mightyconsole-acceptance
           add-job-id-key: false
           save-if: false
+      # TSK-149: the cargo targets of this run's checklists are built in the background while the lab
+      # comes up, is checked and seeded (minutes of waiting on containers), under nice so the
+      # containers keep the CPU first. Same environment as the Acceptance step (rust-cache exported
+      # CARGO_INCREMENTAL above), so the checklists' cargo calls find everything built. The step
+      # "Wait for the prebuild" ends it before the checklists start.
+      - name: Prebuild in the background
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
+        env:
+          LISTS: ${{ steps.checklists.outputs.lists }}
+          NATS: ${{ steps.checklists.outputs.nats != '' && 'nats' || '' }}
+          ROUTES: ${{ steps.checklists.outputs.routes != '' && 'routes' || '' }}
+        run: |
+          log="$RUNNER_TEMP/prebuild.log"
+          nohup sh -c 'log="$0"; nice -n 10 apps/mightyconsole/acceptance/prebuild.sh "$@" > "$log" 2>&1; echo $? > "$log.status"' "$log" $LISTS $NATS $ROUTES > /dev/null 2>&1 &
+          echo "prebuild.sh $LISTS $NATS $ROUTES started, log in $log"
+      # The tools as arguments ("all": none, which lab.mts reads as every tool).
+      - name: Up
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
+        run: node apps/mightyconsole/lab/lab.mts up $LAB_TOOLS
+      - name: Check
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
+        run: node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
+      - name: Seeds are idempotent
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
+        run: |
+          node apps/mightyconsole/lab/lab.mts seed $LAB_TOOLS
+          node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
+      - name: LangGraph with no egress
+        if: ${{ steps.tools.outputs.lab_tools == 'all' || contains(format(' {0} ', steps.tools.outputs.lab_tools), ' langgraph ') }}
+        run: node apps/mightyconsole/lab/lab.mts langgraph-offline
+      # The lab came up, was checked and seeded (every step above passed): net-route's step below runs
+      # only then (TSK-115, TSK-147).
+      - name: Lab ready
+        id: lab-ready
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        run: echo "the lab is up"
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       - run: pnpm install --frozen-lockfile
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
+      # TSK-149: the background build ends here, before the checklists; its result is printed and kept
+      # with the evidence. A failed prebuild fails nothing: the checklists build and report as before.
+      - name: Wait for the prebuild
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
+        timeout-minutes: 30
+        run: |
+          log="$RUNNER_TEMP/prebuild.log"
+          start=$(date +%s)
+          while [ ! -f "$log.status" ]; do sleep 5; done
+          echo "waited $(( $(date +%s) - start )) s for prebuild.sh, exit $(cat "$log.status")"
+          grep -E '^== |Finished|^error' "$log" || true
+          if [ "$(cat "$log.status")" != 0 ]; then tail -50 "$log"; fi
+          mkdir -p apps/mightyconsole/acceptance/evidence
+          cp "$log" apps/mightyconsole/acceptance/evidence/prebuild.log
       # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
       - name: Acceptance (foundation, LangGraph, the messaging core, Temporal and NATS, against the lab)
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
@@ -193,10 +229,10 @@ jobs:
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       # TSK-115, TSK-147 (approved by Uy Son 2026-11-26): after the checklists, and whether or not
-      # they passed (the lab came up and was checked: the checklists step ran), so neither result
+      # they passed (the lab came up and was checked: the "Lab ready" step ran), so neither result
       # hides the other; either failing fails the job and withholds the lab-pass marker.
       - name: net-route through the lab's proxies (TSK-115)
-        if: ${{ !cancelled() && steps.checklists.conclusion == 'success' && steps.checklists.outputs.routes != '' }}
+        if: ${{ !cancelled() && steps.lab-ready.conclusion == 'success' && steps.checklists.outputs.routes != '' }}
         run: cargo test -p net-route --locked --features lab-tests --test lab
       # TSK-130: the marker main looks for, only when every tool ran and every step passed.
       - name: Lab-pass marker
