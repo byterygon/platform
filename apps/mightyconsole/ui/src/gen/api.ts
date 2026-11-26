@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:2900824085b69c9bc90a9ec60a3b27574d500bb80a7f72ae2c1a59508f1f891c";
+export const SCHEMA_HASH = "sha256:3addab27b6a69e4bf588e5bfdf22ec4bf395d519d45f2c65fa3f5521ee77d109";
 
 // ---- Types
 
@@ -239,6 +239,199 @@ metadata?: JsonValue | null,
  * 1 to 1000; 100 when absent.
  */
 limit?: number | null, offset?: number | null, };
+
+/**
+ * The first place the chain breaks.
+ */
+export type AuditBreak = { 
+/**
+ * The segment file's name.
+ */
+file: string, 
+/**
+ * 1-based.
+ */
+line: number, seq: number | null, 
+/**
+ * `edited`, `deleted`, `reordered`, `gap`, `head cut`, `truncated tail` or `unparsable`.
+ */
+kind: string, message: string, };
+
+/**
+ * A readable value of an entry's detail.
+ */
+export type AuditDetailRow = { key: string, value: string, };
+
+/**
+ * What the screen's filters mean (every field is optional).
+ */
+export type AuditFilter = { 
+/**
+ * Earliest time, Unix ms.
+ */
+fromMs?: number | null, 
+/**
+ * Latest time, Unix ms.
+ */
+toMs?: number | null, 
+/**
+ * Part of a principal id (who), case-insensitive.
+ */
+principal?: string | null, 
+/**
+ * The start of the action name: a tool (`nats.`) or a procedure.
+ */
+action?: string | null, 
+/**
+ * `Read`, `Write` or `Destructive`.
+ */
+risk?: string | null, 
+/**
+ * `allowed`, `refused` or `failed`.
+ */
+outcome?: string | null, 
+/**
+ * Only the sensitive reads.
+ */
+sensitiveOnly?: boolean | null, 
+/**
+ * Also the admission entries (`Started`) that have a completion; off by default, so a call
+ * is one row.
+ */
+includeStarted?: boolean | null, };
+
+/**
+ * Input of `audit.get`.
+ */
+export type AuditGetInput = { seq: number, };
+
+/**
+ * Input of `audit.list`.
+ */
+export type AuditListInput = { filter?: AuditFilter | null, 
+/**
+ * The `next` of the previous page; absent for the newest.
+ */
+cursor?: string | null, 
+/**
+ * At most 500; 100 when left out.
+ */
+limit?: number | null, };
+
+/**
+ * Output of `audit.list`.
+ */
+export type AuditListOutput = { 
+/**
+ * Newest first.
+ */
+records: Array<AuditRow>, 
+/**
+ * Send it back for the next page; `null` at the oldest record.
+ */
+next: string | null, };
+
+/**
+ * A principal of the acting chain.
+ */
+export type AuditPrincipalRow = { kind: string, id: string, session: string, };
+
+/**
+ * Output of `audit.get`: the entry, its hashes and everything it holds (digests, never values).
+ */
+export type AuditRecordView = { row: AuditRow, tenant: string, principals: Array<AuditPrincipalRow>, 
+/**
+ * Why a refusal was refused, as the log records it.
+ */
+reason: string | null, approvalId: string | null, 
+/**
+ * Over the redacted input.
+ */
+inputDigest: string, statementDigest: string | null, 
+/**
+ * What the client received (a completion entry).
+ */
+delivery: string | null, parentCorrelationId: string | null, detail: Array<AuditDetailRow>, prevHash: string, hash: string, };
+
+/**
+ * One entry of the log as a row of the list.
+ */
+export type AuditRow = { seq: number, timeMs: number, 
+/**
+ * The acting principal's id, nearest in the chain.
+ */
+user: string, session: string, 
+/**
+ * `human`, `agent`, `plugin` or `system`.
+ */
+userKind: string, 
+/**
+ * The procedure or event name, e.g. `nats.js.streams.delete`, `auth.login`.
+ */
+action: string, perm: string, 
+/**
+ * `kind/id` of the target, when the call had one.
+ */
+target: string | null, 
+/**
+ * `Read`, `Write` or `Destructive`.
+ */
+risk: string, 
+/**
+ * A read the log keeps because it is sensitive.
+ */
+sensitive: boolean, 
+/**
+ * `allowed`, `refused` or `failed`.
+ */
+outcome: string, 
+/**
+ * The error code of a failed call.
+ */
+errorCode: string | null, 
+/**
+ * `started` for an admission entry, else `done`.
+ */
+phase: string, durationMs: number | null, correlationId: string, };
+
+/**
+ * Output of `audit.status`.
+ */
+export type AuditStatusOutput = { segments: number, bytes: number, maxBytes: number, oldestTimeMs: number | null, records: number, 
+/**
+ * Why the log refuses writes, when it does.
+ */
+refusing: string | null, 
+/**
+ * When the checkpoint was written, Unix ms, and the record it names.
+ */
+checkpointMs: number | null, checkpointSeq: number | null, };
+
+/**
+ * Output of `audit.verify`.
+ */
+export type AuditVerifyOutput = { 
+/**
+ * The chain is intact and, when there is a key, so is its checkpoint.
+ */
+ok: boolean, records: number, segments: number, 
+/**
+ * The last record's `seq`.
+ */
+headSeq: number | null, 
+/**
+ * Admissions with no completion: calls whose outcome is unknown.
+ */
+unfinished: Array<string>, 
+/**
+ * `intact`, `not checked` (its key is not loaded), `absent` (no checkpoint yet), or `none`
+ * (this server has no key for one).
+ */
+checkpoint: string, broken: AuditBreak | null, 
+/**
+ * When the check ended, Unix ms.
+ */
+checkedMs: number, };
 
 /**
  * `"auto"` in a [`CodecChoice`].
@@ -4469,6 +4662,10 @@ export interface Procedures {
   readonly "app.me": ProcedureDef<"query", Empty, Me, ToolError>;
   readonly "app.sessions.list": ProcedureDef<"query", Empty, SessionsOutput, ToolError>;
   readonly "app.sessions.revoke": ProcedureDef<"mutation", SessionIdInput, RevokedOutput, ToolError>;
+  readonly "audit.get": ProcedureDef<"query", AuditGetInput, AuditRecordView, ToolError>;
+  readonly "audit.list": ProcedureDef<"query", AuditListInput, AuditListOutput, ToolError>;
+  readonly "audit.status": ProcedureDef<"query", Empty, AuditStatusOutput, ToolError>;
+  readonly "audit.verify": ProcedureDef<"query", Empty, AuditVerifyOutput, ToolError>;
   readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
   readonly "docker.containers.exec": ProcedureDef<"stream", ContainersExecInput, ContainersExecSummary, ToolError>;
@@ -4727,6 +4924,12 @@ export interface Api {
       readonly list: Procedures["app.sessions.list"];
       readonly revoke: Procedures["app.sessions.revoke"];
     };
+  };
+  readonly audit: {
+    readonly get: Procedures["audit.get"];
+    readonly list: Procedures["audit.list"];
+    readonly status: Procedures["audit.status"];
+    readonly verify: Procedures["audit.verify"];
   };
   readonly docker: {
     readonly compose: {
@@ -5399,6 +5602,48 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+  },
+  audit: {
+    get: {
+      name: "audit.get",
+      kind: "query",
+      perm: "audit.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "audit.list",
+      kind: "query",
+      perm: "audit.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    status: {
+      name: "audit.status",
+      kind: "query",
+      perm: "audit.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    verify: {
+      name: "audit.verify",
+      kind: "query",
+      perm: "audit.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 300000,
+      timeoutMaxMs: 600000,
     },
   },
   docker: {
