@@ -13,6 +13,7 @@ export function describeError(error: unknown): DescribedError {
     if (details?.kind) out.kind = details.kind;
     if (details?.remote?.code) out.remoteCode = details.remote.code;
     if (details?.hostKey) out.hostKey = details.hostKey;
+    if (details?.hop) out.hop = details.hop;
     if (details?.remote?.name) out.remoteName = details.remote.name;
     if (error.code === "Unavailable" && !details?.kind) out.description = "The server is not reachable.";
     const denied = denialOf(error);
@@ -53,4 +54,13 @@ export function remedyOf(error: DescribedError): "retry" | "editProfile" | "trus
 /** "1,240" in the user's locale. */
 export function formatCount(n: number): string {
   return new Intl.NumberFormat().format(Math.round(n));
+}
+
+/** A ToolError as it arrives inside another answer (a route Test's line): as `describeError` reads one. */
+export function describeToolError(e: ToolError): DescribedError {
+  const out: DescribedError = { title: e.message, kind: e.kind };
+  if (e.remote?.code) out.remoteCode = e.remote.code;
+  if (e.hostKey) out.hostKey = e.hostKey;
+  if (e.hop) out.hop = e.hop;
+  return out;
 }
