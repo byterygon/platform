@@ -11,7 +11,8 @@
 //   node lab.mts langgraph-offline   the LangGraph server starts and serves a run with no egress
 //
 // Tools: nats, kafka (with the Schema Registry), k8s, temporal, docker, langgraph, and idp (Dex, the
-// identity provider for sign-in, TSK-136); none means all.
+// identity provider for sign-in, TSK-136), and routes (squid, Dante and targets on an internal
+// network, for net-route: TSK-115); none means all.
 // Through pnpm: `pnpm --filter @byterygon/mightyconsole lab up nats`. Needs Docker with compose.
 import { type SpawnSyncOptions, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -20,7 +21,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const LAB = dirname(fileURLToPath(import.meta.url));
-export const TOOLS = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph", "idp"] as const;
+export const TOOLS = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph", "idp", "routes"] as const;
 type Tool = (typeof TOOLS)[number];
 
 const UV = "ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58";
@@ -87,6 +88,25 @@ async function sshBanner(port: number): Promise<string> {
   });
 }
 
+async function tcpOpen(port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("no answer"));
+    }, 5_000);
+    socket.once("connect", () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve();
+    });
+    socket.once("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+  });
+}
+
 async function check(tools: readonly Tool[]): Promise<number> {
   const failures: string[] = [];
   // Every published port of the running lab is on 127.0.0.1.
@@ -137,6 +157,23 @@ async function check(tools: readonly Tool[]): Promise<number> {
       failures.push(`docker: SSH on 127.0.0.1:2222: ${(e as Error).message}`);
     }
   }
+  if (tools.includes("routes")) {
+    // The proxies answer on 127.0.0.1 and reach the internal targets; the targets publish nothing.
+    for (const port of [3128, 3129, 1080]) {
+      try {
+        await tcpOpen(port);
+      } catch (e) {
+        failures.push(`routes: 127.0.0.1:${port}: ${(e as Error).message}`);
+      }
+    }
+    for (const [service, target] of [["routes-squid", "echo.routes.internal 7"], ["routes-socks", "nats.routes.internal 4222"]] as const) {
+      try {
+        compose(["exec", "-T", service, "sh", "-c", `nc -z -w 3 ${target}`], { stdio: ["ignore", "pipe", "pipe"] });
+      } catch {
+        failures.push(`routes: ${service} does not reach ${target.replace(" ", ":")}`);
+      }
+    }
+  }
   if (failures.length > 0) {
     console.error(`lab check: ${failures.length} failed:\n- ${failures.join("\n- ")}`);
     return 1;
@@ -149,7 +186,7 @@ async function check(tools: readonly Tool[]): Promise<number> {
 export function imagePins(): { compose: string[]; lock: string[]; problems: string[] } {
   const composeText = readFileSync(join(LAB, "compose.yaml"), "utf8");
   const images = [...composeText.matchAll(/^\s+image:\s*(\S+)\s*$/gm)].map((m) => m[1]!);
-  const dockerfiles = ["tools/Dockerfile", "langgraph/Dockerfile", "docker-host/Dockerfile"].map((f) => readFileSync(join(LAB, f), "utf8"));
+  const dockerfiles = ["tools/Dockerfile", "langgraph/Dockerfile", "docker-host/Dockerfile", "routes/Dockerfile"].map((f) => readFileSync(join(LAB, f), "utf8"));
   const bases = dockerfiles.flatMap((d) => [...d.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]!));
   const inner = [...readFileSync(join(LAB, "k8s", "10-lab.yaml"), "utf8").matchAll(/image:\s*(\S+)/g), ...readFileSync(join(LAB, "docker-host", "shop.yaml"), "utf8").matchAll(/image:\s*(\S+)/g)].map((m) => m[1]!);
   const lock = readFileSync(join(LAB, "images.lock"), "utf8")
@@ -170,7 +207,7 @@ function imagesSave(file: string): void {
   const { lock } = imagePins();
   for (const image of lock) run("docker", ["pull", "-q", image]);
   compose(["--profile", "all", "--profile", "tools", "build"]);
-  const built = ["mightyconsole-lab-tools:local", "mightyconsole-lab-docker-host:local", "mightyconsole-lab-langgraph:local"];
+  const built = ["mightyconsole-lab-tools:local", "mightyconsole-lab-docker-host:local", "mightyconsole-lab-langgraph:local", "mightyconsole-lab-routes:local"];
   run("docker", ["save", "-o", file, ...lock, ...built]);
   console.log(`lab images save: wrote ${file} (${lock.length + built.length} images). The images k3s and the Docker host pull inside (busybox, k3s's own) are pulled there on first use.`);
 }

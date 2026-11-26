@@ -13,6 +13,7 @@ members = [
     "crates/db-driver-postgres",
     "crates/message-codecs",
     "crates/audit-jsonl",
+    "crates/net-route",
     "apps/dbee/core",
     "apps/dbee/rpc-gen",
     "apps/dbee/server",

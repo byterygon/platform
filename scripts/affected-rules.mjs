@@ -84,6 +84,8 @@ export const LAB_NEUTRAL_FILES = [
 export const LAB_TOOL_EXTRA = [
   { files: ["apps/mightyconsole/lab/docker-host/**"], tool: "docker" },
   { files: ["apps/mightyconsole/lab/schemas/**"], tool: "kafka" },
+  // TSK-115: the crate whose lab tests run against the routes profile.
+  { files: ["crates/net-route/**"], tool: "routes" },
 ];
 
 /**

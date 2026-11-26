@@ -31,7 +31,7 @@ summarises what a session needs when Notion is unavailable.
 
 | Path | What | License |
 | --- | --- | --- |
-| `crates/*` | Rust libraries: security-types, Ambidex (engine, macros, axum, tauri, conformance), plugin-host, db-driver(-postgres), message-codecs, audit-jsonl | MIT OR Apache-2.0 |
+| `crates/*` | Rust libraries: security-types, Ambidex (engine, macros, axum, tauri, conformance), plugin-host, db-driver(-postgres), message-codecs, audit-jsonl, net-route | MIT OR Apache-2.0 |
 | `packages/*` | TypeScript: ambidex, design-tokens, ui, lint, mcp, data-grid, theme-studio | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee: core, rpc-gen, server, desktop, ui | AGPL-3.0-only |
 | `apps/mightyconsole` | Mightyconsole: server, rpc-gen, ui, lab, release, acceptance | AGPL-3.0-only |

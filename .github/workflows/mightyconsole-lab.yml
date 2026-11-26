@@ -152,14 +152,21 @@ jobs:
           echo "more=$more" >> "$GITHUB_OUTPUT"
           echo "detail=$detail" >> "$GITHUB_OUTPUT"
           echo "nats=$nats_only" >> "$GITHUB_OUTPUT"
+          # TSK-115: net-route's tests against the routes profile (squid, Dante, internal targets).
+          routes=""
+          case " $LAB_TOOLS " in " all "|*" routes "*) routes="1" ;; esac
+          echo "routes=$routes" >> "$GITHUB_OUTPUT"
       - name: Install toolchain from rust-toolchain.toml
-        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
         with:
           key: mightyconsole-acceptance
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+      - name: net-route through the lab's proxies (TSK-115)
+        if: ${{ steps.checklists.outputs.routes != '' }}
+        run: cargo test -p net-route --locked --features lab-tests --test lab
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       - run: pnpm install --frozen-lockfile
