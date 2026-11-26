@@ -35,6 +35,31 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# Large records cross the wire in tests (a 64 MiB personal quota in 4 MiB profiles, TSK-156):
+# optimise the crates that walk them byte by byte (JSON, base64, the call digest, the store, the
+# protocol and its test client). Generic code runs at the opt-level of the crate that uses it, so
+# `ambidex` is listed for the serde_json it instantiates; the server's own uses stay unoptimised.
+[profile.dev.package.serde_json]
+opt-level = 3
+
+[profile.dev.package.memchr]
+opt-level = 3
+
+[profile.dev.package.data-encoding]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.redb]
+opt-level = 3
+
+[profile.dev.package.ambidex]
+opt-level = 3
+
+[profile.dev.package.ambidex-conformance]
+opt-level = 3
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

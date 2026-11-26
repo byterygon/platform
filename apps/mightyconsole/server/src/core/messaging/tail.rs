@@ -301,13 +301,27 @@ struct Counters {
     decode_errors: u64,
 }
 
-/// Runs a message stream to its end. A released handle (`cancel`) ends it with `Cancelled`.
+/// Runs a message stream to its end. A released handle (`cancel`) ends it with `Cancelled`,
+/// whatever it waits for then: the source, the jq worker or, paused, the client's next credit.
 pub async fn run(
+    sink: BinarySink,
+    feed: Feed,
+    req: TailRequest<'_>,
+    progress: &Progress,
+    cancel: &CancellationToken,
+) -> Result<TailSummary, RpcError<ToolError>> {
+    tokio::select! {
+        biased;
+        () = cancel.cancelled() => Err(RpcError::new(ambidex::Code::Cancelled, "the connection was closed")),
+        summary = stream(sink, feed, req, progress) => summary,
+    }
+}
+
+async fn stream(
     sink: BinarySink,
     mut feed: Feed,
     req: TailRequest<'_>,
     progress: &Progress,
-    cancel: &CancellationToken,
 ) -> Result<TailSummary, RpcError<ToolError>> {
     let filter = compile_filter(req.system, req.filter)?;
     let mut jq = match filter.as_ref().and_then(CompiledFilter::jq_code) {
@@ -337,7 +351,6 @@ pub async fn run(
     let end_reason = 'outer: loop {
         let next = tokio::select! {
             biased;
-            () = cancel.cancelled() => return Err(RpcError::new(ambidex::Code::Cancelled, "the connection was closed")),
             () = sleep_until(deadline), if deadline.is_some() => {
                 flush(&mut out, &mut builder, progress).await?;
                 deadline = None;
@@ -412,12 +425,7 @@ pub async fn run(
                 Pass::Match => true,
                 Pass::Jq => {
                     let jq = jq.as_mut().expect("a jq worker");
-                    let answer = tokio::select! {
-                        biased;
-                        () = cancel.cancelled() => return Err(RpcError::new(ambidex::Code::Cancelled, "the connection was closed")),
-                        answer = jq.next() => answer,
-                    };
-                    match answer {
+                    match jq.next().await {
                         Ok(Answer::Match) => true,
                         Ok(Answer::NoMatch) => false,
                         Ok(Answer::Failed(reason)) => {

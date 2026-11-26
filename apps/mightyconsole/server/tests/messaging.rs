@@ -574,21 +574,23 @@ async fn pausing_stops_reading_and_a_push_source_drops_the_oldest() {
     let dropped = dropped["dropped"].as_u64().unwrap();
     assert!((1..=3000).contains(&dropped), "dropped {dropped}");
 
-    // Disconnecting ends both streams with Cancelled.
+    // Disconnecting ends both streams with Cancelled at once, the paused one too (it waits for
+    // a credit; before TSK-156 it waited until its 30-second deadline).
     tab.call(next, "echo.disconnect", json!({ "connId": conn }))
         .await;
     tab.result(next).await;
-    loop {
-        let f = tab.frame(PULL).await;
-        if f.kind == Kind::Error {
-            break;
-        }
-    }
-    loop {
-        let f = tab.frame(PUSH).await;
-        if f.kind == Kind::Error {
-            break;
-        }
+    for id in [PULL, PUSH] {
+        let err = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let f = tab.frame(id).await;
+                if f.kind == Kind::Error {
+                    break serde_json::from_slice::<ambidex::ErrorPayload>(&f.payload).unwrap();
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("stream {id} did not end after the disconnect"));
+        assert_eq!(err.code, Code::Cancelled, "stream {id}: {err:?}");
     }
 }
 
