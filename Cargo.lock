@@ -4037,6 +4037,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "net-route"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "rcgen",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "zeroize",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

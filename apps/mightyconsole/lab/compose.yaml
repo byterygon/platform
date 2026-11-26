@@ -184,6 +184,64 @@ services:
       retries: 60
     profiles: [idp, all]
 
+  # Connection routes (TSK-115, DOC-23 section 12): the proxies publish their ports on 127.0.0.1
+  # and also sit on routes-internal, a network with no way out and no published port, where the
+  # targets live; only a route reaches them. Logins and the TLS certificate are in .generated/routes/.
+  routes-squid:
+    image: mightyconsole-lab-routes:local
+    build: { context: routes }
+    command: ["squid"]
+    volumes: ["./.generated:/generated:ro"]
+    networks: [default, routes-internal]
+    ports: ["127.0.0.1:3128:3128", "127.0.0.1:3129:3129"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 3128 && nc -z 127.0.0.1 3129"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
+  routes-socks:
+    image: mightyconsole-lab-routes:local
+    build: { context: routes }
+    command: ["socks"]
+    volumes: ["./.generated:/generated:ro"]
+    networks: [default, routes-internal]
+    ports: ["127.0.0.1:1080:1080"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1080"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
+  routes-echo:
+    image: mightyconsole-lab-routes:local
+    build: { context: routes }
+    command: ["echo"]
+    networks:
+      routes-internal: { aliases: [echo.routes.internal] }
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7 && nc -z 127.0.0.1 8080"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
+  routes-nats:
+    image: nats:2.12-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+    command: ["-p", "4222", "-m", "8222"]
+    networks:
+      routes-internal: { aliases: [nats.routes.internal] }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
+networks:
+  default: {}
+  # TSK-115: the targets of the routes profile; no route out, nothing published.
+  routes-internal:
+    internal: true
+
 volumes:
   seaweedfs-data: {}
   nats-data: {}

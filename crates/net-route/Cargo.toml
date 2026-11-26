@@ -1,0 +1,34 @@
+[package]
+name = "net-route"
+version = "0.1.0"
+description = "Dials a host and port directly or through a route of hops (HTTP CONNECT, SOCKS5; SSH jump hosts and local commands to come) and hands the caller a byte stream; every error names the hop that failed."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# Integration tests against the Mightyconsole lab's `routes` profile
+# (`node apps/mightyconsole/lab/lab.mts up routes` first). Plain `cargo test` leaves them out.
+lab-tests = []
+
+[dependencies]
+# Proxy-Authorization: Basic.
+base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+# TLS to an https:// proxy only (the tool's own TLS to the target runs over the stream): ring, as
+# everywhere else in the workspace.
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8.5"
+rustls-pki-types = { version = "1.15.1", features = ["std"] }
+tokio = { version = "1.54.1", default-features = false, features = ["io-util", "net", "time"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+zeroize = "1.9.1"
+
+[dev-dependencies]
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
