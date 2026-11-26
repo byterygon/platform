@@ -351,12 +351,47 @@ def ensure_idp():
     print("generate: added the identity provider (Dex)")
 
 
+def ensure_routes():
+    """Connection routes (TSK-115, DOC-23 section 12): the logins of the squid HTTP proxy and the
+    Dante SOCKS5 proxy, and squid's TLS certificate from a CA of its own (an https:// proxy's
+    pinned CA), added to an existing credentials.json without touching the rest."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    if "routes" in credentials and os.path.exists(os.path.join(OUT, "routes/env")):
+        return
+    ca_key, ca_cert = ca()
+    ca_pem = ca_cert.public_bytes(serialization.Encoding.PEM)
+    write("routes/ca.pem", ca_pem)
+    key, cert = leaf(ca_key, ca_cert, "routes-squid", ["localhost", "routes-squid"], ["127.0.0.1"])
+    write("routes/squid.pem", cert.public_bytes(serialization.Encoding.PEM) + ca_pem)
+    write("routes/squid-key.pem", pem_key(key), 0o600)
+    proxy = {"user": "labproxy", "password": secrets.token_urlsafe(12)}
+    socks = {"user": "labsocks", "password": secrets.token_urlsafe(12)}
+    env = (
+        f"PROXY_USER={proxy['user']}\nPROXY_PASSWORD={proxy['password']}\n"
+        f"SOCKS_USER={socks['user']}\nSOCKS_PASSWORD={socks['password']}\n"
+    )
+    write("routes/env", env, 0o600)
+    credentials["routes"] = {
+        "httpProxy": {"http": "127.0.0.1:3128", "https": "localhost:3129", "caFile": "routes/ca.pem", "forbiddenPort": 25, **proxy},
+        "socks5": {"address": "127.0.0.1:1080", **socks},
+        # Reached only through a route: the network they are on has no published port.
+        "targets": {"echo": "echo.routes.internal:7", "http": "echo.routes.internal:8080", "nats": "nats.routes.internal:4222"},
+        # The proxies as they reach each other on the lab network, for chains.
+        "internal": {"httpProxy": "routes-squid:3128", "socks5": "routes-socks:1080"},
+    }
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the connection routes (squid, Dante)")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
         ensure_s3()
         ensure_codec()
         ensure_idp()
+        ensure_routes()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -433,6 +468,7 @@ def main(argv):
     ensure_s3()
     ensure_codec()
     ensure_idp()
+    ensure_routes()
     print(f"generate: wrote {OUT}")
     return 0
 
