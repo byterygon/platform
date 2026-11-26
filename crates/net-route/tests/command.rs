@@ -4,7 +4,6 @@
 mod support;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use net_route::{
     CommandHop, Dialer, Hop, HttpConnectHop, Route, RouteError, RouteErrorKind, SshAuth,
@@ -45,7 +44,22 @@ fn ssh_command(hop: SshHop, command: &str) -> Hop {
     })
 }
 
+/// Runs the test program once before a test starts one through a hop. The crate watches a started
+/// program for `COMMAND_EARLY_EXIT` (300 ms) to tell one that ends at once from one that stays;
+/// on macOS the first run of a freshly built binary is scanned by the system first and can take
+/// longer than that, so a program that exits at once would be handed out as a stream.
+fn warm_up() {
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        let _ = std::process::Command::new(PROGRAM)
+            .args(["exit", "0"])
+            .stderr(std::process::Stdio::null())
+            .status();
+    });
+}
+
 fn local(args: &[&str]) -> CommandHop {
+    warm_up();
     CommandHop {
         program: PROGRAM.into(),
         args: args.iter().map(|a| (*a).to_owned()).collect(),
@@ -300,10 +314,10 @@ async fn dropping_the_stream_ends_the_program() {
     assert!(std::path::Path::new(&proc).exists());
     drop(stream);
     // It ignores its closed stdin: SIGTERM after 2 s ends it (and the dialer reaps it).
-    let deadline = std::time::Instant::now() + Duration::from_secs(6);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
     while std::path::Path::new(&proc).exists() {
         assert!(std::time::Instant::now() < deadline, "{proc} still runs");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 }
 
