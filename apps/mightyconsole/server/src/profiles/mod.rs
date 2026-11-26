@@ -20,6 +20,7 @@
 
 pub mod api;
 pub mod connect;
+pub mod docker;
 pub mod spec;
 pub mod ssh_hosts;
 pub mod table;
@@ -508,13 +509,22 @@ impl ProfileService {
         let name = check_name(draft.name.as_deref().unwrap_or_default())?;
         let color = draft.color.flatten();
         check_color(&color)?;
-        let fields = draft
+        let mut fields = draft
             .fields
             .unwrap_or_else(|| Value::Object(Default::default()));
         let extras = draft
             .extras
             .unwrap_or_else(|| Value::Object(Default::default()));
         check_record(spec, &fields, &extras)?;
+        if tool == "docker" {
+            docker::check_fields(
+                &p.id,
+                None,
+                &mut fields,
+                import.is_some(),
+                &now_text(now_ms),
+            )?;
+        }
         self.may_use_host(p, spec, &fields)?;
         if let Ownership::Personal { user } = &owner {
             self.within_quota(user, record_bytes(&fields, &extras), None)?;
@@ -605,6 +615,15 @@ impl ProfileService {
             next.extras = extras;
         }
         check_record(spec, &next.fields, &next.extras)?;
+        if next.tool == "docker" {
+            docker::check_fields(
+                &p.id,
+                Some(&current.fields),
+                &mut next.fields,
+                false,
+                &now_text(now_ms),
+            )?;
+        }
         self.may_use_host(p, spec, &next.fields)?;
         if let Ownership::Personal { user } = &next.owner {
             self.within_quota(

@@ -1,10 +1,12 @@
-//! `docker`: Docker over SSH (Mightyconsole spec §10, TSK-81). A Portainer-like view of a host
-//! that the server reaches through SSH, with no agent installed on it:
+//! `docker`: Docker (Mightyconsole spec §10, TSK-81; DOC-23 §6, TSK-116). A Portainer-like view
+//! of a host, with no agent installed on it, reached over one of three transports:
 //!
+//! - [`transport`]: SSH (the socket on a saved SSH host), a local socket or named pipe on the
+//!   server's machine, or TCP with or without TLS. One stream per request.
 //! - [`ssh`]: one russh session per live handle; the host key is checked in the handshake
-//!   against the profile's trusted one (trust on first use, spec §10.2).
-//! - [`engine`]: the Docker Engine API, HTTP/1.1 over one `direct-streamlocal` channel to the
-//!   socket per request, the API version negotiated from `/_ping` (at least 1.41).
+//!   against the SSH host's trusted one (trust on first use, spec §10.2).
+//! - [`engine`]: the Docker Engine API, HTTP/1.1 over one stream per request, the API version
+//!   negotiated from `/_ping` (at least 1.41).
 //! - `docker.connect`, `docker.disconnect`, `docker.host.info` (batch 1).
 //! - [`containers`]: `docker.containers.*`, the list, inspect, start, stop, restart, remove and
 //!   the logs stream (batch 2b); [`stats`] and [`exec`] (batch 2c).
@@ -18,9 +20,10 @@
 //!   `docker.compose.projects` from the containers' labels.
 //! - [`stream`]: the `jsonl` forwarding the logs and the events share.
 //!
-//! When the SSH session ends by itself (the host closed it, keepalives went unanswered), the
+//! When an SSH session ends by itself (the host closed it, keepalives went unanswered), the
 //! handle's state turns `failed` on `app.events` with the reason, and the UI offers to connect
-//! again. Releasing the handle closes the session.
+//! again. Releasing the handle closes the session. A local socket and TCP hold nothing open
+//! between requests: a request that cannot reach the Engine fails on its own.
 
 pub mod containers;
 pub mod engine;
@@ -32,6 +35,7 @@ pub mod ssh;
 pub mod stats;
 pub mod stream;
 pub mod system;
+pub mod transport;
 pub mod types;
 
 use std::sync::Arc;
@@ -44,6 +48,9 @@ use crate::core::stored::ToolTestInput;
 use crate::core::{ConnectionState, Empty, Hub, ToolError, ToolResult};
 use engine::{Engine, Ping};
 use ssh::{Credentials, SshSession, SshTarget};
+use transport::{
+    DockerTransport, SocketTransport, SshTransport, TcpTls, TcpTransport, expand_socket_path,
+};
 pub use types::*;
 
 /// The tool's id and namespace.
@@ -55,10 +62,26 @@ pub const DEFAULT_SOCKET: &str = "/var/run/docker.sock";
 /// The keepalive when the profile sets none (spec §10.1).
 pub const DEFAULT_KEEPALIVE_SEC: u32 = 30;
 
+/// Plain TCP's port when the profile names none (DOC-23 §6.3).
+pub const DEFAULT_TCP_PORT: u16 = 2375;
+
+/// TCP with TLS's port when the profile names none.
+pub const DEFAULT_TLS_PORT: u16 = 2376;
+
+/// How a connection reaches its Engine, for the Host page.
+#[derive(Debug, Clone)]
+pub struct ConnectionFacts {
+    pub transport: DockerTransportKind,
+    pub endpoint: String,
+    pub tls: bool,
+    pub unencrypted: bool,
+    pub ssh: Option<SshFacts>,
+}
+
 /// A connected Docker host.
 pub struct DockerClient {
     pub engine: Engine,
-    pub facts: SshFacts,
+    pub facts: ConnectionFacts,
     pub ping: Ping,
 }
 
@@ -104,7 +127,7 @@ fn count(value: &Value, key: &str) -> u32 {
 
 /// The Host page from the engine's `/info` and `/version` answers.
 fn host_info(
-    facts: &SshFacts,
+    facts: &ConnectionFacts,
     engine: &Engine,
     ping: &Ping,
     info: &Value,
@@ -142,7 +165,11 @@ fn host_info(
         .and_then(|pair| pair.get(1).and_then(Value::as_str))
         .map(str::to_owned);
     HostInfo {
-        ssh: facts.clone(),
+        transport: facts.transport,
+        endpoint: facts.endpoint.clone(),
+        tls: facts.tls,
+        unencrypted: facts.unencrypted,
+        ssh: facts.ssh.clone(),
         api_version: engine.api.to_string(),
         server_api_version: ping.server_api.to_string(),
         min_api_version: optional_text(version, "MinAPIVersion"),
@@ -247,15 +274,172 @@ fn socket_path(profile: &ConnectDockerProfile) -> Result<String, ToolError> {
     Ok(path.to_owned())
 }
 
+/// Opens the profile's transport and pings the Engine through it: the engine, the ping and the
+/// facts for the Host page. Errors as `docker.connect` lists them.
+pub(crate) async fn open(
+    profile: &ConnectDockerProfile,
+) -> Result<(Engine, Ping, ConnectionFacts), ToolError> {
+    let kind = profile.transport.unwrap_or_default();
+    let (transport, facts): (Arc<dyn DockerTransport>, ConnectionFacts) = match kind {
+        DockerTransportKind::Ssh => {
+            let target = target(profile)?;
+            let socket = socket_path(profile)?;
+            let auth = profile.auth.unwrap_or_default();
+            let display = target.display();
+            let session = SshSession::connect(target).await?;
+            let ssh = SshFacts {
+                target: display.clone(),
+                host_key: session.host_key.clone(),
+                socket_path: socket.clone(),
+                auth,
+            };
+            let transport = SshTransport {
+                session,
+                socket_path: socket,
+                target: display,
+            };
+            let facts = ConnectionFacts {
+                transport: kind,
+                endpoint: transport.describe(),
+                tls: false,
+                unencrypted: false,
+                ssh: Some(ssh),
+            };
+            (Arc::new(transport), facts)
+        }
+        DockerTransportKind::Socket => {
+            let transport = socket_transport(profile)?;
+            let facts = ConnectionFacts {
+                transport: kind,
+                endpoint: transport.describe(),
+                tls: false,
+                unencrypted: false,
+                ssh: None,
+            };
+            (Arc::new(transport), facts)
+        }
+        DockerTransportKind::Tcp => {
+            let transport = tcp_transport(profile)?;
+            let facts = ConnectionFacts {
+                transport: kind,
+                endpoint: transport.describe(),
+                tls: transport.tls.is_some(),
+                unencrypted: transport.tls.is_none(),
+                ssh: None,
+            };
+            (Arc::new(transport), facts)
+        }
+    };
+    let (engine, ping) = Engine::open(transport).await?;
+    Ok((engine, ping, facts))
+}
+
+/// The local socket of a `socket` profile (DOC-23 §6.2).
+pub(crate) fn socket_transport(
+    profile: &ConnectDockerProfile,
+) -> Result<SocketTransport, ToolError> {
+    let path = expand_socket_path(
+        profile.socket_path.as_deref().unwrap_or_default(),
+        dirs::home_dir(),
+    )?;
+    Ok(SocketTransport { path })
+}
+
+/// The TCP API of a `tcp` profile (DOC-23 §6.3): TLS verified against the pinned CA with the
+/// client certificate, or plain TCP when the person accepted it.
+pub(crate) fn tcp_transport(profile: &ConnectDockerProfile) -> Result<TcpTransport, ToolError> {
+    let host = profile.host.trim();
+    if host.is_empty() {
+        return Err(ToolError::invalid(
+            TOOL,
+            "host",
+            "enter the Engine's host name or address",
+        ));
+    }
+    if !net_route::is_valid_host(host) {
+        return Err(ToolError::invalid(
+            TOOL,
+            "host",
+            "a host name or an IP address, without a scheme or a port",
+        ));
+    }
+    let options = profile.tls.clone().unwrap_or_default();
+    let with_tls = options.enabled == Some(true);
+    let port = profile.port.unwrap_or(if with_tls {
+        DEFAULT_TLS_PORT
+    } else {
+        DEFAULT_TCP_PORT
+    });
+    if port == 0 {
+        return Err(ToolError::invalid(
+            TOOL,
+            "port",
+            "the port must be 1 to 65535",
+        ));
+    }
+    let tls = if with_tls {
+        // DOC-23 §6.3: the CA is pinned and the client certificate and key are given; only the
+        // server name is optional. (Docker's TLS is `dockerd --tlsverify`: its own CA, and a
+        // client certificate it signed.)
+        let given = |v: &Option<String>| v.as_deref().is_some_and(|t| !t.trim().is_empty());
+        for (value, field, what) in [
+            (
+                &options.ca_pem,
+                "tls.caPem",
+                "paste the CA certificate the Engine's certificate is signed by (ca.pem)",
+            ),
+            (
+                &options.client_cert_pem,
+                "tls.clientCertPem",
+                "paste the client certificate the Engine accepts (cert.pem)",
+            ),
+            (
+                &options.client_key_pem,
+                "tls.clientKeyPem",
+                "paste the client certificate's private key (key.pem)",
+            ),
+        ] {
+            if !given(value) {
+                return Err(ToolError::invalid(TOOL, field, what));
+            }
+        }
+        let config = crate::core::tls::client_config(&options)
+            .map_err(|e| ToolError::invalid(TOOL, e.field, e.message))?;
+        let server_name = rustls::pki_types::ServerName::try_from(host.to_owned())
+            .map_err(|_| ToolError::invalid(TOOL, "host", "not a host name or address"))?;
+        Some(TcpTls {
+            config: Arc::new(config),
+            server_name,
+        })
+    } else {
+        if profile.unencrypted_accepted != Some(true) {
+            return Err(ToolError::invalid(
+                TOOL,
+                "unencrypted",
+                "this profile connects without TLS: accept, in the profile, that anyone on the \
+                 network who reaches this port is root on that host, or turn TLS on",
+            ));
+        }
+        None
+    };
+    Ok(TcpTransport {
+        host: host.to_owned(),
+        port,
+        tls,
+    })
+}
+
 pub struct DockerApi(pub Arc<Hub>);
 
 pub struct DockerHostApi(pub Arc<Hub>);
 
 #[rpc::router(namespace = "docker")]
 impl DockerApi {
-    /// Opens an SSH session from the profile, checks the host key, logs in, and pings the
-    /// engine over the socket. `HostKey` (unknown or changed, with the presented key), `Auth`,
-    /// `Connect`, `Forbidden` (the host does not forward the socket), `Invalid` (the profile).
+    /// Opens the profile's transport and pings the engine through it. Over SSH: the session
+    /// opens, the host key is checked and the login made. `HostKey` (unknown or changed, with
+    /// the presented key), `Auth` (the login, or a client certificate the Engine refused), `Tls`
+    /// (the Engine's certificate), `Connect`, `Forbidden` (the host does not forward the socket,
+    /// a local socket this server may not use, the outbound policy), `Invalid` (the profile).
     #[rpc::mutation(
         perm = "docker.read",
         risk = Risk::Read,
@@ -268,27 +452,16 @@ impl DockerApi {
         input: DockerConnectInput,
     ) -> ToolResult<DockerConnectOutput> {
         let (profile, acts_on) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
-        let target = target(&profile)?;
-        let socket = socket_path(&profile)?;
-        let auth = profile.auth.unwrap_or_default();
-        let display = target.display();
-        let ssh = SshSession::connect(target).await?;
-        let host_key = ssh.host_key.clone();
-        let (engine, ping) = Engine::open(ssh, socket.clone()).await?;
+        let (engine, ping, facts) = open(&profile).await?;
         let client = Arc::new(DockerClient {
             engine,
-            facts: SshFacts {
-                target: display,
-                host_key,
-                socket_path: socket,
-                auth,
-            },
+            facts,
             ping,
         });
         let host = match client.host_info().await {
             Ok(host) => host,
             Err(e) => {
-                client.engine.ssh.close().await;
+                client.engine.transport.close().await;
                 return Err(e.into());
             }
         };
@@ -309,8 +482,8 @@ impl DockerApi {
         })
     }
 
-    /// Test connection of the profile form: the draft's SSH session opens, the Docker socket
-    /// answers a ping, and both close. An unknown host key fails as `connect` does, with the key
+    /// Test connection of the profile form: the draft's transport opens, the Engine answers a
+    /// ping, and the transport closes. An unknown host key fails as `connect` does, with the key
     /// to trust.
     #[rpc::mutation(perm = "docker.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
     async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
@@ -318,15 +491,12 @@ impl DockerApi {
             .0
             .test_profile::<ConnectDockerProfile>(&ctx, TOOL, input)
             .await?;
-        let target = target(&profile)?;
-        let socket = socket_path(&profile)?;
-        let ssh = SshSession::connect(target).await?;
-        let (engine, _) = Engine::open(ssh, socket).await?;
-        engine.ssh.close().await;
+        let (engine, _, _) = open(&profile).await?;
+        engine.transport.close().await;
         Ok(Empty {})
     }
 
-    /// Closes the SSH session and ends the handle's streams; idempotent.
+    /// Closes the transport (an SSH session) and ends the handle's streams; idempotent.
     #[rpc::mutation(perm = "docker.read", risk = Risk::Read)]
     async fn disconnect(&self, ctx: Ctx, input: DockerConnIdInput) -> ToolResult<Empty> {
         self.0.remove(&ctx.session().id, TOOL, &input.conn_id);
@@ -346,7 +516,7 @@ impl DockerApi {
     }
 }
 
-/// Closes the session when the handle is released, and reports a session that ended by itself.
+/// Closes the transport when the handle is released, and reports one that ended by itself.
 fn watch(
     hub: Arc<Hub>,
     session: String,
@@ -355,11 +525,12 @@ fn watch(
     client: Arc<DockerClient>,
 ) {
     tokio::spawn(async move {
-        let lost = client.engine.ssh.lost();
+        let transport = &client.engine.transport;
+        let lost = transport.lost().unwrap_or_default();
         tokio::select! {
-            () = released.cancelled() => client.engine.ssh.close().await,
+            () = released.cancelled() => transport.close().await,
             () = lost.cancelled() => {
-                let reason = client.engine.ssh.lost_reason();
+                let reason = transport.lost_reason();
                 hub.status(&session, TOOL, &conn_id, ConnectionState::Failed, Some(reason));
             }
         }
@@ -369,7 +540,8 @@ fn watch(
 #[rpc::router(namespace = "docker.host")]
 impl DockerHostApi {
     /// The host's facts: name, OS, kernel, CPUs, memory, Docker and API versions, storage and
-    /// logging drivers, counts, and the connection's SSH facts.
+    /// logging drivers, counts, and how the connection reaches it (transport, SSH facts, TLS or
+    /// unencrypted).
     #[rpc::query(perm = "docker.read", risk = Risk::Read)]
     async fn info(&self, ctx: Ctx, input: DockerConnIdInput) -> ToolResult<HostInfo> {
         let handle = self

@@ -4,9 +4,11 @@
 # forward Unix sockets for it (the explained error of spec §10.3). The base is pinned by digest;
 # openssh comes from that Alpine release's repository. sshd keeps the first value of a setting,
 # and Alpine's sshd_config says `AllowTcpForwarding no` (which also stops socket forwarding), so
-# the lab's settings go in sshd_config.d, included before it. Lab only, never shipped.
+# the lab's settings go in sshd_config.d, included before it. TSK-116: the Engine also serves its
+# API on 2376 with TLS and client certificates and, through socat, on 2375 without TLS and as a
+# copy of its socket in a folder of lab/.generated (entrypoint.sh). Lab only, never shipped.
 FROM docker:28-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac
-RUN apk add --no-cache openssh-server \
+RUN apk add --no-cache openssh-server socat \
  && (getent group docker >/dev/null || addgroup -S docker) \
  && adduser -D -s /bin/sh lab && adduser lab docker \
  && sed -i 's/^lab:!/lab:*/' /etc/shadow \

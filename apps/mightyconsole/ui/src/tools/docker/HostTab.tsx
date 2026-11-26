@@ -63,10 +63,18 @@ export function containerCounts(host: HostInfo): string {
   return parts.join(" · ");
 }
 
-/** The subtitle: `deploy@build-host.lan:22 · ED25519 key · socket /var/run/docker.sock · 3 ms`. */
+/**
+ * The subtitle: `deploy@build-host.lan:22 · ED25519 key · socket /var/run/docker.sock · 3 ms` over SSH,
+ * `local socket /var/run/docker.sock · 1 ms`, `TCP docker.prod:2376 · TLS · 4 ms` or `TCP … · unencrypted`.
+ */
 export function hostSubtitle(host: HostInfo): string {
-  const how = host.ssh.auth === "password" ? "password" : host.ssh.auth === "agent" ? "ssh-agent" : "private key";
-  return `${host.ssh.target} · ${how} · ${keyTypeLabel(host.ssh.hostKey.algorithm)} host key trusted · socket ${host.ssh.socketPath} · ping ${host.pingMs} ms`;
+  const ssh = host.ssh;
+  if (ssh) {
+    const how = ssh.auth === "password" ? "password" : ssh.auth === "agent" ? "ssh-agent" : "private key";
+    return `${ssh.target} · ${how} · ${keyTypeLabel(ssh.hostKey.algorithm)} host key trusted · socket ${ssh.socketPath} · ping ${host.pingMs} ms`;
+  }
+  if (host.transport === "socket") return `local socket ${host.endpoint} · ping ${host.pingMs} ms`;
+  return `TCP ${host.endpoint} · ${host.tls ? "TLS" : "unencrypted"} · ping ${host.pingMs} ms`;
 }
 
 /** A fact of the header row, as the Workflow tab's. */
@@ -274,16 +282,18 @@ export function HostTab({ profile, connId, client, useTabActions, note, active }
                   <Fact term="Rootless">{host.rootless ? "yes" : "no"}</Fact>
                 </DescriptionList>
               </div>
-              <DescriptionList aria-label="Connection">
-                <Fact term="Host key">
-                  <span className="flex min-w-0 items-center gap-inline-xs">
-                    <Code className="break-all">
-                      {keyTypeLabel(host.ssh.hostKey.algorithm)} · {host.ssh.hostKey.fingerprintSha256}
-                    </Code>
-                    <CopyButton value={host.ssh.hostKey.fingerprintSha256} what="fingerprint" />
-                  </span>
-                </Fact>
-              </DescriptionList>
+              {host.ssh ? (
+                <DescriptionList aria-label="Connection">
+                  <Fact term="Host key">
+                    <span className="flex min-w-0 items-center gap-inline-xs">
+                      <Code className="break-all">
+                        {keyTypeLabel(host.ssh.hostKey.algorithm)} · {host.ssh.hostKey.fingerprintSha256}
+                      </Code>
+                      <CopyButton value={host.ssh.hostKey.fingerprintSha256} what="fingerprint" />
+                    </span>
+                  </Fact>
+                </DescriptionList>
+              ) : null}
             </div>
           ) : null}
           <section aria-label="Disk usage" className="flex max-w-panel-xl flex-col gap-stack-sm px-inset-lg pb-inset-lg">

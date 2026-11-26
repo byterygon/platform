@@ -340,7 +340,45 @@ fn temporal(v: &View<'_>) -> Value {
 
 const DOCKER_DEFAULT_PORT: u64 = 22;
 
+/// Docker's connect profile for its transport (DOC-23 §6): over SSH, the SSH host's login (the
+/// fields and secrets [`ProfileService::with_host`] merged in); a local socket; or TCP with its
+/// TLS and the plain TCP acceptance.
 pub(crate) fn docker(v: &View<'_>) -> Value {
+    match super::docker::transport(v.fields) {
+        Some("socket") => json!({
+            "name": v.name,
+            "transport": "socket",
+            "socketPath": trimmed(v.field("socketPath")),
+        }),
+        Some("tcp") => docker_tcp(v),
+        _ => docker_ssh(v),
+    }
+}
+
+fn docker_tcp(v: &View<'_>) -> Value {
+    let port = v.field("port");
+    let enabled = v.field("tls.enabled") == &Value::Bool(true);
+    let opt = |value: &Value| match value {
+        Value::String(s) if !s.trim().is_empty() => value.clone(),
+        _ => Value::Null,
+    };
+    json!({
+        "name": v.name,
+        "transport": "tcp",
+        "host": text(v.field("host")).trim(),
+        "port": if port.is_number() { port.clone() } else { Value::Null },
+        "tls": {
+            "enabled": enabled,
+            "caPem": opt(v.field("tls.caPem")),
+            "clientCertPem": opt(v.field("tls.clientCertPem")),
+            "clientKeyPem": if enabled { v.secret("tls.clientKeyPem") } else { Value::Null },
+            "serverName": trimmed(v.field("tls.serverName")),
+        },
+        "unencryptedAccepted": !enabled && super::docker::unencrypted_accepted(v.fields),
+    })
+}
+
+fn docker_ssh(v: &View<'_>) -> Value {
     let auth = match text(v.field("auth")) {
         a @ ("password" | "agent") => a,
         _ => "privateKey",
@@ -355,6 +393,7 @@ pub(crate) fn docker(v: &View<'_>) -> Value {
     let only = |wanted: &str, value: Value| if auth == wanted { value } else { Value::Null };
     json!({
         "name": v.name,
+        "transport": "ssh",
         "host": text(v.field("host")).trim(),
         "port": if port.is_number() { port.clone() } else { json!(DOCKER_DEFAULT_PORT) },
         "username": text(v.field("username")).trim(),
@@ -421,15 +460,16 @@ fn tool_error(tool: &str, e: ProfileError) -> ToolError {
     }
 }
 
-/// A Docker profile over SSH names its SSH host (DOC-23 §6.4).
+/// A Docker profile over SSH names its SSH host (DOC-23 §6.4); the other transports name none.
 fn needs_host(
     tool: &str,
     fields: &Value,
     host: Option<&super::table::StoredProfile>,
 ) -> Result<(), ProfileError> {
-    let ssh =
-        matches!(fields.get("transport"), None | Some(Value::Null)) || fields["transport"] == "ssh";
-    if tool == "docker" && ssh && host.is_none() {
+    if tool == "docker" {
+        super::docker::check_transport(fields)?;
+    }
+    if tool == "docker" && super::docker::is_ssh(fields) && host.is_none() {
         return Err(ProfileError::Invalid {
             field: format!("fields.{}", super::ssh_hosts::HOST_FIELD),
             message: "choose the SSH host this profile connects to".into(),

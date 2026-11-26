@@ -156,6 +156,15 @@ async function check(tools: readonly Tool[]): Promise<number> {
     } catch (e) {
       failures.push(`docker: SSH on 127.0.0.1:2222: ${(e as Error).message}`);
     }
+    // TSK-116: the Engine's TCP API with TLS and without, and the copy of its socket.
+    for (const port of [2375, 2376]) {
+      try {
+        await tcpOpen(port);
+      } catch (e) {
+        failures.push(`docker: nothing answers on 127.0.0.1:${port}: ${(e as Error).message}`);
+      }
+    }
+    if (!existsSync(join(GENERATED, "docker-socket", "docker.sock"))) failures.push("docker: no socket in lab/.generated/docker-socket");
   }
   if (tools.includes("routes")) {
     // The proxies answer on 127.0.0.1 and reach the internal targets; the targets publish nothing.

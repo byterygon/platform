@@ -4,7 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+pub use super::transport::DockerTransportKind;
 use crate::core::HostKeyFingerprint;
+use crate::core::tls::TlsOptions;
 
 /// How the server logs in to the host (spec §10.1, `fields.auth`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS, JsonSchema)]
@@ -19,17 +21,25 @@ pub enum DockerAuth {
     Agent,
 }
 
-/// The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).
+/// The Docker tool's profile as the server builds it from the stored record (spec §4.4, §10.1,
+/// DOC-23 §6): over SSH, the SSH host's login and the socket on it; a local socket; or TCP.
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectDockerProfile {
     pub name: String,
-    /// Host name or IP address of the SSH server.
+    /// `ssh` when absent (profiles saved before TSK-116).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub transport: Option<DockerTransportKind>,
+    /// SSH: host name or IP address of the SSH server. TCP: of the Engine.
+    #[serde(default)]
     pub host: String,
-    /// 22 when absent.
+    /// SSH: 22 when absent. TCP: 2376 with TLS, 2375 without.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub port: Option<u16>,
+    /// SSH only.
+    #[serde(default)]
     pub username: String,
     #[serde(default)]
     #[ts(optional = nullable)]
@@ -50,10 +60,22 @@ pub struct ConnectDockerProfile {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub host_key: Option<HostKeyFingerprint>,
-    /// `/var/run/docker.sock` when absent; rootless Docker: `/run/user/<uid>/docker.sock`.
+    /// SSH: the socket on the host, `/var/run/docker.sock` when absent (rootless Docker:
+    /// `/run/user/<uid>/docker.sock`). Local socket: the path on the server's machine (`~` is
+    /// the home of the user running the server) or a Windows named pipe, required.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub socket_path: Option<String>,
+    /// TCP: `enabled` (TLS on), the pinned CA, the client certificate and its key (a secret), the
+    /// name the certificate carries. There is no "skip verification".
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub tls: Option<TlsOptions>,
+    /// TCP without TLS: the person accepted that anyone on the network who reaches the port is
+    /// root on that host (DOC-23 §6.3, (u)). Plain TCP is refused without it.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub unencrypted_accepted: Option<bool>,
     /// SSH keepalive interval, 30 s when absent; 0 turns it off.
     #[serde(default)]
     #[ts(optional = nullable)]
@@ -81,7 +103,7 @@ pub struct DockerConnIdInput {
     pub conn_id: String,
 }
 
-/// The connection's SSH side, for the Host page's subtitle.
+/// The connection's SSH side, for the Host page's subtitle (SSH transport only).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SshFacts {
@@ -97,7 +119,19 @@ pub struct SshFacts {
 #[derive(Debug, Clone, PartialEq, Serialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInfo {
-    pub ssh: SshFacts,
+    /// How the server reaches the Engine.
+    pub transport: DockerTransportKind,
+    /// What it reaches: `/var/run/docker.sock on deploy@h:22`, `/var/run/docker.sock`,
+    /// `docker.prod:2376`.
+    pub endpoint: String,
+    /// TCP with TLS (the Host page says so).
+    pub tls: bool,
+    /// Plain TCP: the Unencrypted badge and the banner that cannot be dismissed (DOC-23 (u)).
+    pub unencrypted: bool,
+    /// The SSH side, for the SSH transport.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ssh: Option<SshFacts>,
     /// The API version the connection speaks (the host's, at least 1.41).
     pub api_version: String,
     /// The host's own maximum and minimum API versions.
@@ -105,7 +139,7 @@ pub struct HostInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub min_api_version: Option<String>,
-    /// Round trip of `GET /_ping` over SSH and the socket, in milliseconds.
+    /// Round trip of `GET /_ping` over the transport, in milliseconds.
     pub ping_ms: u32,
     pub name: String,
     pub operating_system: String,

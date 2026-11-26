@@ -276,8 +276,14 @@ function fakeEcho(r: ProfileRecord): { name: string; greeting: string | null; to
 
 /** The fake Docker host's facts. */
 export function fakeHostInfo(profile: FakeDockerProfile): api.HostInfo {
+  const target = `${profile.username}@${profile.host}:${profile.port ?? 22}`;
+  const socketPath = profile.socketPath ?? "/var/run/docker.sock";
   return {
-    ssh: { target: `${profile.username}@${profile.host}:${profile.port ?? 22}`, hostKey: FAKE_HOST_KEY, socketPath: profile.socketPath ?? "/var/run/docker.sock", auth: profile.auth ?? "privateKey" },
+    transport: "ssh",
+    endpoint: `${socketPath} on ${target}`,
+    tls: false,
+    unencrypted: false,
+    ssh: { target, hostKey: FAKE_HOST_KEY, socketPath, auth: profile.auth ?? "privateKey" },
     apiVersion: "1.47",
     serverApiVersion: "1.47",
     minApiVersion: "1.24",

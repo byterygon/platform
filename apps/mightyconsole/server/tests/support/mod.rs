@@ -556,8 +556,14 @@ impl Tab {
         } else {
             name
         };
-        // A Docker profile names an SSH host that holds its login (DOC-23 §6.4, TSK-144).
-        let (fields, secrets) = if tool == "docker" {
+        // A Docker profile over SSH names an SSH host that holds its login (DOC-23 §6.4,
+        // TSK-144); a local socket or TCP profile holds its own fields (TSK-116).
+        let over_ssh = tool == "docker"
+            && !matches!(
+                fields.get("transport").and_then(Value::as_str),
+                Some("socket" | "tcp")
+            );
+        let (fields, secrets) = if over_ssh {
             let (login, login_secrets, rest) = split_docker_login(fields, secrets);
             let host = self
                 .extra_call(

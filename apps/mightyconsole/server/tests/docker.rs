@@ -1465,3 +1465,284 @@ async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_
             .any(|p| p == "/v1.47/images/busybox:1.37?force=1")
     );
 }
+
+// Transports (DOC-23 §6, TSK-116): the same Engine on a local socket and over TCP, with and
+// without TLS. Every Docker procedure runs over whichever transport the handle has, so these
+// check the transport itself: connect, the Host page's facts, a request after connect, and the
+// refusals of each transport.
+
+/// Serves the stand-in Engine (API 1.47) on every stream `accept` yields.
+fn serve_engine<S>(stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin + 'static,
+{
+    tokio::spawn(async move {
+        let service =
+            hyper::service::service_fn(|request: Request<hyper::body::Incoming>| async move {
+                let path = request.uri().path().to_owned();
+                Ok::<_, Infallible>(engine("1.47", request.method(), &path))
+            });
+        let _ = hyper::server::conn::http1::Builder::new()
+            .serve_connection(TokioIo::new(stream), service)
+            .await;
+    });
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_local_socket_reaches_the_engine_and_says_why_it_cannot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("docker.sock");
+    let listener = tokio::net::UnixListener::bind(&path).unwrap();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            serve_engine(stream);
+        }
+    });
+    let (t, _lab, mut member) = setup().await;
+    let socket = json!({ "name": "local", "transport": "socket", "socketPath": path });
+    // Root on this machine for whoever connects (DOC-23 §11.4): saving it needs
+    // profiles.hostAccess, which only the administrator role has.
+    member
+        .call(
+            2,
+            "profiles.create",
+            json!({ "tool": "docker", "name": "local", "owner": { "kind": "personal" },
+                    "fields": { "transport": "socket", "socketPath": path } }),
+        )
+        .await;
+    let err = member.error(2, Code::PermissionDenied).await;
+    assert!(
+        err.message.contains("profiles.hostAccess"),
+        "{}",
+        err.message
+    );
+    let admin = t
+        .server
+        .store()
+        .account_by_username("admin")
+        .unwrap()
+        .expect("the default administrator")
+        .principal_id();
+    let browser = t.browser_as(&admin, &[]).await;
+    let mut tab = t.tab(&browser).await;
+    tab.call(2, "docker.connect", json!({ "profile": socket }))
+        .await;
+    let out = tab.result(2).await;
+    let host = &out["host"];
+    assert_eq!(host["transport"], "socket");
+    assert_eq!(host["endpoint"], path.display().to_string());
+    assert_eq!(host["unencrypted"], false);
+    assert!(host.get("ssh").is_none());
+    assert_eq!(host["name"], "build-host");
+    let conn_id = out["connId"].as_str().unwrap().to_owned();
+    tab.call(3, "docker.host.info", json!({ "connId": conn_id }))
+        .await;
+    assert_eq!(tab.result(3).await["kernelVersion"], "6.1.0-28-amd64");
+
+    // No socket there: the explained error.
+    let missing = json!({ "name": "gone", "transport": "socket", "socketPath": dir.path().join("none.sock") });
+    tab.call(4, "docker.connect", json!({ "profile": missing }))
+        .await;
+    let err = tab.error(4, Code::Unavailable).await;
+    assert!(err.message.contains("no socket at"), "{}", err.message);
+    // A relative path never reaches the file system.
+    let relative = json!({ "name": "rel", "transport": "socket", "socketPath": "docker.sock" });
+    tab.call(5, "docker.connect", json!({ "profile": relative }))
+        .await;
+    let err = tab.error(5, Code::InvalidArgument).await;
+    assert_eq!(details(&err)["field"], "socketPath");
+}
+
+#[tokio::test]
+async fn plain_tcp_connects_only_with_the_persons_acceptance() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((tcp, _)) = listener.accept().await {
+            serve_engine(tcp);
+        }
+    });
+    let (_t, _lab, mut tab) = setup().await;
+    // Saving plain TCP without the tick is refused, and names the field.
+    tab.call(
+        2,
+        "profiles.create",
+        json!({ "tool": "docker", "name": "plain", "owner": { "kind": "personal" },
+                "fields": { "transport": "tcp", "host": "127.0.0.1", "port": addr.port() } }),
+    )
+    .await;
+    let err = tab.error(2, Code::InvalidArgument).await;
+    assert!(err.message.contains("root on that host"), "{}", err.message);
+    let plain = json!({ "name": "plain", "transport": "tcp", "host": "127.0.0.1",
+                        "port": addr.port(), "unencrypted": { "accepted": true } });
+    tab.call(3, "docker.connect", json!({ "profile": plain }))
+        .await;
+    let out = tab.result(3).await;
+    assert_eq!(out["host"]["transport"], "tcp");
+    assert_eq!(
+        out["host"]["endpoint"],
+        format!("127.0.0.1:{}", addr.port())
+    );
+    assert_eq!(out["host"]["unencrypted"], true);
+    assert_eq!(out["host"]["tls"], false);
+    // The record keeps who accepted and when, never the page's tick.
+    tab.call(4, "profiles.list", json!({ "tool": "docker" }))
+        .await;
+    let listed = tab.result(4).await;
+    let record = listed["profiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["fields"]["transport"] == "tcp")
+        .unwrap()
+        .clone();
+    let stamp = &record["fields"]["unencrypted"];
+    assert!(stamp["acceptedBy"].is_string(), "{stamp}");
+    assert!(stamp["acceptedAt"].is_string(), "{stamp}");
+    assert!(stamp.get("accepted").is_none());
+}
+
+/// A TLS Engine that wants a client certificate its own CA signed: the CA's PEM, a client
+/// certificate and key it accepts, and the address.
+async fn tls_engine() -> (String, String, String, SocketAddr) {
+    // Each CA its own name, so a certificate of another one is refused as unknown.
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let ca_key = rcgen::KeyPair::generate().unwrap();
+    let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+    ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    ca_params.distinguished_name.push(
+        rcgen::DnType::CommonName,
+        format!("test Docker CA {}", NEXT.fetch_add(1, Ordering::SeqCst)),
+    );
+    let ca = ca_params.self_signed(&ca_key).unwrap();
+    let issuer = rcgen::Issuer::new(ca_params, ca_key);
+    let server_key = rcgen::KeyPair::generate().unwrap();
+    let server =
+        rcgen::CertificateParams::new(vec!["localhost".to_owned(), "127.0.0.1".to_owned()])
+            .unwrap()
+            .signed_by(&server_key, &issuer)
+            .unwrap();
+    let client_key = rcgen::KeyPair::generate().unwrap();
+    let client = rcgen::CertificateParams::new(vec!["mightyconsole".to_owned()])
+        .unwrap()
+        .signed_by(&client_key, &issuer)
+        .unwrap();
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(ca.der().clone()).unwrap();
+    let verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
+        Arc::new(roots),
+        Arc::clone(&provider),
+    )
+    .build()
+    .unwrap();
+    let config = rustls::ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(
+            vec![server.der().clone()],
+            rustls::pki_types::PrivateKeyDer::try_from(server_key.serialize_der()).unwrap(),
+        )
+        .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((tcp, _)) = listener.accept().await {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                if let Ok(tls) = acceptor.accept(tcp).await {
+                    serve_engine(tls);
+                }
+            });
+        }
+    });
+    (ca.pem(), client.pem(), client_key.serialize_pem(), addr)
+}
+
+#[tokio::test]
+async fn tls_checks_the_engines_certificate_and_sends_the_client_certificate() {
+    let (ca, cert, key, addr) = tls_engine().await;
+    let (_t, _lab, mut tab) = setup().await;
+    let profile = |tls: Value| json!({ "name": "tls", "transport": "tcp", "host": "127.0.0.1", "port": addr.port(), "tls": tls });
+    let good = profile(
+        json!({ "enabled": true, "caPem": ca, "clientCertPem": cert, "clientKeyPem": key }),
+    );
+    tab.call(2, "docker.connect", json!({ "profile": good }))
+        .await;
+    let out = tab.result(2).await;
+    assert_eq!(out["host"]["tls"], true);
+    assert_eq!(out["host"]["unencrypted"], false);
+    let conn_id = out["connId"].as_str().unwrap().to_owned();
+    tab.call(3, "docker.host.info", json!({ "connId": conn_id }))
+        .await;
+    assert_eq!(tab.result(3).await["name"], "build-host");
+
+    // Another CA: the Engine's certificate is not trusted, and nothing is sent.
+    let (other_ca, _, _, _) = tls_engine().await;
+    let untrusted = profile(
+        json!({ "enabled": true, "caPem": other_ca, "clientCertPem": cert, "clientKeyPem": key }),
+    );
+    tab.call(4, "docker.connect", json!({ "profile": untrusted }))
+        .await;
+    let err = tab.error(4, Code::Unavailable).await;
+    assert_eq!(details(&err)["kind"], "Tls");
+    assert!(
+        err.message.contains("not signed by the CA"),
+        "{}",
+        err.message
+    );
+
+    // The certificate is for 127.0.0.1 and localhost; a server name it does not carry fails.
+    let wrong_name = profile(
+        json!({ "enabled": true, "caPem": ca, "clientCertPem": cert, "clientKeyPem": key, "serverName": "docker.prod" }),
+    );
+    tab.call(5, "docker.connect", json!({ "profile": wrong_name }))
+        .await;
+    let err = tab.error(5, Code::Unavailable).await;
+    assert!(
+        err.message.contains("not for this address"),
+        "{}",
+        err.message
+    );
+
+    // A client certificate another CA signed: the Engine refuses it (with TLS 1.3, on the first
+    // request), and the message says what it wants.
+    let (_, stranger_cert, stranger_key, _) = tls_engine().await;
+    let stranger = profile(
+        json!({ "enabled": true, "caPem": ca, "clientCertPem": stranger_cert, "clientKeyPem": stranger_key }),
+    );
+    tab.call(6, "docker.connect", json!({ "profile": stranger }))
+        .await;
+    let err = tab.error(6, Code::Unauthenticated).await;
+    assert_eq!(details(&err)["kind"], "Auth");
+    assert!(
+        err.message.contains("client certificate"),
+        "{}",
+        err.message
+    );
+    assert!(!err.message.contains("PRIVATE KEY"));
+
+    // DOC-23 §6.3: with TLS, the CA, the client certificate and its key are all given.
+    for (id, (tls, field)) in (7..).zip([
+        (
+            json!({ "enabled": true, "clientCertPem": cert, "clientKeyPem": key }),
+            "tls.caPem",
+        ),
+        (
+            json!({ "enabled": true, "caPem": ca, "clientKeyPem": key }),
+            "tls.clientCertPem",
+        ),
+        (
+            json!({ "enabled": true, "caPem": ca, "clientCertPem": cert }),
+            "tls.clientKeyPem",
+        ),
+    ]) {
+        tab.call(id, "docker.connect", json!({ "profile": profile(tls) }))
+            .await;
+        let err = tab.error(id, Code::InvalidArgument).await;
+        assert_eq!(details(&err)["field"], field);
+    }
+}

@@ -6,8 +6,8 @@
 //! Field paths are dotted paths into the record's `fields` (`tls.caPem`); a secret's path is its
 //! name in the `secrets` table. Every profile also has `routeId` as a target field of every group
 //! (DOC-23). Host-access fields (§3.4.2) reach the server's own machine and need
-//! `profiles.hostAccess` to be saved; none of the tools built so far has one (the Kubernetes exec
-//! plugin, command hops, the system proxy and the local Docker socket come with their tasks).
+//! `profiles.hostAccess` to be saved: Docker's local socket (TSK-116) so far; the Kubernetes exec
+//! plugin, command hops and the system proxy come with their tasks.
 
 use serde_json::Value;
 
@@ -27,8 +27,15 @@ pub struct ToolSpec {
     /// Every secret field (§3.4.1).
     pub secrets: &'static [&'static str],
     pub groups: &'static [TargetGroup],
-    /// Fields that, set to anything but their default, reach the server's own machine.
-    pub host_access: &'static [&'static str],
+    /// Fields that, with these values, reach the server's own machine.
+    pub host_access: &'static [HostAccess],
+}
+
+/// A host-access field: `path` set to `value`, or to anything at all when `value` is `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostAccess {
+    pub path: &'static str,
+    pub value: Option<&'static str>,
 }
 
 /// The target field of every profile (DOC-23).
@@ -109,15 +116,29 @@ pub const SPECS: [ToolSpec; 5] = [
     },
     // Version 2 (DOC-23 §6.4, (z)): an SSH profile names a saved SSH host (`sshHostId`) and the
     // socket on it; the login, its secrets and the trusted host key are the host's ([`SSH_HOST`]).
+    // TSK-116 adds `transport` (absent is `ssh`, so version 2 records stay as they are): `socket`
+    // (`socketPath` on this machine) and `tcp` (`host`, `port`, `tls`, see [`super::docker`]).
     ToolSpec {
         tool: "docker",
         version: 2,
         secrets: &["tls.clientKeyPem"],
         groups: &[TargetGroup {
-            targets: &["transport", "sshHostId", "host", "port", "socketPath"],
+            targets: &[
+                "transport",
+                "sshHostId",
+                "host",
+                "port",
+                "socketPath",
+                "tls.enabled",
+                "tls.caPem",
+                "tls.serverName",
+            ],
             secrets: &["tls.clientKeyPem"],
         }],
-        host_access: &[],
+        host_access: &[HostAccess {
+            path: "transport",
+            value: Some("socket"),
+        }],
     },
     ToolSpec {
         tool: "langgraph",
@@ -202,7 +223,10 @@ impl ToolSpec {
 
     /// Whether the fields set a host-access field.
     pub fn uses_host_access(&self, fields: &Value) -> bool {
-        self.host_access.iter().any(|f| !at(fields, f).is_null())
+        self.host_access.iter().any(|f| match f.value {
+            None => !at(fields, f.path).is_null(),
+            Some(value) => at(fields, f.path) == value,
+        })
     }
 
     /// The target fields, for an administrator's view of another user's personal profile

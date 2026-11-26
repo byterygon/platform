@@ -2436,6 +2436,26 @@
       ],
       "type": "object"
     },
+    "DockerTransportKind": {
+      "description": "The transport a Docker profile names (`fields.transport`; `ssh` when absent).",
+      "oneOf": [
+        {
+          "const": "ssh",
+          "description": "The socket on a saved SSH host (DOC-23 §6.4).",
+          "type": "string"
+        },
+        {
+          "const": "socket",
+          "description": "A Unix socket or a Windows named pipe on the server's machine (§6.2).",
+          "type": "string"
+        },
+        {
+          "const": "tcp",
+          "description": "The Engine's TCP API, with or without TLS (§6.3).",
+          "type": "string"
+        }
+      ]
+    },
     "DownloadHistoryInput": {
       "description": "The whole history to save, as a stream (TSK-109).",
       "properties": {
@@ -3838,6 +3858,10 @@
         "dockerRootDir": {
           "type": "string"
         },
+        "endpoint": {
+          "description": "What it reaches: `/var/run/docker.sock on deploy@h:22`, `/var/run/docker.sock`,\n`docker.prod:2376`.",
+          "type": "string"
+        },
         "images": {
           "format": "uint32",
           "minimum": 0,
@@ -3870,7 +3894,7 @@
           "type": "string"
         },
         "pingMs": {
-          "description": "Round trip of `GET /_ping` over SSH and the socket, in milliseconds.",
+          "description": "Round trip of `GET /_ping` over the transport, in milliseconds.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -3893,7 +3917,15 @@
           "type": "string"
         },
         "ssh": {
-          "$ref": "#/$defs/SshFacts"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SshFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The SSH side, for the SSH transport."
         },
         "storageBackingFilesystem": {
           "type": [
@@ -3904,6 +3936,18 @@
         "storageDriver": {
           "type": "string"
         },
+        "tls": {
+          "description": "TCP with TLS (the Host page says so).",
+          "type": "boolean"
+        },
+        "transport": {
+          "$ref": "#/$defs/DockerTransportKind",
+          "description": "How the server reaches the Engine."
+        },
+        "unencrypted": {
+          "description": "Plain TCP: the Unencrypted badge and the banner that cannot be dismissed (DOC-23 (u)).",
+          "type": "boolean"
+        },
         "warnings": {
           "description": "Problems the engine reports about itself (`Warnings` of `/info`).",
           "items": {
@@ -3913,7 +3957,10 @@
         }
       },
       "required": [
-        "ssh",
+        "transport",
+        "endpoint",
+        "tls",
+        "unencrypted",
         "apiVersion",
         "serverApiVersion",
         "pingMs",
@@ -12016,7 +12063,7 @@
       "type": "object"
     },
     "SshFacts": {
-      "description": "The connection's SSH side, for the Host page's subtitle.",
+      "description": "The connection's SSH side, for the Host page's subtitle (SSH transport only).",
       "properties": {
         "auth": {
           "$ref": "#/$defs/DockerAuth"
@@ -20098,5 +20145,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:d49dff3755997e9746b4fdf4d683b39ed83ade6b2061bf8c2b4f67f1f37c65a8"
+  "schema_hash": "sha256:2900824085b69c9bc90a9ec60a3b27574d500bb80a7f72ae2c1a59508f1f891c"
 }
