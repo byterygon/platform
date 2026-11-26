@@ -5,6 +5,7 @@
 // query's Rename and Delete, TSK-95) and the "No profile" state.
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ServicesContext } from "@/app/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
@@ -167,6 +168,11 @@ export function ConnectionList(props: ConnectionListProps) {
             <span className="flex items-center gap-inline-sm" data-profile-id={p.id}>
               <span className="sr-only">{conn.status}</span>
               {conn.status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
+              {(tool.profileBadges?.(p) ?? []).map((badge) => (
+                <Badge key={badge.label} appearance="tint" variant={badge.tone} size="sm" {...(badge.hint ? { title: badge.hint } : {})}>
+                  {badge.label}
+                </Badge>
+              ))}
               {state?.kind === "newer" ? (
                 <span className="flex items-center gap-inline-xs text-caption-1 text-fg-muted">
                   <Icon icon={Warning} tone="warning" /> newer version

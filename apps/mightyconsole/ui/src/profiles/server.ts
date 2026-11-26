@@ -13,6 +13,7 @@ import type { ProfileRecord } from "./record";
 const SERVER_KEYS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   nats: { clientKeyPem: "tls.clientKeyPem", registryPassword: "schemaRegistry.password", registryToken: "schemaRegistry.token" },
   langgraph: { clientKeyPem: "tls.clientKeyPem", headerLines: "headerValues" },
+  docker: { clientKeyPem: "tls.clientKeyPem" },
 };
 
 /** The server's field path of a browser secret key. */

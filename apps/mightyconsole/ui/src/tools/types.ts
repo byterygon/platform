@@ -279,4 +279,16 @@ export interface ToolModule {
   trustHostKey?(client: MightyClient, record: ProfileRecord, key: HostKeyFingerprint): Promise<void>;
   /** `host:port` of the record, for the trust dialog. */
   targetOf?(record: ProfileRecord): string;
+  /**
+   * Badges the profile's row in the connection list carries whatever its state, such as Docker's
+   * Unencrypted (DOC-23 (u)). None when absent.
+   */
+  profileBadges?(record: ProfileRecord): readonly ProfileBadge[];
+}
+
+/** A badge on a profile's row: a short label in a warning or neutral tint, with a longer hint. */
+export interface ProfileBadge {
+  label: string;
+  tone: "warning" | "neutral";
+  hint?: string;
 }
