@@ -12,7 +12,8 @@ summarises what a session needs when Notion is unavailable.
   Codex = `ChatGPT`), whose Status is `Todo`, and whose **Blocked by** tasks are all `Done`.
   Set the task to `In progress` before writing code.
 - One task = one worktree = one branch = one PR. Branch name: `tsk-<number>-<short-slug>`.
-  Never commit to `main`.
+  Never commit to `main`. Several PRs may be open at once (other tasks, other agents, independent
+  batches); one stacked on an unmerged PR waits for that one to merge (Uy Son, 2026-11-26).
 - The task's **Related docs** are the spec. If a spec is silent or wrong, don't invent the
   decision: add it to the spec's Open questions, tick **Needs human**, and continue with the rest.
 - Security work (auth, grants, secrets, TLS, audit) follows the spec exactly, or stops and asks.
@@ -24,8 +25,9 @@ summarises what a session needs when Notion is unavailable.
   `lab:all` for every tool) or `lab:none` (say why in the description). The lab runs on a PR only
   with a label, and the "Lab decision" check fails a PR that needs it and has none.
 - Rebase on `main` before opening the PR; after that, only on a conflict. Merging is
-  `gh pr merge <n>`, which adds the PR to the merge queue (TSK-150; never `--admin`): never rebase
-  only because the branch is behind `main`. Keep edits to shared files (`Cargo.toml`, lockfiles,
+  `gh pr merge <n>`, which adds the PR to the merge queue (TSK-150; never `--admin`), and only
+  when the human allowed that merge: never rebase only because the branch is behind `main`. How
+  the queue works for an agent: `docs/agents/ci.md`, "The merge queue". Keep edits to shared files (`Cargo.toml`, lockfiles,
   CI) minimal and list them in the PR description.
 - Put the task link in the PR, the PR link in the task, and add a **Work Log** entry when done.
 
