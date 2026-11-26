@@ -25,7 +25,8 @@ its plan; CI's Affected job runs that test.
 
 The Mightyconsole lab on pull requests (TSK-129) runs only with a label, read by
 `scripts/lab-labels.mjs`: `lab` (the scope `scripts/affected.mjs` gives as `lab_tools`),
-`lab:<tool>` (several add up; `lab:all` for every tool) or `lab:none` (no run). Adding the label
+`lab:<tool>` (several add up; `lab:all` for every tool; each tool also brings the tools its checklists
+need, from their `lab: [...]` fields: `lab:idp` brings `idp temporal`, TSK-154; `lab` gets the same) or `lab:none` (no run). Adding the label
 starts it; later pushes run it again while the label stays, and a newer push cancels the run in
 progress (job-level concurrency, so a label that is not a lab label never cancels one). The "Lab
 decision" workflow (`lab-decision.yml`, seconds, separate from ci.yml so a label change does not

@@ -112,6 +112,8 @@ jobs:
           # adds the ids it wired to nats_only (TSK-139: stored-profile), and TSK-104 to detail
           # (temporal-detail). Security (DOC-25 section 6) runs with the idp profile (Dex): its
           # login items (TSK-136).
+          # Which tool switches on which checklist is SWITCHES in scripts/lab-labels.mjs, which also adds
+          # the tools those checklists need to a label's scope (TSK-154); a test compares the two.
           more=""
           detail=""
           nats_only=""
