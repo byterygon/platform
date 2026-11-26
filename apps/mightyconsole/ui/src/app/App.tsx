@@ -1521,6 +1521,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         mode={sheetMode}
         {...(profileDialog?.name && sheetMode === "add" ? { name: profileDialog.name } : {})}
         {...(session.me ? { self: session.me.user } : {})}
+        canShare={session.me ? holdsAnywhere(session.me, "profiles.manage") : false}
+        audience={audience}
         takenNames={takenNames}
         {...(sheetBase && state.recordStates[sheetBase.id] ? { recordState: state.recordStates[sheetBase.id]! } : {})}
         onSave={async (record, { remove, shared }) => {

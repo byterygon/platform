@@ -89,6 +89,9 @@ describe("profiles through the shell (spec §4)", () => {
     expect(empty.querySelector("kbd")).toBeNull();
     await click(byRole("button", /^Add connection$/));
     await waitFor(() => dialogWith("Add Echo connection") !== null, "the profile sheet");
+    // An administrator (every permission) is asked who can use it, and told who that reaches (TSK-140 batch 4b).
+    expect(document.querySelector('[data-testid="who-can-use"]')).not.toBeNull();
+    await waitFor(() => (document.querySelector('[data-testid="audience"]')?.textContent ?? "").includes("Today that is"), "the audience");
     // A name is required.
     await click(byRole("button", "Save"));
     expect(byText("A name is required.")).not.toBeNull();
@@ -212,6 +215,15 @@ describe("profiles through the shell (spec §4)", () => {
     const stored = await fake.storage.listProfiles();
     expect(stored.map((p) => p.name).sort()).toEqual(["fresh", "lab"]);
     expect(stored.find((p) => p.name === "lab")?.secrets).toEqual({ token: "s3cret" });
+  });
+
+  test("a person without profiles.manage is not asked: what they create is personal", async () => {
+    const fake = createFakeServices();
+    fake.server.me = { ...fake.server.me, permissions: fake.server.me.permissions.filter((g) => g.perm !== "profiles.manage") };
+    await mount(fake);
+    await click(byRole("button", /^Add connection$/));
+    await waitFor(() => dialogWith("Add Echo connection") !== null, "the profile sheet");
+    expect(document.querySelector('[data-testid="who-can-use"]')).toBeNull();
   });
 
   test("a stored secret is removed from the sheet, and is set or not, never shown", async () => {

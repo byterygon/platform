@@ -14,7 +14,8 @@ import { ProgressBus } from "@/app/progress";
 
 /** Every permission the generated table names, held everywhere: what the built-in admin role grants. */
 export function everyPermission(): api.PermissionGrant[] {
-  const perms = new Set<string>();
+  // `profiles.manage` is in the server's catalogue but no procedure declares it (the profile checks name it themselves).
+  const perms = new Set<string>(["profiles.manage"]);
   const walk = (node: unknown) => {
     if (typeof node !== "object" || node === null) return;
     const rec = node as Record<string, unknown>;
