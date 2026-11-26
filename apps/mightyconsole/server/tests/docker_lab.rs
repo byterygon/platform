@@ -922,12 +922,20 @@ async fn a_stored_profile_logs_in_with_its_secrets_and_a_draft_keeps_its_target(
         }
         f
     };
+    // The login is an SSH host's (DOC-23 §4.3); the profile names it (TSK-144).
+    let key_host = tab
+        .store_ssh_host(
+            "lab key",
+            fields(json!({ "auth": "privateKey" })),
+            json!({ "privateKey": read(lab["passphraseKeyFile"].as_str().unwrap()), "passphrase": lab["passphrase"] }),
+        )
+        .await;
     let key = tab
         .store_profile(
             "docker",
             "lab key",
-            fields(json!({ "auth": "privateKey" })),
-            json!({ "privateKey": read(lab["passphraseKeyFile"].as_str().unwrap()), "passphrase": lab["passphrase"] }),
+            json!({ "sshHostId": key_host }),
+            json!({}),
         )
         .await;
     tab.call(3, "docker.connect", json!({ "profileId": key }))
@@ -938,32 +946,47 @@ async fn a_stored_profile_logs_in_with_its_secrets_and_a_draft_keeps_its_target(
     tab.result(4).await;
 
     let password_fields = fields(json!({ "auth": "password", "username": lab["passwordUser"] }));
-    let password = tab
-        .store_profile(
-            "docker",
+    let password_host = tab
+        .store_ssh_host(
             "lab password",
             password_fields.clone(),
             json!({ "password": lab["password"] }),
         )
         .await;
+    let password = tab
+        .store_profile(
+            "docker",
+            "lab password",
+            json!({ "sshHostId": password_host }),
+            json!({}),
+        )
+        .await;
     tab.call(5, "docker.connect", json!({ "profileId": password }))
         .await;
     assert_eq!(tab.result(5).await["host"]["ssh"]["auth"], "password");
-    // The form's draft, nothing typed: the stored password logs in.
+    // The profile form's draft: its host's stored password logs in.
     tab.call(
         6,
         "docker.test",
-        json!({ "draft": { "fields": password_fields, "secrets": {} }, "basedOn": password }),
+        json!({ "draft": { "fields": { "sshHostId": password_host }, "secrets": {} }, "basedOn": password }),
     )
     .await;
     tab.result(6).await;
+    // The host form's draft, nothing typed: the stored password logs in.
+    tab.call(
+        8,
+        "sshHosts.test",
+        json!({ "fields": password_fields, "secrets": {}, "hostId": password_host }),
+    )
+    .await;
+    tab.result(8).await;
     // Another user name is another target: the stored password is not sent.
     let mut other = password_fields.clone();
     other["username"] = json!(lab["user"]);
     tab.call(
         7,
-        "docker.test",
-        json!({ "draft": { "fields": other, "secrets": {} }, "basedOn": password }),
+        "sshHosts.test",
+        json!({ "fields": other, "secrets": {}, "hostId": password_host }),
     )
     .await;
     let err = tab.error(7, Code::InvalidArgument).await;

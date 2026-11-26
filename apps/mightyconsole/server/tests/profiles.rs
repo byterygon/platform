@@ -361,7 +361,7 @@ async fn a_change_is_pushed_to_the_sessions_that_may_see_the_profile() {
         3,
         "profiles.create",
         json!({ "tool": "docker", "name": "Build host", "owner": { "kind": "shared" },
-                "fields": { "host": "build", "port": 22, "username": "ci" } }),
+                "fields": { "socketPath": "/var/run/docker.sock" } }),
     )
     .await;
     let id = a.result(3).await["id"].as_str().unwrap().to_owned();

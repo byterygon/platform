@@ -155,6 +155,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
         .mount(profiles::api::SecretsApi(state.profiles.clone()))
         .expect("secrets API registers");
     router
+        .mount(profiles::api::SshHostsApi(state.profiles.clone()))
+        .expect("sshHosts API registers");
+    router
         .mount(profiles::api::AdminProfilesApi(state.profiles.clone()))
         .expect("admin.profiles API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");
@@ -522,6 +525,7 @@ pub struct Server {
     store: Arc<store::Store>,
     /// The secret store: its keys, the re-wrap job, the reload.
     secrets: Arc<secrets::service::SecretService>,
+    profiles: Arc<profiles::ProfileService>,
     /// Roles, assignments and groups in force.
     policy: PolicyHandle,
     tls: ServerTls,
@@ -830,6 +834,24 @@ impl Server {
             Arc::clone(&hub),
             config.policy.allow_personal_profiles,
         ));
+        // Docker profiles of version 1 hold their SSH login: each becomes an SSH host (DOC-23
+        // (z)), once, before anyone connects.
+        {
+            let service = Arc::clone(&profile_service);
+            let now = clock.now_unix_ms();
+            let (moved, made) =
+                tokio::task::spawn_blocking(move || service.migrate_docker_profiles(now))
+                    .await
+                    .map_err(|e| StartError::Store(format!("moving Docker logins panicked: {e}")))?
+                    .map_err(|e| {
+                        StartError::Store(format!("moving Docker logins to SSH hosts: {e}"))
+                    })?;
+            if moved > 0 {
+                log.line(&format!(
+                    "mightyconsole-server: {moved} Docker profile(s) now name an SSH host                      ({made} host(s) made; the records as they were are kept in profiles_backup)"
+                ));
+            }
+        }
         let stored: Arc<dyn core::stored::StoredProfiles> = profile_service.clone();
         hub.set_stored_profiles(&stored);
         let state = Arc::new(AppState {
@@ -849,7 +871,7 @@ impl Server {
                 Some(accounts.clone()),
             ))),
             secrets: Some(Arc::clone(&secret_service)),
-            profiles: Some(profile_service),
+            profiles: Some(Arc::clone(&profile_service)),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
@@ -960,6 +982,7 @@ impl Server {
             auth_tasks,
             store,
             secrets: secret_service,
+            profiles: profile_service,
             policy,
             tls,
             local_addr,
@@ -993,6 +1016,11 @@ impl Server {
     /// `DATA/store.redb`.
     pub fn store(&self) -> &Arc<store::Store> {
         &self.store
+    }
+
+    /// Profiles and SSH hosts on the server (DOC-25 §3.4.2, DOC-23 §4.3).
+    pub fn profiles(&self) -> &Arc<profiles::ProfileService> {
+        &self.profiles
     }
 
     /// The secret store's keys and entries.

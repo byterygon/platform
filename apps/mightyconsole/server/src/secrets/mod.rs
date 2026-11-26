@@ -76,6 +76,8 @@ pub enum OwnerKind {
     Route,
     /// A built-in account's TOTP key (§3.2.6).
     Account,
+    /// A saved SSH host's key, passphrase or password (DOC-23 §4.3, §8.1).
+    SshHost,
 }
 
 impl OwnerKind {
@@ -84,6 +86,7 @@ impl OwnerKind {
             OwnerKind::Profile => "profile",
             OwnerKind::Route => "route",
             OwnerKind::Account => "account",
+            OwnerKind::SshHost => "sshHost",
         }
     }
 
@@ -92,6 +95,7 @@ impl OwnerKind {
             "profile" => Some(OwnerKind::Profile),
             "route" => Some(OwnerKind::Route),
             "account" => Some(OwnerKind::Account),
+            "sshHost" => Some(OwnerKind::SshHost),
             _ => None,
         }
     }
@@ -114,6 +118,10 @@ impl Owner {
 
     pub fn profile(id: impl Into<String>) -> Owner {
         Owner::new(OwnerKind::Profile, id)
+    }
+
+    pub fn ssh_host(id: impl Into<String>) -> Owner {
+        Owner::new(OwnerKind::SshHost, id)
     }
 }
 

@@ -25,6 +25,8 @@ export interface FakeServer {
   produced: api.EchoProduceInput[];
   /** The profile each Docker handle connected with (TSK-81). */
   dockerProfiles: Map<string, FakeDockerProfile>;
+  /** Saved SSH hosts (TSK-144), with their secrets by field. */
+  sshHosts: Map<string, { view: api.SshHostView; secrets: Record<string, string> }>;
   /** The Docker host's containers (TSK-81 batch 2b). */
   dockerContainers: api.ContainerRow[];
   /** Each container's log lines, by name. */
@@ -232,8 +234,10 @@ export interface FakeDockerProfile {
   socketPath: string | null;
 }
 
-function fakeDocker(r: ProfileRecord): FakeDockerProfile {
-  const f = r.fields;
+/** A Docker profile as the server builds it: the login of its SSH host (TSK-144), else its own fields (older tests). */
+function fakeDocker(r: ProfileRecord, hosts?: FakeServer["sshHosts"]): FakeDockerProfile {
+  const host = hosts?.get(typeof r.fields["sshHostId"] === "string" ? r.fields["sshHostId"] : "");
+  const f = host ? { ...r.fields, ...host.view.fields } : r.fields;
   const text = (v: unknown) => (typeof v === "string" ? v : "");
   const key = f["hostKey"] as api.HostKeyFingerprint | null | undefined;
   return { name: r.name, host: text(f["host"]), port: typeof f["port"] === "number" ? f["port"] : 22, username: text(f["username"]), auth: (text(f["auth"]) || "privateKey") as api.DockerAuth, hostKey: key ?? null, socketPath: text(f["socketPath"]) || null };
@@ -317,6 +321,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     messageChunks: [],
     produced: [],
     dockerProfiles: new Map(),
+    sshHosts: new Map(),
     dockerContainers: fakeContainers(),
     dockerLogs: new Map(),
     dockerFollow: new Set(),
@@ -534,7 +539,18 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
       const known = imported.get(input.sourceId);
       const existing = known ? await storage.getProfile(known) : undefined;
       if (existing) return { profile: view(existing), created: false };
-      const made = await profilesApi.create({ tool: input.record.tool, name: input.record.name, color: input.record.color ?? null, owner: input.owner, fields: input.record.fields, extras: input.record.extras, secrets: input.secrets ?? null });
+      let fields = input.record.fields as Record<string, unknown>;
+      let secrets = input.secrets ?? null;
+      // A Docker record of version 1: its login becomes an SSH host, as the server does (TSK-144).
+      if (input.record.tool === "docker" && input.record.version < 2 && typeof fields["host"] === "string") {
+        const { host, port, username, auth, keepaliveSec, hostKey, ...rest } = fields;
+        const hostId = ulid();
+        const login = { host: host as string, port: (port as number | undefined) ?? 22, username: username as string, auth: (auth as api.DockerAuth | undefined) ?? "privateKey", keepaliveSec: (keepaliveSec as number | undefined) ?? null, hostKey: (hostKey as api.HostKeyFingerprint | undefined) ?? null };
+        server.sshHosts.set(hostId, { view: { id: hostId, name: host as string, fields: login, owner: { kind: "personal" }, etag: "1", createdAt: "", updatedAt: "", createdBy: "human:account:test", updatedBy: "human:account:test", access: "owner", secrets: [], usedBy: [], usedByHidden: 0 }, secrets: { ...(secrets ?? {}) } });
+        fields = { ...rest, sshHostId: hostId };
+        secrets = null;
+      }
+      const made = await profilesApi.create({ tool: input.record.tool, name: input.record.name, color: input.record.color ?? null, owner: input.owner, fields, extras: input.record.extras, secrets });
       imported.set(input.sourceId, made.id);
       return { profile: made, created: true };
     },
@@ -542,6 +558,11 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
   const secretsApi = {
     status: async (input: api.SecretOwnerInput) => {
       record("secrets.status", input);
+      if (input.owner.kind === "sshHost") {
+        const h = server.sshHosts.get(input.owner.id);
+        if (!h) throw profileGone();
+        return { secrets: Object.keys(h.secrets).map((field) => ({ field, set: true, version: 1, setBy: "human:account:test", setAt: 0 })) };
+      }
       return { secrets: view(await stored(input.owner.id)).secrets };
     },
     remove: async (input: api.SecretFieldInput) => {
@@ -566,9 +587,69 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     }
   };
 
+  // ---- SSH hosts (TSK-144): kept in `server.sshHosts`; secrets write-only.
+  const hostGone = () => new RpcError("NotFound", "no such SSH host", { details: { kind: "NotFound", system: "profiles", message: "no such SSH host", retryable: false, resource: "sshHost" } });
+  const hostView = (h: { view: api.SshHostView; secrets: Record<string, string> }): api.SshHostView => {
+    const usedBy: api.SshHostUser[] = [];
+    for (const r of storageSnapshot) if (r.fields["sshHostId"] === h.view.id) usedBy.push({ id: r.id, tool: r.tool, name: r.name });
+    return { ...h.view, usedBy, secrets: Object.keys(h.secrets).map((field) => ({ field, set: true, version: 1, setBy: "human:account:test", setAt: 0 })) };
+  };
+  let storageSnapshot: ProfileRecord[] = [];
+  const snapshot = async () => {
+    storageSnapshot = await storage.listProfiles();
+  };
+  const hostOf = (id: string) => {
+    const h = server.sshHosts.get(id);
+    if (!h) throw hostGone();
+    return h;
+  };
+  const sshHostsApi = {
+    list: async () => {
+      record("sshHosts.list", {});
+      await snapshot();
+      return { hosts: [...server.sshHosts.values()].map(hostView) };
+    },
+    get: async (input: api.SshHostIdInput) => {
+      record("sshHosts.get", input);
+      await snapshot();
+      return hostView(hostOf(input.id));
+    },
+    create: async (input: api.SshHostCreateInput) => {
+      record("sshHosts.create", { ...input, secrets: Object.keys(input.secrets ?? {}) });
+      const id = ulid();
+      const view: api.SshHostView = { id, name: input.name, fields: input.fields, owner: input.owner, etag: "1", createdAt: "", updatedAt: "", createdBy: "human:account:test", updatedBy: "human:account:test", access: "owner", secrets: [], usedBy: [], usedByHidden: 0 };
+      server.sshHosts.set(id, { view, secrets: { ...(input.secrets ?? {}) } });
+      await snapshot();
+      return hostView(server.sshHosts.get(id)!);
+    },
+    update: async (input: api.SshHostUpdateInput) => {
+      record("sshHosts.update", { ...input, secrets: Object.keys(input.secrets ?? {}) });
+      const h = hostOf(input.id);
+      if (input.etag !== h.view.etag) throw new RpcError("FailedPrecondition", "the SSH host changed since it was read: reload it", { details: { kind: "Conflict", system: "profiles", message: "stale", retryable: false } });
+      h.view = { ...h.view, name: input.name ?? h.view.name, fields: input.fields ?? h.view.fields, etag: String(Number(h.view.etag) + 1) };
+      h.secrets = { ...h.secrets, ...(input.secrets ?? {}) };
+      await snapshot();
+      return { host: hostView(h), removedSecrets: [] };
+    },
+    delete: async (input: api.SshHostDeleteInput) => {
+      record("sshHosts.delete", input);
+      await snapshot();
+      const h = hostView(hostOf(input.id));
+      if (h.usedBy.length > 0) throw new RpcError("FailedPrecondition", `${h.name} is in use`, { details: { kind: "Conflict", system: "profiles", message: "in use", retryable: false } });
+      server.sshHosts.delete(input.id);
+      return {};
+    },
+    test: async (input: api.SshHostTestInput) => {
+      record("sshHosts.test", { ...input, secrets: Object.keys(input.secrets) });
+      dockerHostKey({ name: "draft", host: input.fields.host, port: input.fields.port ?? 22, username: input.fields.username, auth: input.fields.auth ?? "privateKey", hostKey: input.fields.hostKey ?? null, socketPath: null });
+      return { hostKey: FAKE_HOST_KEY, ms: 12 };
+    },
+  };
+
   const client = {
     profiles: profilesApi,
     secrets: secretsApi,
+    sshHosts: sshHostsApi,
     app: {
       info: async () => {
         record("app.info", {});
@@ -667,7 +748,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     docker: {
       connect: async (input: api.DockerConnectInput) => {
         reachable();
-        const profile = fakeDocker(await stored(input.profileId));
+        const profile = fakeDocker(await stored(input.profileId), server.sshHosts);
         // With the profile the server built: what the Docker tests check.
         record("docker.connect", { ...input, profile });
         dockerHostKey(profile);
@@ -679,7 +760,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
       test: async (input: api.ToolTestInput) => {
         record("docker.test", { ...input, draft: { ...input.draft, secrets: Object.keys(input.draft.secrets) } });
         reachable();
-        dockerHostKey(fakeDocker(await draftRecord("docker", input)));
+        dockerHostKey(fakeDocker(await draftRecord("docker", input), server.sshHosts));
         return {};
       },
       disconnect: async (input: api.DockerConnIdInput) => {
@@ -984,6 +1065,12 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     storage,
     /** The page's own browser records (IndexedDB), apart from the server's profiles. */
     browser,
+    /** Stores an SSH host on the (fake) server; its id, for a Docker profile's `sshHostId`. */
+    storeSshHost(name: string, fields: api.SshHostFields, secrets: Record<string, string> = {}): string {
+      const id = ulid();
+      server.sshHosts.set(id, { view: { id, name, fields, owner: { kind: "personal" }, etag: "1", createdAt: "", updatedAt: "", createdBy: "human:account:test", updatedBy: "human:account:test", access: "owner", secrets: [], usedBy: [], usedByHidden: 0 }, secrets });
+      return id;
+    },
     /** Stores a profile on the (fake) server; its id, for `<tool>.connect { profileId }`. */
     async storeProfile(tool: string, name: string, fields: Record<string, unknown>, secrets: Record<string, string> = {}): Promise<string> {
       const id = ulid();

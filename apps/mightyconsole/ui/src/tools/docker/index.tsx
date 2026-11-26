@@ -1,6 +1,6 @@
 // `docker`: Docker over SSH (Mightyconsole spec §10, TSK-81), a Portainer-like view of a host the
-// server reaches through SSH with nothing installed on it. Batch 1: the SSH host profile and its
-// form, trust on first use of the host key (the shell's HostKeyDialog through `trustHostKey`), and
+// server reaches through SSH with nothing installed on it. Batch 1: the profile and its form (the
+// SSH login is a saved SSH host since TSK-144), trust on first use of the host key (the shell's HostKeyDialog through `trustHostKey`), and
 // the Host page. Batch 2b: the Containers list, live through `docker.events`, and a container's
 // Overview, Logs and Inspect; the tree groups the containers by Compose project (spec §10.4).
 // Batch 2c: the container's Stats and Terminal (exec). Batch 3: Images, Volumes and Networks, each
@@ -20,7 +20,8 @@ import { byStateThenName, groupByProject, stateLabel } from "./format";
 import { HostTab } from "./HostTab";
 import { ImagesTab } from "./ImagesTab";
 import { NetworksTab } from "./NetworksTab";
-import { profile, targetOf, trustHostKey } from "./profile";
+import { trustHostKey as trustOnHost } from "@/profiles/ssh-hosts";
+import { hostIdOf, profile, targetOf } from "./profile";
 import { PROJECT_VIEWS, ProjectTab } from "./ProjectTab";
 import { dockerTreeData, treeContainersOf, treeCountsOf } from "./tree-data";
 import { VolumesTab } from "./VolumesTab";
@@ -235,6 +236,9 @@ export const dockerTool: ToolModule = {
   async disconnect(client, connId) {
     await client.docker.disconnect({ connId });
   },
-  trustHostKey,
+  // The key belongs to the profile's SSH host (DOC-23 §4.3): every user of the host follows.
+  async trustHostKey(client, record, key) {
+    await trustOnHost(client, hostIdOf(record.fields), key);
+  },
   targetOf,
 };

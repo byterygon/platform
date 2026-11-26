@@ -6,6 +6,7 @@
 // the id or the name already exists the user chooses Replace, Keep both (a new id, the name
 // suffixed " (2)") or Skip. A record of an unknown tool, or newer than the app knows, is listed
 // and skipped with the reason. Nothing is written until the user presses Import.
+import type { SshHostFields, SshHostView } from "@/gen/api";
 import type { ProfileSchema } from "@/tools/types";
 import { migrateRecord } from "./migrate";
 import { type ProfileRecord, freeName, isRecord, ulid } from "./record";
@@ -20,11 +21,23 @@ export interface ExportFile {
   app: string;
   includesSecrets: boolean;
   profiles: ProfileRecord[];
+  /** The SSH hosts the profiles name (DOC-23 §8.1, TSK-144): never their secrets. */
+  sshHosts?: ExportedHost[];
 }
 
-export function exportFile(records: readonly ProfileRecord[], options: { includeSecrets: boolean; app: string; now?: Date }): ExportFile {
+/** An SSH host in an export file: its settings, never a secret. */
+export interface ExportedHost {
+  id: string;
+  name: string;
+  fields: SshHostFields;
+}
+
+export function exportFile(records: readonly ProfileRecord[], options: { includeSecrets: boolean; app: string; now?: Date; hosts?: readonly SshHostView[] }): ExportFile {
   const now = options.now ?? new Date();
+  const named = new Set(records.map((r) => r.fields["sshHostId"]).filter((id): id is string => typeof id === "string" && id !== ""));
+  const hosts = (options.hosts ?? []).filter((h) => named.has(h.id)).map((h) => ({ id: h.id, name: h.name, fields: structuredClone(h.fields) }));
   return {
+    ...(hosts.length > 0 ? { sshHosts: hosts } : {}),
     format: EXPORT_FORMAT,
     formatVersion: EXPORT_FORMAT_VERSION,
     exportedAt: now.toISOString(),
@@ -53,6 +66,8 @@ export interface ImportRow {
 export interface ImportPlan {
   includesSecrets: boolean;
   rows: ImportRow[];
+  /** The SSH hosts the file carries, imported before the profiles that name them. */
+  hosts: ExportedHost[];
 }
 
 /** Why a file is not a profiles export. */
@@ -87,7 +102,10 @@ export function planImport(text: string, stored: readonly ProfileRecord[], schem
     const conflict = stored.find((s) => s.id === record.id) ?? stored.find((s) => s.tool === record.tool && s.name === record.name) ?? null;
     return { record, conflict, skipReason: null, choice: conflict ? "keepBoth" : "replace" };
   });
-  return { includesSecrets: file.includesSecrets === true, rows };
+  const hosts = (Array.isArray(file.sshHosts) ? file.sshHosts : []).filter(
+    (h): h is ExportedHost => typeof h === "object" && h !== null && typeof h.id === "string" && typeof h.name === "string" && typeof h.fields === "object" && h.fields !== null && typeof h.fields.host === "string" && typeof h.fields.username === "string",
+  );
+  return { includesSecrets: file.includesSecrets === true, rows, hosts };
 }
 
 function skipped(record: ProfileRecord, reason: string): ImportRow {

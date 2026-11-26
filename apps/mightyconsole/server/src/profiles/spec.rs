@@ -107,20 +107,15 @@ pub const SPECS: [ToolSpec; 5] = [
         ],
         host_access: &[],
     },
+    // Version 2 (DOC-23 §6.4, (z)): an SSH profile names a saved SSH host (`sshHostId`) and the
+    // socket on it; the login, its secrets and the trusted host key are the host's ([`SSH_HOST`]).
     ToolSpec {
         tool: "docker",
-        version: 1,
-        secrets: &["privateKey", "passphrase", "password", "tls.clientKeyPem"],
+        version: 2,
+        secrets: &["tls.clientKeyPem"],
         groups: &[TargetGroup {
-            targets: &[
-                "transport",
-                "host",
-                "port",
-                "socketPath",
-                "hostKey",
-                "username",
-            ],
-            secrets: &["privateKey", "passphrase", "password", "tls.clientKeyPem"],
+            targets: &["transport", "sshHostId", "host", "port", "socketPath"],
+            secrets: &["tls.clientKeyPem"],
         }],
         host_access: &[],
     },
@@ -135,6 +130,36 @@ pub const SPECS: [ToolSpec; 5] = [
         host_access: &[],
     },
 ];
+
+/// A saved SSH host (DOC-23 §4.3, §8.1), checked as a profile is: its secrets are the login's,
+/// bound to the address, port and user. The trusted host key is bound too, in its own way
+/// ([`SSH_HOST_KEY`]).
+pub const SSH_HOST: ToolSpec = ToolSpec {
+    tool: "sshHost",
+    version: 1,
+    secrets: &["privateKey", "passphrase", "password"],
+    groups: &[TargetGroup {
+        targets: &["host", "port", "username"],
+        secrets: &["privateKey", "passphrase", "password"],
+    }],
+    host_access: &[],
+};
+
+/// The trusted host key of an SSH host. Trusting the first key keeps the login's secrets (it is
+/// how the first connection is made); replacing or forgetting a trusted key is a change of target
+/// (DOC-25 §3.4.8) and removes them unless the same call sets them.
+pub const SSH_HOST_KEY: &str = "hostKey";
+
+/// The secrets of an SSH host whose target changed from `before` to `after`.
+pub fn ssh_host_secrets_to_unbind(before: &Value, after: &Value) -> Vec<&'static str> {
+    let mut out = SSH_HOST.secrets_to_unbind(before, after);
+    let key = at(before, SSH_HOST_KEY);
+    if !key.is_null() && key != at(after, SSH_HOST_KEY) {
+        out = SSH_HOST.secrets.to_vec();
+        out.sort_unstable();
+    }
+    out
+}
 
 /// The spec of `tool`, `None` for a tool without stored profiles.
 pub fn spec(tool: &str) -> Option<&'static ToolSpec> {
@@ -256,10 +281,25 @@ mod tests {
     #[test]
     fn the_target_view_holds_only_target_fields() {
         let docker = spec("docker").unwrap();
-        let fields = json!({ "host": "h", "port": 22, "username": "u", "keepaliveSec": 5 });
+        let fields = json!({ "sshHostId": "H1", "socketPath": "/s", "keepaliveSec": 5 });
         assert_eq!(
             docker.target_view(&fields),
-            json!({ "host": "h", "port": 22, "username": "u" })
+            json!({ "sshHostId": "H1", "socketPath": "/s" })
         );
+    }
+
+    #[test]
+    fn a_host_s_first_key_keeps_its_secrets_and_a_new_key_removes_them() {
+        let first = json!({ "host": "h", "port": 22, "username": "u", "hostKey": null });
+        let trusted = json!({ "host": "h", "port": 22, "username": "u", "hostKey": { "algorithm": "ssh-ed25519", "fingerprintSha256": "A" } });
+        let replaced = json!({ "host": "h", "port": 22, "username": "u", "hostKey": { "algorithm": "ssh-ed25519", "fingerprintSha256": "B" } });
+        assert!(ssh_host_secrets_to_unbind(&first, &trusted).is_empty());
+        assert_eq!(
+            ssh_host_secrets_to_unbind(&trusted, &replaced),
+            ["passphrase", "password", "privateKey"]
+        );
+        assert_eq!(ssh_host_secrets_to_unbind(&trusted, &first).len(), 3);
+        let moved = json!({ "host": "evil", "port": 22, "username": "u", "hostKey": null });
+        assert_eq!(ssh_host_secrets_to_unbind(&first, &moved).len(), 3);
     }
 }

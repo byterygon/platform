@@ -1,4 +1,5 @@
-// Settings (Mightyconsole spec §3.6): Appearance, Live views, Profiles and Advanced, one setting
+// Settings (Mightyconsole spec §3.6): Appearance, Live views, Profiles, SSH hosts (DOC-23 §10,
+// TSK-144) and Advanced, one setting
 // per row as in DBee's Settings (TSK-64). "Forget everything in this browser" deletes the IndexedDB
 // database after the user types FORGET.
 import { type ReactNode, useEffect, useState } from "react";
@@ -13,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ArrowExport, ArrowImport, Delete, Filter, Flash, type IconDefinition, List, Server, Star, TextT, Window } from "@/lib/icons";
 import { PRESETS, PRESET_LABELS, type Preset } from "../presets";
+import type { MightyClient } from "../client";
+import { HostsSection } from "../ssh-hosts/HostsSection";
 import type { Settings } from "../store";
 
 export interface SettingsDialogProps {
@@ -27,6 +30,10 @@ export interface SettingsDialogProps {
   onExportAll: () => void;
   onImport: () => void;
   onForgetEverything: () => Promise<void>;
+  /** The server, for Settings → SSH hosts. */
+  client?: MightyClient;
+  /** Opens a profile that uses an SSH host. */
+  onOpenProfile?: (profileId: string, tool: string) => void;
 }
 
 function SettingRow({ icon, label, description, children }: { icon: IconDefinition; label: string; description?: ReactNode; children: ReactNode }) {
@@ -66,6 +73,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="live">Live views</TabsTrigger>
               <TabsTrigger value="profiles">Profiles</TabsTrigger>
+              {props.client ? <TabsTrigger value="sshHosts">SSH hosts</TabsTrigger> : null}
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
             <TabsContent value="appearance" className="flex flex-col gap-stack-sm">
@@ -122,6 +130,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 <Button onClick={props.onImport}>Import…</Button>
               </SettingRow>
             </TabsContent>
+            {props.client ? (
+              <TabsContent value="sshHosts" className="flex min-w-0 flex-col gap-stack-sm">
+                <HostsSection client={props.client} {...(props.onOpenProfile ? { onOpenProfile: props.onOpenProfile } : {})} />
+              </TabsContent>
+            ) : null}
             <TabsContent value="advanced" className="flex flex-col gap-stack-sm">
               <SettingRow icon={Server} label="Server" description={props.storageKind === "memory" ? "Profiles are kept in memory only: this browser refused IndexedDB." : "Profiles are kept in this browser's IndexedDB."}>
                 <span className="text-body-1 text-fg">{props.serverAddress}</span>
