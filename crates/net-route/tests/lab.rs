@@ -9,8 +9,9 @@
 use std::path::PathBuf;
 
 use net_route::{
-    BasicAuth, BoxStream, Dialer, Hop, HopOutcome, HostKeyFingerprint, HttpConnectHop, ProxyScheme,
-    Route, RouteError, RouteErrorKind, SessionPool, Socks5Auth, Socks5Hop, SshAuth, SshHop,
+    BasicAuth, BoxStream, CommandHop, Dialer, Hop, HopOutcome, HostKeyFingerprint, HttpConnectHop,
+    ProxyScheme, Route, RouteError, RouteErrorKind, SessionPool, Socks5Auth, Socks5Hop, SshAuth,
+    SshCommandHop, SshHop,
 };
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -383,4 +384,118 @@ async fn socks5_then_a_jump_host_on_the_internal_network() {
     ];
     let hops = trusted(hops, &echo_target).await;
     echo(dial(&through(hops), &echo_target).await.unwrap()).await;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Batch 3: local commands (OpenSSH's `ssh -W` and the crate's test program), an SSH command on a
+// jump host that may not forward, and the System route.
+
+fn local(program: &str, args: &[String]) -> Hop {
+    Hop::Command(CommandHop {
+        program: program.into(),
+        args: args.to_vec(),
+        env: Vec::new(),
+        cwd: None,
+    })
+}
+
+#[tokio::test]
+async fn ssh_w_as_a_local_command_reaches_the_internal_echo() {
+    let lab = lab();
+    let (host, port) = split(&s(&lab["jumps"]["jump1"]));
+    let key = generated().join(s(&lab["jumps"]["keyFile"]));
+    // OpenSSH checks (or here, skips) the jump host's key itself: the program is the person's.
+    let args: Vec<String> = [
+        "-F",
+        "/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "LogLevel=ERROR",
+        "-i",
+        key.to_str().unwrap(),
+        "-p",
+        &port.to_string(),
+        "-W",
+        "{host}:{port}",
+        &format!("{}@{host}", s(&lab["jumps"]["user"])),
+    ]
+    .iter()
+    .map(|a| (*a).to_owned())
+    .collect();
+    let dialer = through(vec![local("ssh", &args)]);
+    echo(dial(&dialer, &s(&lab["targets"]["echo"])).await.unwrap()).await;
+}
+
+#[tokio::test]
+async fn the_test_program_then_squid() {
+    let lab = lab();
+    let args = vec![
+        "connect".to_owned(),
+        "{host}".to_owned(),
+        "{port}".to_owned(),
+    ];
+    let dialer = through(vec![
+        local(env!("CARGO_BIN_EXE_net-route-test-command"), &args),
+        squid(
+            &lab,
+            &s(&lab["httpProxy"]["http"]),
+            Some(&s(&lab["httpProxy"]["password"])),
+        ),
+    ]);
+    echo(dial(&dialer, &s(&lab["targets"]["echo"])).await.unwrap()).await;
+}
+
+#[tokio::test]
+async fn an_ssh_command_on_a_jump_host_that_may_not_forward() {
+    let lab = lab();
+    let echo_target = s(&lab["targets"]["echo"]);
+    let first = trusted(
+        vec![jump(
+            &lab,
+            "jump1",
+            &s(&lab["jumps"]["jump1"]),
+            &s(&lab["jumps"]["user"]),
+            None,
+        )],
+        &echo_target,
+    )
+    .await;
+    let mut chain = first;
+    chain.push(jump(
+        &lab,
+        "jump2",
+        &s(&lab["jumps"]["internal"]["jump2"]),
+        &s(&lab["jumps"]["noForwardUser"]),
+        None,
+    ));
+    // Learn jump2's key with an ssh hop (refused forwarding comes after the key check).
+    let mut chain = trusted(chain, &echo_target).await;
+    let Some(Hop::Ssh(last)) = chain.pop() else {
+        unreachable!()
+    };
+    chain.push(Hop::SshCommand(SshCommandHop {
+        ssh: last,
+        command: "nc {host} {port}".into(),
+    }));
+    echo(dial(&through(chain), &echo_target).await.unwrap()).await;
+}
+
+#[tokio::test]
+async fn the_system_route_through_squid() {
+    let lab = lab();
+    let proxy = format!(
+        "http://{}:{}@{}",
+        s(&lab["httpProxy"]["user"]),
+        s(&lab["httpProxy"]["password"]),
+        s(&lab["httpProxy"]["http"])
+    );
+    let dialer = Dialer::system_with(std::sync::Arc::new(move |name: &str| {
+        (name == "HTTPS_PROXY").then(|| proxy.clone())
+    }));
+    echo(dial(&dialer, &s(&lab["targets"]["echo"])).await.unwrap()).await;
 }

@@ -15,7 +15,8 @@ use crate::name::{format_address, is_valid_host};
 use crate::pool::SessionPool;
 use crate::route::{Hop, Route};
 use crate::ssh::{HostKeyCheck, OpenError, SSH_LOGIN_CAP, SshSession, TrustedKey};
-use crate::{BoxStream, http_connect, socks5};
+use crate::system::EnvLookup;
+use crate::{BoxStream, command, http_connect, socks5};
 
 /// The connect budget of a whole route when the caller sets none (DOC-23 5, "Timeouts").
 pub const DEFAULT_BUDGET: Duration = Duration::from_secs(20);
@@ -29,6 +30,9 @@ pub const PROXY_HANDSHAKE_CAP: Duration = Duration::from_secs(10);
 /// How long an SSH hop may take to open a channel to the next address.
 pub const CHANNEL_OPEN_CAP: Duration = Duration::from_secs(10);
 
+/// How long a local command may take to start (DOC-23 5: 30 s for a command).
+pub const COMMAND_START_CAP: Duration = Duration::from_secs(30);
+
 /// Opens streams to `host:port`, directly or through a route. Cheap to clone.
 #[derive(Clone)]
 pub struct Dialer {
@@ -39,6 +43,8 @@ pub struct Dialer {
     host_keys: Arc<dyn HostKeyCheck>,
     pool: Option<SessionPool>,
     budget: Duration,
+    /// The System route (DOC-23 4.6): the environment, read at each dial.
+    system: Option<Arc<EnvLookup>>,
 }
 
 impl fmt::Debug for Dialer {
@@ -53,6 +59,7 @@ impl fmt::Debug for Dialer {
                     .map(|h| format!("{} {}", h.kind(), h.label()))
                     .collect::<Vec<_>>(),
             ),
+            None if self.system.is_some() => d.field("route", &"system proxy"),
             None => d.field("route", &"direct"),
         };
         d.field("budget", &self.budget).finish()
@@ -81,6 +88,8 @@ pub struct HopReport {
 enum Entered {
     Stream(BoxStream),
     Ssh(Arc<SshSession>),
+    /// A local command, started by its open.
+    Spawn,
 }
 
 impl Dialer {
@@ -93,6 +102,22 @@ impl Dialer {
             host_keys: Arc::new(TrustedKey),
             pool: None,
             budget: DEFAULT_BUDGET,
+            system: None,
+        }
+    }
+
+    /// The System route (DOC-23 4.6, decision 3): `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` of
+    /// this process (or their lowercase forms) are read at each dial and become one
+    /// `httpConnect` or `socks5` hop, or Direct. Only when a person chose this route.
+    pub fn system() -> Dialer {
+        Dialer::system_with(Arc::new(|name: &str| std::env::var(name).ok()))
+    }
+
+    /// The System route with the variables read from `env` (tests).
+    pub fn system_with(env: Arc<EnvLookup>) -> Dialer {
+        Dialer {
+            system: Some(env),
+            ..Dialer::direct()
         }
     }
 
@@ -104,9 +129,9 @@ impl Dialer {
             .hops
             .iter()
             .enumerate()
-            .map(|(index, hop)| match hop {
-                Hop::Ssh(ssh) => ssh.decode_key().map_err(|e| e.with_hop(hop.at(index))),
-                _ => Ok(None),
+            .map(|(index, hop)| match hop.ssh() {
+                Some(ssh) => ssh.decode_key().map_err(|e| e.with_hop(hop.at(index))),
+                None => Ok(None),
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Dialer {
@@ -195,6 +220,9 @@ impl Dialer {
                 "the port is 1 to 65535",
             ));
         }
+        if let Some(env) = &self.system {
+            return self.run_system(env, host, port, trace, use_pool).await;
+        }
         let budget_end = Instant::now() + self.budget;
         let Some(route) = &self.route else {
             let stream = self.tcp(host, port, &target, budget_end).await?;
@@ -208,18 +236,21 @@ impl Dialer {
         let pooled = pool.and_then(|pool| {
             (0..hops.len())
                 .rev()
-                .filter(|i| matches!(hops[*i], Hop::Ssh(_)))
+                .filter(|i| hops[*i].ssh().is_some())
                 .find_map(|i| pool.get(&hops[..=i]).map(|s| (i, s)))
         });
         let (start, mut carried) = match pooled {
             Some((index, session)) => (index, Some(Entered::Ssh(session))),
-            None => {
-                let (first_host, first_port) = hops[0].address();
-                let tcp = self
-                    .tcp(first_host, first_port, &hops[0].at(0), budget_end)
-                    .await?;
-                (0, Some(Entered::Stream(tcp)))
-            }
+            None => match hops[0].address() {
+                Some((first_host, first_port)) => {
+                    let tcp = self
+                        .tcp(first_host, first_port, &hops[0].at(0), budget_end)
+                        .await?;
+                    (0, Some(Entered::Stream(tcp)))
+                }
+                // A local command reaches the next address itself.
+                None => (0, Some(Entered::Spawn)),
+            },
         };
 
         let mut stream = None;
@@ -227,7 +258,10 @@ impl Dialer {
             let here = hop.at(index);
             let (next, next_host, next_port) = match hops.get(index + 1) {
                 Some(after) => {
-                    let (h, p) = after.address();
+                    // Only a first hop has no address (a local command); the route checked it.
+                    let (h, p) = after
+                        .address()
+                        .expect("a hop after the first has an address");
                     (after.at(index + 1), h, p)
                 }
                 None => (target.clone(), host, port),
@@ -235,6 +269,10 @@ impl Dialer {
             let entered = match (carried.take(), stream.take()) {
                 // A pooled session: already in.
                 (Some(Entered::Ssh(session)), _) => Entered::Ssh(session),
+                (Some(Entered::Spawn), _) => {
+                    trace.reached(here.clone(), None);
+                    Entered::Spawn
+                }
                 (Some(Entered::Stream(s)), _) | (None, Some(s)) => {
                     let cap = Cap::new(self.enter_cap(hop), budget_end, self.budget);
                     let entered = cap
@@ -246,7 +284,7 @@ impl Dialer {
                     }
                     let host_key = match &entered {
                         Entered::Ssh(session) => Some(session.host_key().clone()),
-                        Entered::Stream(_) => None,
+                        Entered::Stream(_) | Entered::Spawn => None,
                     };
                     trace.reached(here.clone(), host_key);
                     entered
@@ -267,23 +305,50 @@ impl Dialer {
         Ok(stream.expect("a route has at least one hop"))
     }
 
+    /// The System route: the environment's proxy for this target, or Direct, through a dialer
+    /// with this one's connector, host keys, pool and budget.
+    async fn run_system(
+        &self,
+        env: &Arc<EnvLookup>,
+        host: &str,
+        port: u16,
+        trace: &mut Trace,
+        use_pool: bool,
+    ) -> Result<BoxStream, RouteError> {
+        let hop = crate::system::hop_for(env.as_ref(), host, port)
+            .map_err(|message| RouteError::new(None, RouteErrorKind::Invalid, message))?;
+        let inner = match hop {
+            Some(hop) => Dialer::through(Route::new("system proxy", vec![hop]))?,
+            None => Dialer::direct(),
+        };
+        let inner = Dialer {
+            connector: Arc::clone(&self.connector),
+            host_keys: Arc::clone(&self.host_keys),
+            pool: self.pool.clone(),
+            budget: self.budget,
+            ..inner
+        };
+        Box::pin(inner.run(host, port, trace, use_pool)).await
+    }
+
     fn enter_cap(&self, hop: &Hop) -> Duration {
         match hop {
-            Hop::Ssh(_) => SSH_LOGIN_CAP,
+            Hop::Ssh(_) | Hop::SshCommand(_) => SSH_LOGIN_CAP,
             _ => PROXY_HANDSHAKE_CAP,
         }
     }
 
     fn open_cap(&self, hop: &Hop) -> Duration {
         match hop {
-            Hop::Ssh(_) => CHANNEL_OPEN_CAP,
+            Hop::Ssh(_) | Hop::SshCommand(_) => CHANNEL_OPEN_CAP,
+            Hop::Command(_) => COMMAND_START_CAP,
             _ => PROXY_HANDSHAKE_CAP,
         }
     }
 
     fn entering(&self, hop: &Hop) -> String {
         match hop {
-            Hop::Ssh(_) => "logging in over SSH".to_owned(),
+            Hop::Ssh(_) | Hop::SshCommand(_) => "logging in over SSH".to_owned(),
             _ => "letting the client in".to_owned(),
         }
     }
@@ -298,12 +363,18 @@ impl Dialer {
         match hop {
             Hop::HttpConnect(h) => http_connect::enter(stream, h).await.map(Entered::Stream),
             Hop::Socks5(h) => socks5::enter(stream, h).await.map(Entered::Stream),
-            Hop::Ssh(h) => {
+            Hop::Ssh(_) | Hop::SshCommand(_) => {
+                let ssh = hop.ssh().expect("an SSH hop");
                 let key = self.keys.get(index).cloned().flatten();
-                SshSession::login(stream, h, key, here, Arc::clone(&self.host_keys))
+                SshSession::login(stream, ssh, key, here, Arc::clone(&self.host_keys))
                     .await
                     .map(|s| Entered::Ssh(Arc::new(s)))
                     .map_err(HopFailure::from)
+            }
+            // Started by its open; never entered with a stream (the route keeps it first).
+            Hop::Command(_) => {
+                drop(stream);
+                Ok(Entered::Spawn)
             }
         }
     }
@@ -336,6 +407,32 @@ async fn open(entered: Entered, hop: &Hop, host: &str, port: u16) -> Result<BoxS
     match (entered, hop) {
         (Entered::Stream(s), Hop::HttpConnect(h)) => http_connect::open(s, h, host, port).await,
         (Entered::Stream(s), Hop::Socks5(_)) => socks5::open(s, host, port).await,
+        (Entered::Spawn, Hop::Command(h)) => command::spawn(h, host, port).await,
+        (Entered::Ssh(session), Hop::SshCommand(h)) => {
+            let line = crate::name::expand_placeholders(&h.command, host, port)
+                .map_err(|e| HopFailure::next(RouteErrorKind::Invalid, e))?;
+            session.open_exec(&line).await.map_err(|e| match e {
+                OpenError::Refused { .. } => HopFailure::here(
+                    RouteErrorKind::Forbidden,
+                    format!(
+                        "{} refused to run the command (a forced command, no shell, or commands \
+                         not allowed for this user)",
+                        session.who()
+                    ),
+                ),
+                OpenError::Lost(reason) => HopFailure::here(
+                    RouteErrorKind::Connect,
+                    format!("{}: {reason}", session.who()),
+                ),
+                OpenError::Failed(reason) => HopFailure::here(
+                    RouteErrorKind::Connect,
+                    format!(
+                        "the command on {} did not open a stream: {reason}",
+                        session.who()
+                    ),
+                ),
+            })
+        }
         (Entered::Ssh(session), Hop::Ssh(_)) => {
             let authority = format_address(host, port);
             session

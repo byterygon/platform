@@ -35,6 +35,29 @@ use crate::{BoxStream, Dialer};
 /// How long the SSH handshake and login may take (DOC-23 5, "Timeouts").
 pub const SSH_LOGIN_CAP: Duration = Duration::from_secs(20);
 
+/// The most of a command's stderr kept for its error message.
+pub(crate) const STDERR_TAIL: usize = 8 * 1024;
+
+/// `: <stderr>` for a message, the last line or two of it, printable only.
+pub(crate) fn said(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let text: String = text
+        .trim()
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let text = text.trim();
+    if text.is_empty() {
+        String::new()
+    } else {
+        let start = text.len().saturating_sub(400);
+        let start = (start..=text.len())
+            .find(|i| text.is_char_boundary(*i))
+            .unwrap_or(0);
+        format!(": {}", &text[start..])
+    }
+}
+
 /// Keepalives the host may leave unanswered before the session counts as lost.
 const KEEPALIVE_MAX: usize = 3;
 
@@ -103,6 +126,35 @@ impl SshHop {
         };
         parse_private_key(key.expose(), passphrase.as_ref().map(Secret::expose))
             .map(|k| Some(Arc::new(k)))
+    }
+}
+
+/// An SSH command hop (DOC-23 4.3b): logs into an SSH host and runs `command` there; the
+/// command's stdin and stdout are the stream to the next address, as in `ssh host nc {host}
+/// {port}`. For a host that forbids port forwarding but allows commands. Only `{host}` and
+/// `{port}` are replaced ([`crate::expand_placeholders`]); the host's login shell reads the line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SshCommandHop {
+    pub ssh: SshHop,
+    pub command: String,
+}
+
+impl SshCommandHop {
+    pub(crate) fn validate(&self) -> Result<(), (Option<&'static str>, String)> {
+        self.ssh.validate()?;
+        if self.command.trim().is_empty() {
+            return Err((
+                Some("command"),
+                "enter the command to run on the SSH host, like `nc {host} {port}`".into(),
+            ));
+        }
+        if self.command.chars().any(char::is_control) {
+            return Err((
+                Some("command"),
+                "the command is one line, without control characters".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -407,6 +459,99 @@ impl SshSession {
             inner: channel.into_stream(),
             _session: Arc::clone(self),
         }))
+    }
+
+    /// Runs `command` in an exec channel; its stdin and stdout are the stream (the `sshCommand`
+    /// hop). A host that refuses the command (a forced command, no shell, `exec` denied) is
+    /// `Refused { prohibited: true }`; a command that ends before the host confirms it is
+    /// `Failed` with what it wrote to stderr. The stream keeps the session alive.
+    pub async fn open_exec(self: &Arc<Self>, command: &str) -> Result<BoxStream, OpenError> {
+        let opened = self.handle.channel_open_session().await;
+        let mut channel = self.opened(opened)?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| OpenError::Failed(e.to_string()))?;
+        let mut early = Vec::new();
+        let mut stderr = Vec::new();
+        loop {
+            match channel.wait().await {
+                Some(ChannelMsg::Success) => break,
+                Some(ChannelMsg::Failure) => {
+                    return Err(OpenError::Refused {
+                        prohibited: true,
+                        code: 0,
+                        description: "the host refused to run the command".into(),
+                    });
+                }
+                Some(ChannelMsg::Data { data }) => early.extend_from_slice(&data),
+                Some(ChannelMsg::ExtendedData { data, .. }) => {
+                    stderr.extend_from_slice(&data);
+                    let excess = stderr.len().saturating_sub(STDERR_TAIL);
+                    stderr.drain(..excess);
+                }
+                Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    return Err(OpenError::Failed(format!(
+                        "the command exited with {exit_status}{}",
+                        said(&stderr)
+                    )));
+                }
+                Some(ChannelMsg::Eof | ChannelMsg::Close) | None => {
+                    return Err(OpenError::Failed(format!(
+                        "the host closed the command's channel{}",
+                        said(&stderr)
+                    )));
+                }
+                Some(_) => {}
+            }
+        }
+        // Confirmed. Watch it briefly, as a local command (DOC-23 4.4): a command that ends at
+        // once (a missing `nc`, a host it cannot reach) is the hop's error with its stderr.
+        if early.is_empty() {
+            let deadline = tokio::time::Instant::now() + crate::command::COMMAND_EARLY_EXIT;
+            loop {
+                match tokio::time::timeout_at(deadline, channel.wait()).await {
+                    Err(_) => break,
+                    Ok(Some(ChannelMsg::Data { data })) => {
+                        early.extend_from_slice(&data);
+                        break;
+                    }
+                    Ok(Some(ChannelMsg::ExtendedData { data, .. })) => {
+                        stderr.extend_from_slice(&data);
+                        let excess = stderr.len().saturating_sub(STDERR_TAIL);
+                        stderr.drain(..excess);
+                    }
+                    Ok(Some(ChannelMsg::ExitStatus { exit_status })) => {
+                        // Its stderr may still be on the way.
+                        while let Ok(Some(ChannelMsg::ExtendedData { data, .. })) =
+                            tokio::time::timeout(
+                                std::time::Duration::from_millis(100),
+                                channel.wait(),
+                            )
+                            .await
+                        {
+                            stderr.extend_from_slice(&data);
+                        }
+                        return Err(OpenError::Failed(format!(
+                            "the command exited with {exit_status}{}",
+                            said(&stderr)
+                        )));
+                    }
+                    Ok(Some(ChannelMsg::Eof | ChannelMsg::Close) | None) => {
+                        return Err(OpenError::Failed(format!(
+                            "the command ended at once{}",
+                            said(&stderr)
+                        )));
+                    }
+                    Ok(Some(_)) => {}
+                }
+            }
+        }
+        let stream: BoxStream = Box::new(SessionStream {
+            inner: channel.into_stream(),
+            _session: Arc::clone(self),
+        });
+        Ok(crate::stream::Prefixed::boxed(early, stream))
     }
 
     fn opened(
