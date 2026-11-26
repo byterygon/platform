@@ -14,13 +14,26 @@ async function key(ctx: Pick<BrowserContext, "page">, key: string, code: string,
   for (const type of ["rawKeyDown", "keyUp"]) await ctx.page.send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, modifiers });
 }
 
+/**
+ * Scrolls the editor into view and clicks it, as a person does (focus from script does not always
+ * reach Monaco), until Monaco has the focus. A click that lands while the page is still laying out
+ * the tab is lost; the lab's Workflows walk timed out on one (TSK-141), so it clicks again.
+ */
+async function clickInto(ctx: Pick<BrowserContext, "page" | "run" | "until">, label: string): Promise<void> {
+  await ctx.until(`Boolean(${editorArea(label)})`, `the ${label} editor`);
+  const focused = `(${editorArea(label)})?.closest(".monaco-editor")?.classList.contains("focused") === true`;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const box = await ctx.run<{ x: number; y: number }>(`(() => { const root = ${editorArea(label)}.closest("[data-slot=code-editor]"); root.scrollIntoView({ block: "center" }); const r = root.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 120), y: r.top + Math.min(r.height / 2, 16) }; })()`);
+    for (const type of ["mousePressed", "mouseReleased"]) await ctx.page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+    const done = await ctx.run<boolean>(`new Promise((resolve) => { const start = Date.now(); const tick = () => (${focused} ? resolve(true) : Date.now() - start > 2000 ? resolve(false) : setTimeout(tick, 100)); tick(); })`);
+    if (done) return;
+  }
+  await ctx.until(focused, `the ${label} editor focused`);
+}
+
 /** Replaces the editor's text with `text` as typed keys would (select all, then insert). */
 export async function typeInEditor(ctx: Pick<BrowserContext, "page" | "run" | "until">, label: string, text: string): Promise<void> {
-  await ctx.until(`Boolean(${editorArea(label)})`, `the ${label} editor`);
-  // Scrolled into view and clicked, as a person does (focus from script does not always reach Monaco).
-  const box = await ctx.run<{ x: number; y: number }>(`(() => { const root = ${editorArea(label)}.closest("[data-slot=code-editor]"); root.scrollIntoView({ block: "center" }); const r = root.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 120), y: r.top + Math.min(r.height / 2, 16) }; })()`);
-  for (const type of ["mousePressed", "mouseReleased"]) await ctx.page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
-  await ctx.until(`${editorArea(label)}.closest(".monaco-editor").classList.contains("focused")`, `the ${label} editor focused`);
+  await clickInto(ctx, label);
   await key(ctx, "a", "KeyA", 65, MAC ? META : CTRL);
   if (text === "") await key(ctx, "Backspace", "Backspace", 8, 0);
   else await ctx.page.send("Input.insertText", { text });
@@ -32,10 +45,7 @@ export async function typeInEditor(ctx: Pick<BrowserContext, "page" | "run" | "u
  * for 13 KB in a local run (TSK-113).
  */
 export async function pasteInEditor(ctx: Pick<BrowserContext, "page" | "run" | "until">, label: string, text: string): Promise<void> {
-  await ctx.until(`Boolean(${editorArea(label)})`, `the ${label} editor`);
-  const box = await ctx.run<{ x: number; y: number }>(`(() => { const root = ${editorArea(label)}.closest("[data-slot=code-editor]"); root.scrollIntoView({ block: "center" }); const r = root.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 120), y: r.top + Math.min(r.height / 2, 16) }; })()`);
-  for (const type of ["mousePressed", "mouseReleased"]) await ctx.page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
-  await ctx.until(`${editorArea(label)}.closest(".monaco-editor").classList.contains("focused")`, `the ${label} editor focused`);
+  await clickInto(ctx, label);
   // The selectAll command too: on macOS the key alone does not reach it.
   for (const type of ["rawKeyDown", "keyUp"]) await ctx.page.send("Input.dispatchKeyEvent", { type, key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65, modifiers: MAC ? META : CTRL, ...(type === "rawKeyDown" ? { commands: ["selectAll"] } : {}) });
   await ctx.run(`(() => { const dt = new DataTransfer(); dt.setData("text/plain", ${JSON.stringify(text)}); ${editorArea(label)}.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); return true; })()`);
