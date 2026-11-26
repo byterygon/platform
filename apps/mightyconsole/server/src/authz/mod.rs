@@ -953,10 +953,10 @@ mod tests {
             let action = Action::new(name, meta.perm.as_str());
             // The tools' procedures act on a profile; the management ones on the server.
             let target = (!name.starts_with("admin.")).then(|| shared("SHARED"));
-            // `profiles.delete` carries `profiles.personal`, which every role holds: the profile
-            // service decides who may delete which profile (a shared one needs `profiles.manage`;
-            // tests/profiles.rs), so the Authorizer asks everyone to confirm.
-            let refused: &[&Principal] = if name == "profiles.delete" {
+            // `profiles.delete` and `sshHosts.delete` carry `profiles.personal`, which every role
+            // holds: the profile service decides who may delete which one (a shared one needs
+            // `profiles.manage`; tests/profiles.rs), so the Authorizer asks everyone to confirm.
+            let refused: &[&Principal] = if meta.perm.as_str() == "profiles.personal" {
                 &[]
             } else {
                 &[&viewer, &operator]

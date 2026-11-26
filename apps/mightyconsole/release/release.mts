@@ -303,7 +303,15 @@ export async function smoke(options: { binary: string; version?: string }): Prom
     else if ((await get(port, `/${script}`)).status !== 200) problems.push(`${script} is not served`);
     if ((await get(port, "/assets/missing.js")).status !== 404) problems.push("a missing asset is not a 404");
   } finally {
-    server.kill();
+    // A clean stop still writes server.stop and the audit checkpoint into the data directory:
+    // wait for the process to end (SIGKILL after 10 s) before removing it.
+    if (server.exitCode === null && server.signalCode === null) {
+      const ended = new Promise<void>((done) => server.once("exit", () => done()));
+      server.kill();
+      const killer = setTimeout(() => server.kill("SIGKILL"), 10_000);
+      await ended;
+      clearTimeout(killer);
+    }
     rmSync(data, { recursive: true, force: true });
   }
   if (problems.length > 0) throw new Error(`smoke check failed:\n  ${problems.join("\n  ")}`);
