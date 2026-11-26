@@ -46,6 +46,7 @@ import { formatAgo, formatDuration, formatSize } from "./format";
 import { validatePattern } from "./profile";
 import { reloadStreams } from "./tree-data";
 import { type ViewDecoding, bucketPlace, useViewDecoding } from "./SchemasTab";
+import { Gated, deniedItem, useGateFor } from "@/app/access-ui";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -95,6 +96,8 @@ const revisionOf = (r: api.MessageRecord) => Number(r.sequence ?? 0);
 type Dialog = { kind: "delete" | "purge" } | { kind: "back"; record: api.MessageRecord; latest: number } | { kind: "deleteBucket" } | null;
 
 function KeyPane({ bucket, keyName, profile, connId, client, note, onChanged, onPutNew }: { bucket: string; keyName: string; profile: ProfileRecord; connId: string; client: MightyClient; note(e: unknown): DescribedError; onChanged(): void; onPutNew(revision: number | undefined): void }) {
+  const deleteKeyGate = useGateFor("nats.kv.delete", "Deleting a key", profile);
+  const purgeKeyGate = useGateFor("nats.kv.purge", "Purging a key", profile);
   const notify = useContext(NoticeContext);
   const [section, setSection] = useState<"entry" | "history">("entry");
   const [history, setHistory] = useState<api.MessageRecord[] | null>(null);
@@ -210,12 +213,16 @@ function KeyPane({ bucket, keyName, profile, connId, client, note, onChanged, on
           <Button size="small" onClick={() => onPutNew(latest ? revisionOf(latest) : undefined)}>
             <Icon icon={Edit} /> Put a new value…
           </Button>
-          <Button size="small" appearance="subtle" onClick={() => setDialog({ kind: "delete" })} disabled={deleted}>
-            <Icon icon={Delete} /> Delete key…
-          </Button>
-          <Button size="small" appearance="subtle" onClick={() => setDialog({ kind: "purge" })}>
-            <Icon icon={Delete} /> Purge key…
-          </Button>
+          <Gated refusal={deleteKeyGate}>
+            <Button size="small" appearance="subtle" onClick={() => setDialog({ kind: "delete" })} disabled={deleted}>
+              <Icon icon={Delete} /> Delete key…
+            </Button>
+          </Gated>
+          <Gated refusal={purgeKeyGate}>
+            <Button size="small" appearance="subtle" onClick={() => setDialog({ kind: "purge" })}>
+              <Icon icon={Delete} /> Purge key…
+            </Button>
+          </Gated>
         </div>
       ) : null}
       <ConfirmDialog
@@ -455,6 +462,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
 }
 
 export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, updateProfile, active }: TabProps) {
+  const deleteBucketGate = useGateFor("nats.kv.buckets.delete", "Deleting a bucket", profile);
   const bucket = text(tab.params["bucket"]);
   const place = useCallback(() => bucketPlace(bucket), [bucket]);
   const decoding = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
@@ -529,6 +537,7 @@ export function KvTab({ tab, profile, connId, client, useTabActions, onLive, not
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
+                  {...deniedItem(deleteBucketGate)}
                   onClick={() => {
                     setTyped("");
                     setDeleting(true);

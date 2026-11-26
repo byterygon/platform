@@ -15,7 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Me, SessionRow } from "@/gen/api";
-import { Globe, SignOut, Settings as SettingsIcon } from "@/lib/icons";
+import { Globe, Shield, SignOut, Settings as SettingsIcon } from "@/lib/icons";
 import type { MightyClient } from "./client";
 import { clock, initialsOf, methodText, nameOf, scopeText, viaText } from "./session";
 
@@ -28,12 +28,14 @@ export interface AccountMenuProps {
   /** The settings shortcut, shown beside the item. */
   settingsBinding?: string;
   onSessions(): void;
+  /** "My access": the roles and the permissions they grant. */
+  onMyAccess?(): void;
   onSettings(): void;
   onSignOut(): void;
 }
 
 /** The initials button and its menu. The button is the first stop after the title area's tools. */
-export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onSettings, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onMyAccess, onSettings, onSignOut }: AccountMenuProps) {
   const name = nameOf(me);
   return (
     <DropdownMenu>
@@ -65,6 +67,12 @@ export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSession
           </p>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        {onMyAccess ? (
+          <DropdownMenuItem onClick={onMyAccess}>
+            <Icon icon={Shield} />
+            My access
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={onSessions}>
           <Icon icon={Globe} />
           Sessions

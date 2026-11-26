@@ -3,6 +3,7 @@
 import { isRpcError } from "@byterygon/ambidex";
 import type { ToolError } from "@/gen/api";
 import type { DescribedError } from "@/tools/types";
+import { denialOf } from "./access";
 
 export function describeError(error: unknown): DescribedError {
   if (isRpcError(error)) {
@@ -14,6 +15,8 @@ export function describeError(error: unknown): DescribedError {
     if (details?.hostKey) out.hostKey = details.hostKey;
     if (details?.remote?.name) out.remoteName = details.remote.name;
     if (error.code === "Unavailable" && !details?.kind) out.description = "The server is not reachable.";
+    const denied = denialOf(error);
+    if (denied) out.denied = denied;
     return out;
   }
   return { title: error instanceof Error ? error.message : String(error) };

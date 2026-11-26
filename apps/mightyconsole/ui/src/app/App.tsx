@@ -29,7 +29,10 @@ import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
+import { AccessPage, AccessProvider, type AccessValue, DeniedTab } from "./access-ui";
+import { type Refusal, refusalBefore, toolOpen, toolPerm } from "./access";
 import { AccountMenu, SessionsDialog } from "./account-menu";
+import { MyAccessDialog } from "./my-access";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { HostKeyDialog } from "./dialogs/HostKeyDialog";
@@ -281,6 +284,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   // The person's session (DOC-25 §3.2.4): who they are, the warning before a limit, and the dialog
   // for a session that ended while the app is open (the shell stays under it with its work).
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [myAccessOpen, setMyAccessOpen] = useState(false);
   const session = useSession(client, state.server);
   const { expiry, later: laterExpiry } = useExpiry(session.me, session.now);
   const signInAgain = useSignInAgain(routerConfig.basePath, state.server === "signedOut", () => supervisor.current?.retryNow());
@@ -1200,7 +1204,19 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     return { connected: mine.filter((p) => state.conns[p.id]?.status === "connected").length, failed: mine.some((p) => state.conns[p.id]?.status === "failed") };
   };
 
+  // Why the person cannot use a tool: none of their roles holds its read permission anywhere (and they keep no personal profiles).
+  const lockedBy = (t: ToolModule): Refusal | null =>
+    session.me && !toolOpen(session.me, t.id) ? refusalBefore(session.me, toolPerm(t.id), `Using ${t.label}`, { profile: `a ${t.label} profile` }) : null;
+  const toolRefusal = lockedBy(tool);
+  const access: AccessValue = {
+    me: session.me,
+    admins: null,
+    openMyAccess: () => setMyAccessOpen(true),
+    profileName: (id) => stateRef.current.profiles?.find((p) => p.id === id)?.name,
+  };
+
   return (
+    <AccessProvider value={access}>
     <NoticeContext value={notify}>
     <SidebarProvider open={state.layout.sidebarOpen} onOpenChange={(open) => dispatch({ type: "layout", layout: { sidebarOpen: open } })} className="h-full">
       <Tabs value={missingLink ? LINK_TAB : (state.activeTab ?? "")} onValueChange={(v) => {
@@ -1273,7 +1289,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             <TooltipContent>Keyboard shortcuts ({bindingOf("shortcuts")})</TooltipContent>
           </Tooltip>
           {session.me ? (
-            <AccountMenu me={session.me} idpName={idpName} startedMs={session.startedMs} settingsBinding={bindingOf("settings")} onSessions={() => setSessionsOpen(true)} onSettings={() => perform("settings")} onSignOut={() => void signOut(routerConfig.basePath)} />
+            <AccountMenu me={session.me} idpName={idpName} startedMs={session.startedMs} settingsBinding={bindingOf("settings")} onSessions={() => setSessionsOpen(true)} onMyAccess={() => setMyAccessOpen(true)} onSettings={() => perform("settings")} onSignOut={() => void signOut(routerConfig.basePath)} />
           ) : null}
         </header>
         <div className="relative flex min-h-0 flex-1">
@@ -1294,6 +1310,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             bindingAt={(i) => (i >= 0 && i < 9 ? bindingOf(`tool${i + 1}` as ActionId) : "")}
             onAbout={() => perform("about")}
             findId={FIND_TOOL_ID}
+            lockedBy={lockedBy}
           />
           {navOverlay ? <div aria-hidden="true" className="absolute inset-0 z-[var(--by-z-sticky)] bg-scrim" onClick={() => dispatch({ type: "layout", layout: { navCollapsed: null } })} /> : null}
           <Resizable orientation="horizontal" sizes={state.layout.sidebarOpen ? state.layout.shellSizes : [0, 100]} onSizesChange={(sizes) => state.layout.sidebarOpen && dispatch({ type: "layout", layout: { shellSizes: sizes } })} className="min-h-0 flex-1 ps-gap-sm pe-gap-sm" aria-label="Sidebar and workspace">
@@ -1331,6 +1348,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                   </span>
                 </SidebarHeader>
                 <SidebarContent className="min-h-0 flex-1 p-0">
+                  {toolRefusal ? (
+                    <AccessPage refusal={toolRefusal} title={`You can't use ${tool.label}`} />
+                  ) : (
                   <ConnectionList
                     tool={tool}
                     profiles={state.profiles === null ? null : profiles.filter((p) => p.tool === tool.id)}
@@ -1356,6 +1376,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                       if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });
                     }}
                   />
+                  )}
                 </SidebarContent>
               </Sidebar>
             </ResizablePanel>
@@ -1544,12 +1565,14 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       />
       <AboutDialog open={dialog.kind === "about"} onOpenChange={(open) => !open && closeDialog()} info={state.info} diagnostics={state.diagnostics} />
       <ShortcutsDialog open={dialog.kind === "shortcuts"} onOpenChange={(open) => !open && closeDialog()} />
+      {session.me ? <MyAccessDialog open={myAccessOpen} onOpenChange={setMyAccessOpen} me={session.me} /> : null}
       {session.me ? <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} client={client} currentId={session.me.session} /> : null}
       <SessionEndedDialog open={state.server === "signedOut"} me={session.me} replacedBy={session.replacedBy} waiting={signInAgain.waiting} onSignInAgain={signInAgain.open} />
       {state.server === "lost" || state.server === "versionMismatch" ? <ServerOverlay status={state.server} onRetry={() => supervisor.current?.retryNow()} /> : null}
       <span className="sr-only" aria-live="polite" data-focus-pane={focusPane} />
     </SidebarProvider>
     </NoticeContext>
+    </AccessProvider>
   );
 }
 
@@ -1614,7 +1637,8 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
   } else if (conn.status === "connecting" || conn.status === "reconnecting") {
     overlay = <ConnectingState name={profile.name} since={conn.since ?? Date.now()} onCancel={cancelConnect} />;
   } else if (conn.status === "failed" && conn.error) {
-    overlay = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} onTrust={trust} />;
+    const failed = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} onTrust={trust} />;
+    overlay = conn.error.denied ? <DeniedTab error={conn.error} tool={t.label} profile={profile.name} onRefresh={connect} fallback={failed} /> : failed;
   } else if (conn.status === "disconnected") {
     overlay = <DisconnectedState name={profile.name} onConnect={connect} />;
   }

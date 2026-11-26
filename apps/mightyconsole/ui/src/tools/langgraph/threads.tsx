@@ -23,6 +23,7 @@ import type * as api from "@/gen/api";
 import { Add, ArrowClockwise, Braces, ChevronDown, Delete, Options, Search } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { StatusBadge, parseJson, preview, seenKeysSchema, shortId, useLoad } from "./shared";
+import { Gated, useGateFor } from "@/app/access-ui";
 
 /** Threads per page (spec §11.2 lists the latest 50) and the other choices of Advanced. */
 const PAGE = 50;
@@ -103,6 +104,7 @@ function AdvancedButton({ order, onChange }: { order: ThreadsOrder; onChange(nex
 }
 
 export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const deleteGate = useGateFor("langgraph.threads.delete", "Deleting a thread", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
 
   const [status, setStatus] = useState<keyof typeof STATUSES>("any");
@@ -269,9 +271,11 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
                     {preview(t.metadata)}
                   </TableCell>
                   <TableCell align="end">
-                    <IconButton aria-label={`Delete thread ${shortId(t.threadId)}`} size="small" onClick={() => setDeleting(t)}>
-                      <Icon icon={Delete} />
-                    </IconButton>
+                    <Gated refusal={deleteGate}>
+                      <IconButton aria-label={`Delete thread ${shortId(t.threadId)}`} size="small" onClick={() => setDeleting(t)}>
+                        <Icon icon={Delete} />
+                      </IconButton>
+                    </Gated>
                   </TableCell>
                 </TableRow>
               ))}

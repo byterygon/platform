@@ -33,6 +33,7 @@ import { addressOf, tlsOf } from "./profile";
 import { formatRun } from "./schedule-preview";
 import { ScheduleSheet } from "./ScheduleSheet";
 import { statusLabel } from "./WorkflowsTab";
+import { deniedItem, useGateFor } from "@/app/access-ui";
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 const num = (value: unknown): number => Number(text(value) || 0) || 0;
@@ -146,6 +147,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
 
   const namespace = text(tab.params["namespace"]) || "default";
+  const deleteGate = useGateFor("temporal.schedules.delete", "Deleting a schedule", profile, { namespace });
   const scheduleId = text(tab.params["scheduleId"]);
   const notify = useContext(NoticeContext);
   const [detail, setDetail] = useState<ScheduleDetail | null>(null);
@@ -304,7 +306,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
                   <Icon icon={Code} /> Copy as CLI command
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setDialog("delete")}>
+                <DropdownMenuItem onClick={() => setDialog("delete")} {...deniedItem(deleteGate)}>
                   <Icon icon={Delete} /> Delete…
                 </DropdownMenuItem>
               </DropdownMenuContent>

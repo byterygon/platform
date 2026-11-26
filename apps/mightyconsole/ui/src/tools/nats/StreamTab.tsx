@@ -32,6 +32,7 @@ import { formatAgo, formatDuration, formatShortCount, formatSize, formatUs } fro
 import { Fact, Usage } from "./parts";
 import { readOnlyReason } from "./stream-form";
 import { reloadStreams } from "./tree-data";
+import { Gated, deniedItem, useGateFor } from "@/app/access-ui";
 
 /** The stream's views, the last word of its URL (DOC-21 §3.7). */
 export const STREAM_VIEWS = ["info", "messages", "consumers"] as const;
@@ -226,6 +227,8 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
 type Dialog = "edit" | "purge" | "delete" | "consumer" | null;
 
 export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, go: goProp, updateProfile, active }: TabProps) {
+  const purgeGate = useGateFor("nats.js.streams.purge", "Purging a stream", profile);
+  const deleteGate = useGateFor("nats.js.streams.delete", "Deleting a stream", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const name = text(tab.params["stream"]);
   const place = useCallback((m: Parameters<typeof subjectPlace>[0]) => subjectPlace(m, name), [name]);
@@ -328,9 +331,11 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
             <Button onClick={() => setDialog("edit")} disabled={!info || reasons.edit !== null} title={reasons.edit ?? undefined}>
               <Icon icon={Edit} /> Edit
             </Button>
-            <Button onClick={() => setDialog("purge")} disabled={!info || reasons.purge !== null || info.state.messages === 0} title={reasons.purge ?? (info?.state.messages === 0 ? "No messages to purge." : undefined)}>
-              <Icon icon={Delete} /> Purge…
-            </Button>
+            <Gated refusal={purgeGate}>
+              <Button onClick={() => setDialog("purge")} disabled={!info || reasons.purge !== null || info.state.messages === 0} title={reasons.purge ?? (info?.state.messages === 0 ? "No messages to purge." : undefined)}>
+                <Icon icon={Delete} /> Purge…
+              </Button>
+            </Gated>
             <DropdownMenu>
               <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More: Delete stream, Copy config as JSON" disabled={!info} />}>
                 <Icon icon={MoreHorizontal} />
@@ -340,7 +345,7 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
                   <Icon icon={Copy} /> Copy config as JSON
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setDialog("delete")}>
+                <DropdownMenuItem onClick={() => setDialog("delete")} {...deniedItem(deleteGate)}>
                   <Icon icon={Delete} /> Delete stream…
                 </DropdownMenuItem>
               </DropdownMenuContent>

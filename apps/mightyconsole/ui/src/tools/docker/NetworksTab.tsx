@@ -20,6 +20,7 @@ import { ArrowClockwise } from "@/lib/icons";
 import { cn } from "@/lib/cn";
 import type { LinkEvent, TabProps } from "../types";
 import { type InspectTarget, InspectSheet, RowActions, UsedBy, namesText, removeOutcome, runningUsers, useDockerList } from "./resources";
+import { useGateFor } from "@/app/access-ui";
 
 type NetworkFilter = "all" | "unused";
 
@@ -38,6 +39,7 @@ export function networkRefusal(row: NetworkRow): string | null {
 }
 
 export function NetworksTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, active }: TabProps) {
+  const removeGate = useGateFor("docker.networks.remove", "Removing a network", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const list = useDockerList({ client, connId, note, active, kind: "network", load: (id) => client.docker.networks.list({ connId: id }), count: (rows) => rows.length });
@@ -161,7 +163,7 @@ export function NetworksTab({ profile, connId, client, useTabActions, note, open
                     <UsedBy list={row.usedBy} onOpen={openContainer} />
                   </TableCell>
                   <TableCell align="end">
-                    <RowActions name={row.name} refusal={networkRefusal(row)} onInspect={() => setInspect({ what: "network", name: row.name, load: () => client.docker.networks.inspect({ connId, id: row.id }) })} onRemove={() => setConfirm(row)} />
+                    <RowActions name={row.name} denied={removeGate} refusal={networkRefusal(row)} onInspect={() => setInspect({ what: "network", name: row.name, load: () => client.docker.networks.inspect({ connId, id: row.id }) })} onRemove={() => setConfirm(row)} />
                   </TableCell>
                 </TableRow>
               ))}

@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlugDisconnected } from "@/lib/icons";
 import type { DescribedError, LiveState } from "@/tools/types";
+import { AccessNotice, useRefusals } from "./access-ui";
 import { formatCount, remedyOf } from "./messages";
 
 /** "Connect to orders-dev": the tab's content is dimmed and nothing is fetched. */
@@ -54,6 +55,9 @@ export function EmptyLine({ children, action }: { children: ReactNode; action?: 
 /** The ToolError in place of the content, with its remote code, Details and remedy (spec §2.6). */
 export function ErrorState({ error, onRetry, onEditProfile, onRefresh, onTrust }: { error: DescribedError; onRetry?: () => void; onEditProfile?: () => void; onRefresh?: () => void; onTrust?: () => void }) {
   const remedy = remedyOf(error);
+  const refuse = useRefusals();
+  const refusal = error.denied ? refuse(error.denied) : null;
+  if (refusal) return <AccessNotice refusal={refusal} className="m-inset-md" />;
   return (
     <Alert intent="danger" className="m-inset-md">
       <AlertTitle>{error.title}</AlertTitle>

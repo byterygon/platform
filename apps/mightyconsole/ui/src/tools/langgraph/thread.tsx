@@ -42,6 +42,7 @@ import { RUNS_PAGE, RunsPanel } from "./thread-runs";
 import { EditStateSheet, StatePanel } from "./thread-state";
 import { ResumeSheet } from "./resume-sheet";
 import { EventsView, THIS_RUN } from "./run-events-view";
+import { deniedItem, useGateFor } from "@/app/access-ui";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 const pretty = (v: unknown) => (v === undefined ? "" : JSON.stringify(v, null, 2));
@@ -124,6 +125,8 @@ type RunActions = Parameters<TabProps["useTabActions"]>[0] & {
 export function ThreadTab(props: TabProps) {
   const { tab, connId, client, note, useTabActions, profile } = props;
   const toast = useToast();
+  const deleteGate = useGateFor("langgraph.threads.delete", "Deleting a thread", profile);
+  const rollbackGate = useGateFor("langgraph.runs.rollback", "Rolling back a run", profile);
   const threadId = text(tab.params["threadId"]);
   const [view, setView] = useTabView(props, THREAD_VIEWS, "run");
   const [fromCheckpoint, setFromCheckpoint] = useState<string | null>(null);
@@ -228,11 +231,11 @@ export function ThreadTab(props: TabProps) {
                 <Icon icon={MoreHorizontal} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem disabled={status.runId === null} onClick={() => runActions.current.rollback?.()}>
+                <DropdownMenuItem onClick={() => runActions.current.rollback?.()} {...(rollbackGate ? deniedItem(rollbackGate) : { disabled: status.runId === null })}>
                   <Icon icon={ArrowUndo} /> Roll back the run…
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem danger disabled={!connId} onClick={() => setDeleting(true)}>
+                <DropdownMenuItem danger onClick={() => setDeleting(true)} {...(deleteGate ? deniedItem(deleteGate) : { disabled: !connId })}>
                   <Icon icon={Delete} /> Delete thread…
                 </DropdownMenuItem>
               </DropdownMenuContent>

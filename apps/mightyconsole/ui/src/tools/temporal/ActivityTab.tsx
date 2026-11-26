@@ -23,6 +23,7 @@ import { activityStatusLabel } from "./ActivitiesTab";
 import { STATUS_TONE, formatDuration, formatTime } from "./format";
 import { failureChain } from "./history";
 import { namespaceOf } from "./profile";
+import { Gated, useGateFor } from "@/app/access-ui";
 
 /** How often a running activity is described again while its tab is shown. */
 export const ACTIVITY_REFRESH_MS = 2_000;
@@ -96,6 +97,7 @@ export function ActivityTab(props: TabProps) {
   const { tab, profile, connId, client, active, useTabActions, note } = props;
   const go = linkTo(props);
   const namespace = typeof tab.params["namespace"] === "string" ? tab.params["namespace"] : namespaceOf(profile);
+  const terminateGate = useGateFor("temporal.activities.terminate", "Terminating an activity", profile, { namespace });
   const activityId = typeof tab.params["activityId"] === "string" ? tab.params["activityId"] : "";
   const runId = typeof tab.params["runId"] === "string" && tab.params["runId"] !== "" ? tab.params["runId"] : null;
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
@@ -161,9 +163,11 @@ export function ActivityTab(props: TabProps) {
                 <Button appearance="secondary" onClick={() => setDialog("cancel")}>
                   <Icon icon={Dismiss} /> Request cancellation
                 </Button>
-                <Button appearance="secondary" onClick={() => setDialog("terminate")}>
-                  <Icon icon={Stop} /> Terminate…
-                </Button>
+                <Gated refusal={terminateGate}>
+                  <Button appearance="secondary" onClick={() => setDialog("terminate")}>
+                    <Icon icon={Stop} /> Terminate…
+                  </Button>
+                </Gated>
               </>
             ) : null}
           </>

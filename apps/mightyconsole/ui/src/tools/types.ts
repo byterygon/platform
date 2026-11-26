@@ -156,6 +156,8 @@ export interface DescribedError {
   hostKey?: HostKeyDetails;
   /** The target's error name, when the tool gives one (`StandaloneActivitiesUnsupported`). */
   remoteName?: string;
+  /** For `PermissionDenied`: the permission, the target and the kind of reason the server named (DOC-25 §3.3.4). */
+  denied?: { perm: string; target?: { kind: string; id: string }; reason: string };
 }
 
 /** Where a tab is: one of its tool's tab kinds with its params (DOC-21 §3.7). */

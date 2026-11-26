@@ -147,6 +147,13 @@ async function main(server: string, evidence: string): Promise<number> {
     const summary = await page.evaluate<string>(`document.querySelector('[data-testid="account-summary"]').textContent`);
     check(/member/.test(summary) && /Signed in with the identity provider/.test(summary), `the menu shows the role and how the person signed in (${summary.slice(0, 120)})`);
     await page.screenshot(join(shots, "sign-in-03-account-menu.png"));
+    // My access (TSK-140 batch 2): the roles in force and the permissions they grant, with where.
+    await page.evaluate(`[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes("My access")).click()`);
+    check(await cdp.waitUntil(page, `document.querySelector('[data-testid="my-access"]') !== null`, 10_000), "My access opens from the account menu");
+    const mine = await page.evaluate<string>(`document.querySelector('[data-testid="my-access"]').textContent`);
+    check(/member/.test(mine) && /Permissions/.test(mine) && /everywhere/.test(mine), `My access lists the role and where its permissions hold (${mine.slice(0, 120)})`);
+    await cdp.sleep(400);
+    await page.screenshot(join(shots, "sign-in-03b-my-access.png"));
     await page.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
     await cdp.sleep(500);
 

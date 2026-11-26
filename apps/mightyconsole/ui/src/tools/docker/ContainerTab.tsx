@@ -33,6 +33,7 @@ import { FilesPanel } from "./FilesPanel";
 import { LogsPanel } from "./LogsPanel";
 import { StatsPanel } from "./StatsPanel";
 import { TerminalPanel } from "./TerminalPanel";
+import { deniedItem, useGateFor } from "@/app/access-ui";
 
 /** The container's views, the last word of its URL (DOC-21 §3.7). */
 export const CONTAINER_VIEWS = ["overview", "logs", "stats", "terminal", "files", "inspect"] as const;
@@ -93,6 +94,7 @@ function Pair({ term, children }: { term: string; children: React.ReactNode }) {
 const mono = "font-mono text-code";
 
 export function ContainerTab({ tab, profile, connId, client, note, onLive, useTabActions, navigate, active }: TabProps) {
+  const removeGate = useGateFor("docker.containers.remove", "Removing a container", profile);
   const notify = useContext(NoticeContext);
   const id = typeof tab.params["id"] === "string" ? tab.params["id"] : "";
   const [view, setView] = useTabView({ tab, navigate }, CONTAINER_VIEWS, "overview");
@@ -240,6 +242,7 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
+                    {...deniedItem(removeGate)}
                     onClick={() => {
                       setForce(false);
                       setRemoveVolumes(true);

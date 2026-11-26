@@ -11,8 +11,9 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
-import { ChevronDown, ChevronLeft, ChevronRight, Info, Pin } from "@/lib/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, Info, LockClosed, Pin } from "@/lib/icons";
 import { TOOL_CATEGORIES, orderedTools, toolCategory, toolIcon } from "@/tools/registry";
+import { type Refusal, becauseText, headline } from "../access";
 import type { ToolCategory, ToolModule } from "@/tools/types";
 
 /** From this many tools on, the drawer offers "Find a tool". */
@@ -51,6 +52,12 @@ export interface ToolNavProps {
   onAbout(): void;
   /** The id of the "Find a tool" field, so the palette's "Find a tool" can focus it. */
   findId?: string;
+  /**
+   * Why a tool cannot be used by this person, or `null` when it can (DOC-25 §3.3, TSK-135 §3): the
+   * tool stays in the list, its mark faded and a lock in place of the count; the reason is its
+   * description, shown on hover and focus, and picking it shows the access page.
+   */
+  lockedBy?: (tool: ToolModule) => Refusal | null;
 }
 
 const itemClass = [
@@ -62,7 +69,7 @@ const itemClass = [
 ];
 
 export function ToolNav(props: ToolNavProps) {
-  const { tools, selected, onSelect, stateOf, collapsed, overlay = false, onToggleCollapsed, pinned, onTogglePin, closedCategories, onToggleCategory, bindingAt, onAbout, findId } = props;
+  const { tools, selected, onSelect, stateOf, collapsed, overlay = false, onToggleCollapsed, pinned, onTogglePin, closedCategories, onToggleCategory, bindingAt, onAbout, findId, lockedBy } = props;
   const [query, setQuery] = useState("");
   const order = navOrder(tools, pinned);
   const indexOf = (id: string) => order.findIndex((t) => t.id === id);
@@ -97,7 +104,9 @@ export function ToolNav(props: ToolNavProps) {
     const s = stateOf(t);
     const active = t.id === selected;
     const binding = bindingAt(indexOf(t.id));
-    const stateText = s.failed ? "a connection failed" : s.connected > 0 ? `${s.connected} connected` : "not connected";
+    const locked = lockedBy?.(t) ?? null;
+    const stateText = locked ? "locked" : s.failed ? "a connection failed" : s.connected > 0 ? `${s.connected} connected` : "not connected";
+    const why = locked ? `${headline(locked)}. ${becauseText(locked)}` : null;
     const button = (
       <button
         key={t.id}
@@ -108,22 +117,26 @@ export function ToolNav(props: ToolNavProps) {
         aria-current={active ? "page" : undefined}
         aria-label={t.label}
         aria-keyshortcuts={binding || undefined}
+        aria-description={why ?? undefined}
+        data-locked={locked ? locked.perm : undefined}
         tabIndex={active || (!order.some((o) => o.id === selected) && indexOf(t.id) === 0) ? 0 : -1}
         onClick={() => onSelect(t.id)}
         className={cn(itemClass, collapsed && "w-control-lg justify-center px-0")}
       >
         <span className="relative inline-flex">
-          <Icon icon={toolIcon(t)} size="lg" filled={active} />
-          {collapsed && (s.connected > 0 || s.failed) ? (
+          <Icon icon={toolIcon(t)} size="lg" filled={active} {...(locked ? { className: "opacity-50" } : {})} />
+          {collapsed && locked ? <Icon icon={LockClosed} size="xs" label="Locked" className="absolute -inset-e-inline-xs -bottom-inline-xs text-fg-muted" /> : null}
+          {collapsed && !locked && (s.connected > 0 || s.failed) ? (
             <span role="img" aria-label={stateText} className={cn("absolute -inset-e-inline-xs -top-inline-xs size-icon-xs rounded-full border-2 border-canvas", s.failed ? "bg-danger" : "bg-success")} />
           ) : null}
         </span>
         {collapsed ? null : (
           <>
-            <span className="min-w-0 flex-1 truncate">{t.label}</span>
+            <span className={cn("min-w-0 flex-1 truncate", locked && "text-fg-muted")}>{t.label}</span>
             <span className="flex items-center gap-inline-xs text-caption-1 text-fg-muted">
-              {s.failed ? <span role="img" aria-label="a connection failed" className="size-icon-xs rounded-full bg-danger" /> : null}
-              {s.connected > 0 ? (
+              {locked ? <Icon icon={LockClosed} size="sm" label="Locked" /> : null}
+              {!locked && s.failed ? <span role="img" aria-label="a connection failed" className="size-icon-xs rounded-full bg-danger" /> : null}
+              {!locked && s.connected > 0 ? (
                 <>
                   <span aria-hidden="true" className="size-icon-xs rounded-full bg-success" />
                   <span aria-label={`${s.connected} connected`}>{s.connected}</span>
@@ -138,12 +151,12 @@ export function ToolNav(props: ToolNavProps) {
     const trigger = <ContextMenuTrigger render={button} />;
     return (
       <ContextMenu key={t.id}>
-        {collapsed ? (
+        {collapsed || locked ? (
           <Tooltip>
             <TooltipTrigger render={trigger} />
             <TooltipContent side="right">
-              {t.label} · {stateText}
-              {binding ? <Kbd className="ms-inline-sm">{binding}</Kbd> : null}
+              {locked ? why : `${t.label} · ${stateText}`}
+              {!locked && binding ? <Kbd className="ms-inline-sm">{binding}</Kbd> : null}
             </TooltipContent>
           </Tooltip>
         ) : (

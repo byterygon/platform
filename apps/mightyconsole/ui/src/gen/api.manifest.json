@@ -1286,7 +1286,7 @@
           "type": "string"
         },
         "profileName": {
-          "description": "The profile's name; absent for a profile the browser keeps (until TSK-139).",
+          "description": "The profile's name; absent for a draft, and for a profile the caller cannot see.",
           "type": [
             "string",
             "null"

@@ -25,6 +25,7 @@ import { cn } from "@/lib/cn";
 import type { LinkEvent, TabProps } from "../types";
 import { formatBytes, formatCreated, shortId } from "./format";
 import { type InspectTarget, InspectSheet, UsedBy, namesText, removeOutcome, runningUsers, useDockerList } from "./resources";
+import { deniedItem, useGateFor } from "@/app/access-ui";
 
 /** One row of the table: an image under one of its names. */
 export interface ImageLine {
@@ -71,6 +72,7 @@ export function matchesImage(line: ImageLine, search: string): boolean {
 }
 
 export function ImagesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, active }: TabProps) {
+  const removeGate = useGateFor("docker.images.remove", "Removing an image", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const list = useDockerList({ client, connId, note, active, kind: "image", load: (id) => client.docker.images.list({ connId: id }), count: (rows) => rows.length });
@@ -213,7 +215,7 @@ export function ImagesTab({ profile, connId, client, useTabActions, note, openTa
                           ) : null}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            disabled={running.length > 0}
+                            {...(removeGate ? deniedItem(removeGate) : { disabled: running.length > 0 })}
                             onClick={() => {
                               setForce(false);
                               setConfirm(line);

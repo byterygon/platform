@@ -4,12 +4,26 @@
 // the handles of the lost connection are gone, as on the real server.
 import { RpcError, type StreamCall, type Subscription } from "@byterygon/ambidex";
 import type * as api from "@/gen/api";
+import { procedures } from "@/gen/api";
 import type { MightyClient, Services } from "@/app/client";
 import { MemoryStorage, type AppStorage } from "@/profiles/storage";
 import { type ProfileRecord, ulid } from "@/profiles/record";
 import { browserKey, serverKey } from "@/profiles/server";
 import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { ProgressBus } from "@/app/progress";
+
+/** Every permission the generated table names, held everywhere: what the built-in admin role grants. */
+export function everyPermission(): api.PermissionGrant[] {
+  const perms = new Set<string>();
+  const walk = (node: unknown) => {
+    if (typeof node !== "object" || node === null) return;
+    const rec = node as Record<string, unknown>;
+    if (typeof rec["perm"] === "string") perms.add(rec["perm"]);
+    for (const value of Object.values(rec)) walk(value);
+  };
+  walk(procedures);
+  return [...perms].sort().map((perm) => ({ perm, everywhere: true, scope: [] }));
+}
 
 export interface FakeServer {
   calls: { procedure: string; input: unknown }[];
@@ -26,6 +40,8 @@ export interface FakeServer {
   ticks: number;
   /** The next echo.connect waits for this promise (to test the connecting state). */
   connectGate: Promise<void> | null;
+  /** The next echo.connect is refused with PermissionDenied and these details (DOC-25 §3.3.4). */
+  connectDenied: { perm: string; target?: { kind: string; id: string }; reason: string } | null;
   /** What echo.messages.tail streams (§5.1 IPC chunks) and its summary (TSK-80). */
   messageChunks: Uint8Array[];
   produced: api.EchoProduceInput[];
@@ -338,7 +354,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
       email: "uy.son@corp.example",
       tenant: "default",
       roles: [{ role: "admin", scope: null, via: "pinned" }],
-      permissions: [],
+      permissions: everyPermission(),
     },
     sessions: [
       { id: "ls_current", user: "human:account:01ADMIN", method: "password", createdMs: Date.now() - 3600_000, lastActivityMs: Date.now(), idleExpiresMs: 0, absoluteExpiresMs: 0, client: "10.0.4.21", current: true },
@@ -346,6 +362,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     ],
     ticks: 3,
     connectGate: null,
+    connectDenied: null,
     messageChunks: [],
     produced: [],
     dockerProfiles: new Map(),
@@ -714,6 +731,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
         record("echo.connect", input);
         if (server.connectGate) await server.connectGate;
         reachable();
+        if (server.connectDenied) throw new RpcError("PermissionDenied", "permission denied", { correlation_id: "corr-denied", details: server.connectDenied });
         const profile = fakeEcho(await stored(input.profileId));
         if (profile.token === "wrong") throw new RpcError("Unauthenticated", "the token was rejected", { correlation_id: "corr-1", details: { kind: "Auth", system: "echo", message: "the token was rejected", retryable: false } });
         const connId = `conn-${++ids}`;
