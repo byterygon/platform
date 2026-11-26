@@ -44,6 +44,8 @@ describe("acceptance checklists", () => {
       ["docker", "TSK-81", 8],
       // TSK-108 added frame-limit, TSK-96 runs-history-edit and assistant-graph-versions.
       ["langgraph", "TSK-84", 10],
+      // DOC-23 section 12 (TSK-117).
+      ["routes", "TSK-117", 8],
       ["packaging", "TSK-87", 2],
       // DOC-25 section 6, run with the idp profile; TSK-136 wired the login items, the other
       // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items,
