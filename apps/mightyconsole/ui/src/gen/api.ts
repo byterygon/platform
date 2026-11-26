@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:d49dff3755997e9746b4fdf4d683b39ed83ade6b2061bf8c2b4f67f1f37c65a8";
+export const SCHEMA_HASH = "sha256:2900824085b69c9bc90a9ec60a3b27574d500bb80a7f72ae2c1a59508f1f891c";
 
 // ---- Types
 
@@ -704,6 +704,11 @@ container?: string | null,
 since?: string | null, };
 
 /**
+ * The transport a Docker profile names (`fields.transport`; `ssh` when absent).
+ */
+export type DockerTransportKind = "ssh" | "socket" | "tcp";
+
+/**
  * The whole history to save, as a stream (TSK-109).
  */
 export type DownloadHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
@@ -1065,7 +1070,28 @@ export type HostCounts = { images: number, volumes: number, networks: number, };
  * `docker.host.info` (spec §10.4, Host): `/info` and `/version` of the Docker Engine, and the
  * connection's facts.
  */
-export type HostInfo = { ssh: SshFacts, 
+export type HostInfo = { 
+/**
+ * How the server reaches the Engine.
+ */
+transport: DockerTransportKind, 
+/**
+ * What it reaches: `/var/run/docker.sock on deploy@h:22`, `/var/run/docker.sock`,
+ * `docker.prod:2376`.
+ */
+endpoint: string, 
+/**
+ * TCP with TLS (the Host page says so).
+ */
+tls: boolean, 
+/**
+ * Plain TCP: the Unencrypted badge and the banner that cannot be dismissed (DOC-23 (u)).
+ */
+unencrypted: boolean, 
+/**
+ * The SSH side, for the SSH transport.
+ */
+ssh?: SshFacts, 
 /**
  * The API version the connection speaks (the host's, at least 1.41).
  */
@@ -1075,7 +1101,7 @@ apiVersion: string,
  */
 serverApiVersion: string, minApiVersion?: string, 
 /**
- * Round trip of `GET /_ping` over SSH and the socket, in milliseconds.
+ * Round trip of `GET /_ping` over the transport, in milliseconds.
  */
 pingMs: number, name: string, operatingSystem: string, osType: string, kernelVersion: string, architecture: string, cpus: number, memoryBytes: number, serverVersion: string, containerdVersion?: string, storageDriver: string, storageBackingFilesystem?: string, loggingDriver: string, cgroupVersion?: string, cgroupDriver?: string, 
 /**
@@ -3447,7 +3473,7 @@ file: string, bytes: number,
 auditSeq: number | null, };
 
 /**
- * The connection's SSH side, for the Host page's subtitle.
+ * The connection's SSH side, for the Host page's subtitle (SSH transport only).
  */
 export type SshFacts = { 
 /**

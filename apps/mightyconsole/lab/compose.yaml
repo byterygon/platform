@@ -153,10 +153,15 @@ services:
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: ""
-    volumes: ["./.generated:/generated:ro", "docker-host-data:/var/lib/docker"]
-    ports: ["127.0.0.1:2222:22"]
+    # TSK-116: the API on 2376 (TLS, client certificates) and 2375 (no TLS), and a copy of the socket
+    # in .generated/docker-socket for the local socket transport; on routes-internal for TSK-117.
+    volumes: ["./.generated:/generated:ro", "./.generated/docker-socket:/run/lab-docker", "docker-host-data:/var/lib/docker"]
+    networks:
+      default: {}
+      routes-internal: { aliases: [docker.routes.internal] }
+    ports: ["127.0.0.1:2222:22", "127.0.0.1:2375:2375", "127.0.0.1:2376:2376"]
     healthcheck:
-      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 && pgrep sshd >/dev/null"]
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 && pgrep sshd >/dev/null && test -S /run/lab-docker/docker.sock && docker -H tcp://127.0.0.1:2375 version >/dev/null 2>&1 && docker -H tcp://localhost:2376 --tlsverify --tlscacert /generated/docker-tcp/ca.pem --tlscert /generated/docker-tcp/client.pem --tlskey /generated/docker-tcp/client-key.pem version >/dev/null 2>&1"]
       interval: 2s
       retries: 60
     profiles: [docker, all]

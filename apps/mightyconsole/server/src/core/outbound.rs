@@ -361,6 +361,41 @@ pub async fn connect_tcp(
     ))
 }
 
+/// A local socket on this machine (Docker's `socket` transport, DOC-23 §6.2): a Unix socket, or
+/// a named pipe on Windows. The network rules do not apply (nothing leaves the machine); what
+/// guards it is `profiles.hostAccess`, needed to save a profile that names one (DOC-25 §3.4.2).
+/// Opened here so that every connection the server makes is in this file.
+pub async fn connect_local(path: &std::path::Path) -> std::io::Result<net_route::BoxStream> {
+    #[cfg(unix)]
+    {
+        let stream = tokio::net::UnixStream::connect(path).await?;
+        Ok(Box::new(stream))
+    }
+    #[cfg(windows)]
+    {
+        use tokio::net::windows::named_pipe::ClientOptions;
+        /// `ERROR_PIPE_BUSY`: every instance of the pipe is in use; the server makes one soon.
+        const ERROR_PIPE_BUSY: i32 = 231;
+        loop {
+            match ClientOptions::new().open(path.as_os_str()) {
+                Ok(pipe) => return Ok(Box::new(pipe)),
+                Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this system has no local sockets",
+        ))
+    }
+}
+
 /// A connector for hyper's client and tonic's channel that connects through the policy (plain
 /// TCP: the TLS of `hyper_rustls` or tonic wraps it).
 #[derive(Debug, Clone)]

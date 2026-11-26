@@ -992,3 +992,148 @@ async fn a_stored_profile_logs_in_with_its_secrets_and_a_draft_keeps_its_target(
     let err = tab.error(7, Code::InvalidArgument).await;
     assert_eq!(err.details.unwrap()["field"], "password");
 }
+
+// Transports (DOC-23 §6.5, TSK-116): the same lab Engine over TCP with TLS (2376, client
+// certificates), plain TCP (2375) and its socket, copied into lab/.generated/docker-socket.
+
+/// The lab's TCP API settings.
+fn tcp() -> Value {
+    lab()["tcp"].clone()
+}
+
+/// A TCP profile for `address` (`host:port`); `tls` is the profile's `tls` object.
+fn tcp_profile(address: &str, extra: Value) -> Value {
+    let (host, port) = address.rsplit_once(':').unwrap();
+    let mut profile = json!({
+        "name": format!("lab tcp {port}"),
+        "transport": "tcp",
+        "host": host,
+        "port": port.parse::<u16>().unwrap(),
+    });
+    for (k, v) in extra.as_object().unwrap() {
+        profile[k] = v.clone();
+    }
+    profile
+}
+
+/// The containers' names the connection sees.
+async fn container_names(tab: &mut Tab, id: u32, conn_id: &str) -> Vec<String> {
+    tab.call(id, "docker.containers.list", json!({ "connId": conn_id }))
+        .await;
+    tab.result(id)
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["name"].as_str().unwrap_or_default().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn lab_tcp_with_tls_and_client_certificates() {
+    let (_t, mut tab) = setup().await;
+    let tcp = tcp();
+    let tls = json!({
+        "enabled": true,
+        "caPem": read(tcp["caFile"].as_str().unwrap()),
+        "clientCertPem": read(tcp["clientCertFile"].as_str().unwrap()),
+        "clientKeyPem": read(tcp["clientKeyFile"].as_str().unwrap()),
+    });
+    let address = tcp["tls"].as_str().unwrap();
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": tcp_profile(address, json!({ "tls": tls })) }),
+    )
+    .await;
+    let out = tab.result(2).await;
+    assert_eq!(out["host"]["transport"], "tcp");
+    assert_eq!(out["host"]["tls"], true);
+    assert_eq!(out["host"]["unencrypted"], false);
+    assert_eq!(out["host"]["endpoint"], address);
+    let conn_id = out["connId"].as_str().unwrap().to_owned();
+    let names = container_names(&mut tab, 3, &conn_id).await;
+    assert!(names.iter().any(|n| n == "shop-web-1"), "{names:?}");
+
+    // A client certificate from another CA: dockerd refuses it.
+    let mut stranger = tls.clone();
+    stranger["clientCertPem"] = json!(read(tcp["strangerCertFile"].as_str().unwrap()));
+    stranger["clientKeyPem"] = json!(read(tcp["strangerKeyFile"].as_str().unwrap()));
+    tab.call(
+        4,
+        "docker.connect",
+        json!({ "profile": tcp_profile(address, json!({ "name": "stranger", "tls": stranger })) }),
+    )
+    .await;
+    let err = tab.error(4, Code::Unauthenticated).await;
+    assert!(
+        err.message.contains("client certificate"),
+        "{}",
+        err.message
+    );
+
+    // Another CA pinned: the Engine's certificate is not trusted.
+    let mut other = tls.clone();
+    other["caPem"] = json!(read("routes/ca.pem"));
+    tab.call(
+        5,
+        "docker.connect",
+        json!({ "profile": tcp_profile(address, json!({ "name": "other ca", "tls": other })) }),
+    )
+    .await;
+    let err = tab.error(5, Code::Unavailable).await;
+    assert!(
+        err.message.contains("not signed by the CA"),
+        "{}",
+        err.message
+    );
+}
+
+#[tokio::test]
+async fn lab_plain_tcp_only_with_the_acceptance() {
+    let (_t, mut tab) = setup().await;
+    let address = tcp()["plain"].as_str().unwrap().to_owned();
+    let profile = tcp_profile(&address, json!({ "unencrypted": { "accepted": true } }));
+    tab.call(2, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let out = tab.result(2).await;
+    assert_eq!(out["host"]["unencrypted"], true);
+    let conn_id = out["connId"].as_str().unwrap().to_owned();
+    let names = container_names(&mut tab, 3, &conn_id).await;
+    assert!(names.iter().any(|n| n == "tty"), "{names:?}");
+    // The TLS port does not speak plain HTTP, and the error says to turn TLS on.
+    let tls_port = tcp()["tls"].as_str().unwrap().to_owned();
+    let profile = tcp_profile(
+        &tls_port,
+        json!({ "name": "plain on tls", "unencrypted": { "accepted": true } }),
+    );
+    tab.call(4, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let err = tab.error(4, Code::InvalidArgument).await;
+    assert!(err.message.contains("turn TLS on"), "{}", err.message);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn lab_the_local_socket() {
+    let t = start().await;
+    let admin = t
+        .server
+        .store()
+        .account_by_username("admin")
+        .unwrap()
+        .expect("the default administrator")
+        .principal_id();
+    let browser = t.browser_as(&admin, &[]).await;
+    let mut tab = t.tab(&browser).await;
+    let path = generated().join(lab()["socketFile"].as_str().unwrap());
+    let profile = json!({ "name": "lab socket", "transport": "socket", "socketPath": path });
+    tab.call(2, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let out = tab.result(2).await;
+    assert_eq!(out["host"]["transport"], "socket");
+    assert_eq!(out["host"]["endpoint"], path.display().to_string());
+    let conn_id = out["connId"].as_str().unwrap().to_owned();
+    let names = container_names(&mut tab, 3, &conn_id).await;
+    assert!(names.iter().any(|n| n == "stopped"), "{names:?}");
+}

@@ -1,6 +1,8 @@
-//! The Docker Engine API over SSH (Mightyconsole spec §10.3): every request opens its own
-//! `direct-streamlocal` channel to the socket and runs HTTP/1.1 on it with hyper, so requests
-//! never wait for each other and a long stream (logs, stats, events, exec) keeps its own channel.
+//! The Docker Engine API (Mightyconsole spec §10.3, DOC-23 §6.1): every request opens its own
+//! stream through the profile's [`DockerTransport`] (a `direct-streamlocal` channel on an SSH
+//! host, a local socket, a TCP connection with or without TLS) and runs HTTP/1.1 on it with
+//! hyper, so requests never wait for each other and a long stream (logs, stats, events, exec)
+//! keeps its own.
 //! The API version is negotiated once from `GET /_ping`: the host's version, at most
 //! [`MAX_API`], at least [`MIN_API`] (Docker 20.10).
 
@@ -15,8 +17,10 @@ use hyper_util::rt::TokioIo;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use std::sync::Arc;
+
 use super::TOOL;
-use super::ssh::SshSession;
+use super::transport::DockerTransport;
 use crate::core::{RemoteError, ToolError, ToolErrorKind};
 
 /// The oldest API the tool speaks: Docker 20.10 (spec §10.3).
@@ -60,29 +64,21 @@ pub struct Ping {
     pub round_trip: Duration,
 }
 
-/// The Docker Engine of one host, reached through one SSH session.
+/// The Docker Engine of one host, reached through its transport.
 pub struct Engine {
-    pub ssh: SshSession,
-    pub socket_path: String,
+    pub transport: Arc<dyn DockerTransport>,
     pub api: ApiVersion,
 }
 
 impl Engine {
     /// Pings the engine and negotiates the API version. The first request is also the check
-    /// that the host forwards the socket, so its error is the explained one of spec §10.3. On
-    /// failure the SSH session is closed.
-    pub async fn open(ssh: SshSession, socket_path: String) -> Result<(Engine, Ping), ToolError> {
-        match ping(&ssh, &socket_path).await {
-            Ok((api, ping)) => Ok((
-                Engine {
-                    ssh,
-                    socket_path,
-                    api,
-                },
-                ping,
-            )),
+    /// that the transport reaches Docker (over SSH, that the host forwards the socket, with the
+    /// explained error of spec §10.3). On failure the transport is closed.
+    pub async fn open(transport: Arc<dyn DockerTransport>) -> Result<(Engine, Ping), ToolError> {
+        match ping(transport.as_ref()).await {
+            Ok((api, ping)) => Ok((Engine { transport, api }, ping)),
             Err(e) => {
-                ssh.close().await;
+                transport.close().await;
                 Err(e)
             }
         }
@@ -101,8 +97,7 @@ impl Engine {
         body: Option<&Value>,
     ) -> Result<Response<Incoming>, ToolError> {
         send(
-            &self.ssh,
-            &self.socket_path,
+            self.transport.as_ref(),
             method,
             &self.path(path),
             body,
@@ -122,8 +117,7 @@ impl Engine {
     ) -> Result<hyper::upgrade::Upgraded, ToolError> {
         let call = async {
             let response = send(
-                &self.ssh,
-                &self.socket_path,
+                self.transport.as_ref(),
                 Method::POST,
                 &self.path(path),
                 Some(body),
@@ -255,11 +249,11 @@ fn no_answer(path: &str, limit: Duration) -> ToolError {
 }
 
 /// `GET /_ping`: the host's API version and the round trip.
-async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping), ToolError> {
+async fn ping(transport: &dyn DockerTransport) -> Result<(ApiVersion, Ping), ToolError> {
     let started = Instant::now();
     let response = tokio::time::timeout(
         CALL_TIMEOUT,
-        send(ssh, socket_path, Method::GET, "/_ping", None, false),
+        send(transport, Method::GET, "/_ping", None, false),
     )
     .await
     .unwrap_or_else(|_| Err(no_answer("/_ping", CALL_TIMEOUT)))?;
@@ -271,6 +265,19 @@ async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping),
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
     let body = read_body(response, 64 * 1024).await?;
+    // Go's answer to plain HTTP on a TLS port (`dockerd --tlsverify` on 2376).
+    if status == StatusCode::BAD_REQUEST
+        && String::from_utf8_lossy(&body).contains("HTTP request to an HTTPS server")
+    {
+        return Err(ToolError::invalid(
+            TOOL,
+            "tls",
+            format!(
+                "{} speaks TLS: turn TLS on in the profile (Docker's TLS port is usually 2376)",
+                transport.describe()
+            ),
+        ));
+    }
     if !status.is_success() {
         return Err(http_error(status, &body, "engine"));
     }
@@ -282,8 +289,8 @@ async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping),
                 ToolErrorKind::Remote,
                 TOOL,
                 format!(
-                    "{socket_path} answered /_ping without an API-Version header: is it Docker's \
-                 socket?"
+                    "{} answered /_ping without an API-Version header: is it Docker's API?",
+                    transport.describe()
                 ),
             )
         })?;
@@ -306,24 +313,25 @@ async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping),
     ))
 }
 
-/// Opens a channel, runs the HTTP/1.1 handshake on it and sends one request.
+/// Opens a stream, runs the HTTP/1.1 handshake on it and sends one request.
 async fn send(
-    ssh: &SshSession,
-    socket_path: &str,
+    transport: &dyn DockerTransport,
     method: Method,
     path: &str,
     body: Option<&Value>,
     upgrade: bool,
 ) -> Result<Response<Incoming>, ToolError> {
-    let stream = ssh.open_socket(socket_path).await?;
+    let stream = transport.open().await?;
     let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
         .await
         .map_err(|e| {
-            ToolError::new(
-                ToolErrorKind::Remote,
-                TOOL,
-                format!("HTTP over {socket_path} failed: {e}"),
-            )
+            transport.explain(&e).unwrap_or_else(|| {
+                ToolError::new(
+                    ToolErrorKind::Remote,
+                    TOOL,
+                    format!("HTTP over {} failed: {e}", transport.describe()),
+                )
+            })
         })?;
     // The connection lives as long as the response's body (logs and events stream on it) and
     // ends with it; exec upgrades it.
@@ -355,11 +363,13 @@ async fn send(
         .body(body)
         .map_err(|e| ToolError::invalid(TOOL, "path", e.to_string()))?;
     sender.send_request(request).await.map_err(|e| {
-        ToolError::new(
-            ToolErrorKind::Connect,
-            TOOL,
-            format!("Docker did not answer {path}: {e}"),
-        )
+        transport.explain(&e).unwrap_or_else(|| {
+            ToolError::new(
+                ToolErrorKind::Connect,
+                TOOL,
+                format!("Docker did not answer {path}: {e}"),
+            )
+        })
     })
 }
 

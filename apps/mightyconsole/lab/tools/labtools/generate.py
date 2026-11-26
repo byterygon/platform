@@ -51,7 +51,7 @@ def ca():
     return key, cert
 
 
-def leaf(ca_key, ca_cert, cn, dns, ips):
+def leaf(ca_key, ca_cert, cn, dns, ips, usage=x509.oid.ExtendedKeyUsageOID.SERVER_AUTH):
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.datetime.now(datetime.timezone.utc)
     sans = [x509.DNSName(d) for d in dns] + [x509.IPAddress(ipaddress.ip_address(i)) for i in ips]
@@ -64,7 +64,7 @@ def leaf(ca_key, ca_cert, cn, dns, ips):
         .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=825))
         .add_extension(x509.SubjectAlternativeName(sans), critical=False)
-        .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(x509.ExtendedKeyUsage([usage]), critical=False)
         .sign(ca_key, hashes.SHA256())
     )
     return key, cert
@@ -426,6 +426,51 @@ def ensure_jumps():
     print("generate: added the routes jump hosts")
 
 
+def ensure_docker_tcp():
+    """Docker's TCP API (TSK-116, DOC-23 section 6.5): a CA of its own, the Engine's certificate
+    (2376, `dockerd --tlsverify`) and a client certificate it accepts; 2375 is the same Engine
+    without TLS. Also the folder the docker-host puts a copy of its socket in, for the local socket
+    transport (only this user can reach it). Added to an existing credentials.json without
+    touching the rest."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    os.makedirs(os.path.join(OUT, "docker-socket"), exist_ok=True)
+    os.chmod(os.path.join(OUT, "docker-socket"), 0o700)
+    docker = credentials.get("docker")
+    if docker is None or ("tcp" in docker and os.path.exists(os.path.join(OUT, "docker-tcp/client-key.pem"))):
+        return
+    ca_key, ca_cert = ca()
+    ca_pem = ca_cert.public_bytes(serialization.Encoding.PEM)
+    write("docker-tcp/ca.pem", ca_pem)
+    key, cert = leaf(ca_key, ca_cert, "docker-host", ["localhost", "docker-host", "docker.routes.internal"], ["127.0.0.1"])
+    write("docker-tcp/server.pem", cert.public_bytes(serialization.Encoding.PEM))
+    write("docker-tcp/server-key.pem", pem_key(key), 0o600)
+    client_auth = x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH
+    key, cert = leaf(ca_key, ca_cert, "mightyconsole", [], [], usage=client_auth)
+    write("docker-tcp/client.pem", cert.public_bytes(serialization.Encoding.PEM))
+    write("docker-tcp/client-key.pem", pem_key(key), 0o600)
+    # A client certificate from another CA, which the Engine refuses.
+    other_key, other_cert = ca()
+    key, cert = leaf(other_key, other_cert, "stranger", [], [], usage=client_auth)
+    write("docker-tcp/stranger.pem", cert.public_bytes(serialization.Encoding.PEM))
+    write("docker-tcp/stranger-key.pem", pem_key(key), 0o600)
+    docker["tcp"] = {
+        "tls": "127.0.0.1:2376",
+        "plain": "127.0.0.1:2375",
+        "caFile": "docker-tcp/ca.pem",
+        "clientCertFile": "docker-tcp/client.pem",
+        "clientKeyFile": "docker-tcp/client-key.pem",
+        "strangerCertFile": "docker-tcp/stranger.pem",
+        "strangerKeyFile": "docker-tcp/stranger-key.pem",
+        # The docker-host as a route reaches it (TSK-117).
+        "internal": "docker.routes.internal:2376",
+    }
+    docker["socketFile"] = "docker-socket/docker.sock"
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added Docker's TCP API (2376 with TLS, 2375 without) and its local socket")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
@@ -435,6 +480,7 @@ def main(argv):
         ensure_routes()
         ensure_routes_decoy()
         ensure_jumps()
+        ensure_docker_tcp()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -514,6 +560,7 @@ def main(argv):
     ensure_routes()
     ensure_routes_decoy()
     ensure_jumps()
+    ensure_docker_tcp()
     print(f"generate: wrote {OUT}")
     return 0
 
