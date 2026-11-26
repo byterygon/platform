@@ -117,9 +117,11 @@ describe("profiles through the shell (spec §4)", () => {
     await settle(2);
     await click(byRole("menuitem", "Edit"));
     await waitFor(() => dialogWith("Edit lab") !== null, "the edit sheet");
-    expect(inputLabelled("Token").placeholder).toBe("Set (type to replace)");
-    // The form never holds the stored value: the field is empty.
-    expect(inputLabelled("Token").value).toBe("");
+    // The form never holds the stored value: it says Set (and who set it), with no field.
+    const token = document.querySelector('[data-secret="token"]');
+    expect(token?.getAttribute("data-state")).toBe("set");
+    expect(token?.textContent).toContain("Set by account:test");
+    expect(token?.querySelector("input")).toBeNull();
     // Test connection: the draft, nothing typed, based on the stored profile (its token fills in).
     await click(byRole("button", /Test connection/));
     await waitFor(() => byText("The connection works") !== null, "the test");
@@ -223,13 +225,15 @@ describe("profiles through the shell (spec §4)", () => {
     });
     await settle(2);
     await click(byRole("menuitem", "Edit"));
-    await waitFor(() => dialogWith("Stored secrets") !== null, "the edit sheet");
+    await waitFor(() => dialogWith("Edit lab") !== null, "the edit sheet");
     expect(document.body.textContent).not.toContain("s3cret");
-    await click(byRole("button", "Remove"));
-    expect(byText("removed on save")).not.toBeNull();
-    expect(inputLabelled("Token").placeholder).toBe("Not set");
+    await click(byRole("button", "Remove the token"));
+    await waitFor(() => byText("Remove the token?") !== null, "the confirmation");
+    await click([...document.querySelectorAll("button")].find((b) => b.textContent === "Remove" && !b.hasAttribute("aria-label")) ?? null);
+    await waitFor(() => (document.querySelector('[data-secret="token"]')?.textContent ?? "").includes("Removed when you save"), "the removal");
+    expect(document.querySelector('[data-secret="token"]')?.getAttribute("data-state")).toBe("removed");
     await click(byRole("button", "Save"));
-    await waitFor(() => dialogWith("Stored secrets") === null, "the sheet to close");
+    await waitFor(() => dialogWith("Edit lab") === null, "the sheet to close");
     expect(calls(fake, "secrets.remove")[0]!.input).toMatchObject({ field: "token" });
     expect((await fake.storage.listProfiles())[0]!.secrets).toEqual({});
   });

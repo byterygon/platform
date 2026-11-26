@@ -31,6 +31,8 @@ export interface ProfileRecord {
   owner?: { kind: "personal"; user?: string | null } | { kind: "shared" };
   /** The secrets a server record holds (browser keys), set but never shown. */
   storedSecrets?: string[];
+  /** Who set each stored secret (browser key) and when (Unix ms): status only, never a value. */
+  secretInfo?: Record<string, { setBy: string; setAt: number }>;
   /** A browser record already moved to the server: the profile it became (DOC-25 §3.4.9). */
   importedAs?: string;
 }

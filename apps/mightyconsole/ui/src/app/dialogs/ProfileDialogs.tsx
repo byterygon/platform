@@ -4,6 +4,7 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { ServicesContext } from "@/app/client";
 import { useSheetGuard } from "@/app/leave-guard";
+import { SecretsProvider, useSecretsState, useShownSecrets, whenText, whoText } from "@/app/secret-control";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { RecordState } from "@/profiles/migrate";
 import { type ProfileRecord, ulid } from "@/profiles/record";
 import { testProfile } from "@/profiles/server";
+import { secretsLostByTarget } from "@/profiles/targets";
 import { type ImportChoice, type ImportPlan, ImportError } from "@/profiles/transfer";
 import type { DescribedError, FieldErrors, ToolModule } from "@/tools/types";
 import { describeError } from "@/app/messages";
@@ -58,12 +60,14 @@ export interface ProfileSheetProps {
   onSave: (record: ProfileRecord, options: { remove: string[]; shared: boolean }) => Promise<void>;
   /** A new profile's name, filled in (a link's missing profile). */
   name?: string;
+  /** The signed-in person's id, so "Set by you" can be said. */
+  self?: string;
 }
 
 /** The result of "Test connection". */
 type TestState = { status: "idle" } | { status: "running" } | { status: "ok" } | { status: "failed"; error: DescribedError };
 
-export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "" }: ProfileSheetProps) {
+export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "", self }: ProfileSheetProps) {
   const services = useContext(ServicesContext);
   // "Test connection" runs the tool's connect on the draft and disconnects.
   const client = services?.client;
@@ -94,6 +98,24 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
   const readOnly = recordState?.kind === "newer";
   // The secrets the server holds (never their values), less those the person removes.
   const stored = useMemo(() => new Set(base && mode !== "add" ? (base.storedSecrets ?? []).filter((k) => !removed.has(k)) : []), [base, mode, removed]);
+  // A changed target takes the secrets sent to it unless they are entered again (DOC-25 §3.4.8): said before the save.
+  const typedKeys = useMemo(() => new Set(Object.entries(draft.secrets).filter(([, v]) => typeof v === "string" && v !== "").map(([k]) => k)), [draft.secrets]);
+  const lost = useMemo(
+    () => new Set(base && mode === "edit" ? secretsLostByTarget(tool.id, base.fields, draft.fields, stored, typedKeys) : []),
+    [base, mode, tool.id, draft.fields, stored, typedKeys],
+  );
+  const { keys: shownKeys, shown } = useShownSecrets();
+  const secretsState = useSecretsState({
+    stored,
+    info: base?.secretInfo ?? {},
+    removed,
+    ...(self ? { self } : {}),
+    lost,
+    shown,
+    remove: (key) => setRemoved((r) => new Set([...r, key])),
+    keep: (key) => setRemoved((r) => new Set([...r].filter((k) => k !== key))),
+  });
+  const hidden = (base && mode === "edit" ? (base.storedSecrets ?? []) : []).filter((k) => !shownKeys.has(k));
 
   const build = (): ProfileRecord => {
     const now = new Date().toISOString();
@@ -187,6 +209,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
                 ))}
               </Select>
             </Field>
+            <SecretsProvider value={secretsState}>
             <tool.ConnectionForm
               fields={draft.fields}
               secrets={draft.secrets}
@@ -199,15 +222,24 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               onFields={(patch) => setDraft((d) => ({ ...d, fields: { ...d.fields, ...patch } }))}
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />
-            {base && mode === "edit" && (base.storedSecrets?.length ?? 0) > 0 ? (
+            </SecretsProvider>
+            {lost.size > 0 ? (
+              <Alert intent="warning" data-testid="secrets-lost">
+                <AlertTitle>Saving removes the stored {[...lost].join(", ")}</AlertTitle>
+                <AlertDescription>You changed where this profile connects. A stored secret is only ever sent to the target it was entered for, so it goes unless you enter it again before saving.</AlertDescription>
+              </Alert>
+            ) : null}
+            {hidden.length > 0 ? (
               <Field>
-                <FieldLabel>Stored secrets</FieldLabel>
-                <FieldDescription>Set on the server; their values are never shown. Remove one to stop sending it.</FieldDescription>
+                <FieldLabel>Other stored secrets</FieldLabel>
+                <FieldDescription>Set on the server for a setting this form does not show now; their values are never shown. Remove one to stop sending it.</FieldDescription>
                 <ul className="flex flex-col gap-stack-xs">
-                  {(base.storedSecrets ?? []).map((key) => (
-                    <li key={key} className="flex items-center gap-inline-sm">
+                  {hidden.map((key) => (
+                    <li key={key} className="flex items-center gap-inline-sm" data-secret-other={key}>
                       <span className="text-body-1">{key}</span>
-                      <span className="text-caption-1 text-fg-muted">{removed.has(key) ? "removed on save" : "set"}</span>
+                      <span className="text-caption-1 text-fg-muted">
+                        {removed.has(key) ? "removed on save" : base?.secretInfo?.[key] ? `set by ${whoText(base.secretInfo[key]!.setBy, self)} on ${whenText(base.secretInfo[key]!.setAt)}` : "set"}
+                      </span>
                       <Button size="small" className="ms-auto" disabled={readOnly} onClick={() => setRemoved((r) => (r.has(key) ? new Set([...r].filter((k) => k !== key)) : new Set([...r, key])))}>
                         {removed.has(key) ? "Keep" : "Remove"}
                       </Button>

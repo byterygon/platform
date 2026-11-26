@@ -4,12 +4,12 @@
 // (`echo.ping`, Mod+Enter sends) and a live view (`echo.ticks`: a stream with credits, Live badge,
 // Pause, Stop, Clear, Restart). Since TSK-80 it also serves the messaging core's test backend: the
 // Messages and Composer tabs (messages.tsx) on the topic `echo` of `echo.messages.*`.
+import { SecretControl } from "@/app/secret-control";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { liveTimeout } from "@/app/client";
 import { placeRoute } from "@/app/router";
@@ -33,7 +33,7 @@ const profile: ProfileSchema = {
   migrations: {},
 };
 
-function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
+function ConnectionForm({ fields, secrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
   const token = secrets["token"];
   return (
     <>
@@ -45,13 +45,7 @@ function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSe
       </Field>
       <Field>
         <FieldLabel>Token</FieldLabel>
-        <PasswordInput
-          value={typeof token === "string" ? token : ""}
-          onValueChange={(v) => onSecrets({ token: v })}
-          placeholder={storedSecrets.has("token") ? "Set (type to replace)" : "Not set"}
-          autoComplete="off"
-          disabled={disabled}
-        />
+        <SecretControl secretKey="token" noun="token" value={typeof token === "string" ? token : ""} onValueChange={(v) => onSecrets({ token: v })} disabled={disabled} />
         <FieldDescription>A stand-in secret: the server refuses the token "wrong", as a real system rejects credentials.</FieldDescription>
       </Field>
     </>

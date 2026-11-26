@@ -1513,6 +1513,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         {...(sheetBase ? { base: sheetBase } : {})}
         mode={sheetMode}
         {...(profileDialog?.name && sheetMode === "add" ? { name: profileDialog.name } : {})}
+        {...(session.me ? { self: session.me.user } : {})}
         takenNames={takenNames}
         {...(sheetBase && state.recordStates[sheetBase.id] ? { recordState: state.recordStates[sheetBase.id]! } : {})}
         onSave={async (record, { remove, shared }) => {

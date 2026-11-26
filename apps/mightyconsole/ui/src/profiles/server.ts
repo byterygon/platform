@@ -67,6 +67,7 @@ export function fromView(view: ProfileView): ProfileRecord {
     access: view.access,
     owner: view.owner,
     storedSecrets: view.secrets.filter((s) => s.set).map((s) => browserKey(view.tool, s.field)),
+    secretInfo: Object.fromEntries(view.secrets.filter((s) => s.set).map((s) => [browserKey(view.tool, s.field), { setBy: s.setBy, setAt: s.setAt }])),
   };
 }
 

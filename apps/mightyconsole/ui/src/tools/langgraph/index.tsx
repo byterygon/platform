@@ -2,10 +2,10 @@
 // §11, TSK-84). The browser talks only to mightyconsole-server, which calls the LangGraph Server
 // API. Screens: assistants (graph, schemas, config), threads, a thread (run with live streaming,
 // interrupts and resume; state; checkpoint history with fork and time travel), the store.
+import { SecretControl } from "@/app/secret-control";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Textarea } from "@/components/ui/textarea";
 import type * as api from "@/gen/api";
 import { Braces, DatabaseMultiple, Flash, History } from "@/lib/icons";
@@ -90,12 +90,11 @@ export const profile: ProfileSchema = {
   migrations: {},
 };
 
-function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
+function ConnectionForm({ fields, secrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
   const url = text(fields["url"]);
   const tls = (fields["tls"] ?? {}) as Record<string, unknown>;
   const setTls = (patch: Record<string, unknown>) => onFields({ tls: { ...tls, ...patch } });
   const https = url.trim().toLowerCase().startsWith("https://");
-  const secretPlaceholder = (key: string) => (storedSecrets.has(key) ? "Set (type to replace)" : "Not set");
   return (
     <>
       <Field invalid={errors["url"] !== undefined}>
@@ -106,12 +105,12 @@ function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSe
       </Field>
       <Field>
         <FieldLabel>API key</FieldLabel>
-        <PasswordInput value={text(secrets["apiKey"])} onValueChange={(v) => onSecrets({ apiKey: v })} placeholder={secretPlaceholder("apiKey")} autoComplete="off" disabled={disabled} />
+        <SecretControl secretKey="apiKey" noun="API key" value={text(secrets["apiKey"])} onValueChange={(v) => onSecrets({ apiKey: v })} disabled={disabled} />
         <FieldDescription>Sent as x-api-key when set.</FieldDescription>
       </Field>
       <Field invalid={errors["headerLines"] !== undefined}>
         <FieldLabel>Extra headers</FieldLabel>
-        <Textarea value={text(secrets["headerLines"])} onValueChange={(v) => onSecrets({ headerLines: v })} placeholder={storedSecrets.has("headerLines") ? "Set (type to replace)" : "Authorization: Bearer …"} rows={2} disabled={disabled} />
+        <SecretControl secretKey="headerLines" noun="headers" multiline rows={2} value={text(secrets["headerLines"])} onValueChange={(v) => onSecrets({ headerLines: v })} placeholder="Authorization: Bearer …" disabled={disabled} />
         <FieldDescription>One "Name: value" per line, for custom auth. Kept with the secrets.</FieldDescription>
         {errors["headerLines"] ? <FieldError match>{errors["headerLines"]}</FieldError> : null}
       </Field>
@@ -132,7 +131,7 @@ function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSe
           </Field>
           <Field>
             <FieldLabel>Client key (PEM)</FieldLabel>
-            <Textarea value={text(secrets["clientKeyPem"])} onValueChange={(v) => onSecrets({ clientKeyPem: v })} rows={2} placeholder={secretPlaceholder("clientKeyPem")} disabled={disabled} />
+            <SecretControl secretKey="clientKeyPem" noun="private key" multiline rows={2} value={text(secrets["clientKeyPem"])} onValueChange={(v) => onSecrets({ clientKeyPem: v })} disabled={disabled} />
           </Field>
         </>
       ) : null}
