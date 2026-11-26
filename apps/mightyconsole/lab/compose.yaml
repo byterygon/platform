@@ -213,6 +213,36 @@ services:
       retries: 30
     profiles: [routes, all]
 
+  # Jump hosts (TSK-115 batch 2): jump1 is published and on the internal network, jump2 only on
+  # the internal network (reached through jump1, or through a proxy).
+  routes-jump1:
+    image: mightyconsole-lab-routes:local
+    build: { context: routes }
+    command: ["jump"]
+    volumes: ["./.generated:/generated:ro"]
+    networks:
+      default: {}
+      routes-internal: { aliases: [jump1.routes.internal] }
+    ports: ["127.0.0.1:2223:22"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
+  routes-jump2:
+    image: mightyconsole-lab-routes:local
+    build: { context: routes }
+    command: ["jump"]
+    volumes: ["./.generated:/generated:ro"]
+    networks:
+      routes-internal: { aliases: [jump2.routes.internal] }
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
+      interval: 2s
+      retries: 30
+    profiles: [routes, all]
+
   routes-echo:
     image: mightyconsole-lab-routes:local
     build: { context: routes }

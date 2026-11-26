@@ -45,6 +45,8 @@ dirs = "7.0.0"
 eventsource-stream = "0.2.3"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 getrandom = "0.4.3"
+# Docker's SSH session and, with TSK-117, every tool's routes (DOC-23): our permissive crate.
+net-route = { path = "../../../crates/net-route" }
 message-codecs = { path = "../../../crates/message-codecs", features = ["codegen"] }
 http-body-util = "0.1.5"
 hyper = { version = "1.12.0", default-features = false, features = ["client", "http1"] }
@@ -75,7 +77,6 @@ tonic-prost = "0.14.9"
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 url = "2.5.8"
 zeroize = "1.9.1"
-russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
 
 # The jq worker limits its own memory and CPU time (spec §5.4.1, Linux); core dumps off, the key
 # file's owner and the hidden passphrase prompt (DOC-25 §3.4). Safe Rust.
@@ -88,6 +89,8 @@ arrow-select = { version = "60.1.0", default-features = false }
 # `ws` for the test identity provider of tests/sign_in.rs.
 ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false, features = ["ws"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+# The stand-in sshd of tests/docker.rs (the SSH client itself is net-route's since TSK-115).
+russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
 # The stand-in Docker Engine of tests/docker.rs.
 hyper = { version = "1.12.0", default-features = false, features = ["http1", "server"] }
 tempfile = "3.27.0"

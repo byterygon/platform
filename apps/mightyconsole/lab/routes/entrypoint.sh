@@ -7,8 +7,10 @@
 #           other port allowed
 #   socks   Dante SOCKS5 on 1080: user and password (a system user of this container)
 #   echo    targets: 7 says "HELLO routes-echo" and echoes, 8080 serves an HTTP page
+#   jump    sshd on 22: users lab and nofwd log in with the lab's keys (/generated/ssh); nofwd may
+#           not forward TCP; host keys made at start
 set -eu
-role="${1:?usage: entrypoint.sh squid|socks|echo}"
+role="${1:?usage: entrypoint.sh squid|socks|echo|jump}"
 # shellcheck disable=SC1091
 [ -f /generated/routes/env ] && . /generated/routes/env
 
@@ -68,6 +70,14 @@ echo)
   mkdir -p /www && echo "routes-echo" > /www/index.html
   httpd -p 8080 -h /www
   exec socat TCP-LISTEN:7,fork,reuseaddr SYSTEM:'echo HELLO routes-echo; exec cat'
+  ;;
+jump)
+  ssh-keygen -A >/dev/null
+  for user in lab nofwd; do
+    install -d -m 0700 -o "$user" -g "$user" "/home/$user/.ssh"
+    install -m 0600 -o "$user" -g "$user" /generated/ssh/authorized_keys "/home/$user/.ssh/authorized_keys"
+  done
+  exec /usr/sbin/sshd -D -e
   ;;
 *)
   echo "entrypoint.sh: unknown role $role" >&2

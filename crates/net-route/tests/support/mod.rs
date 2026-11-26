@@ -5,6 +5,8 @@
 
 #![allow(dead_code)]
 
+pub mod sshd;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};

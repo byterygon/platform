@@ -9,8 +9,8 @@
 use std::path::PathBuf;
 
 use net_route::{
-    BasicAuth, BoxStream, Dialer, Hop, HopOutcome, HttpConnectHop, ProxyScheme, Route, RouteError,
-    RouteErrorKind, Socks5Auth, Socks5Hop,
+    BasicAuth, BoxStream, Dialer, Hop, HopOutcome, HostKeyFingerprint, HttpConnectHop, ProxyScheme,
+    Route, RouteError, RouteErrorKind, SessionPool, Socks5Auth, Socks5Hop, SshAuth, SshHop,
 };
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -252,4 +252,135 @@ async fn the_internal_targets_are_not_reachable_directly() {
         .unwrap();
     assert_eq!(err.kind, RouteErrorKind::Connect);
     assert!(err.hop.unwrap().is_target());
+}
+
+// ---------------------------------------------------------------------------------------------
+// SSH jump hosts (batch 2): jump1 published on 127.0.0.1:2223 and on the internal network, jump2
+// only on the internal network. Their host keys are made when they start, so each test trusts
+// them on first use from the HostKey error, as a person would.
+
+fn jump(
+    lab: &Value,
+    name: &str,
+    address: &str,
+    user: &str,
+    trusted: Option<HostKeyFingerprint>,
+) -> Hop {
+    let (host, port) = split(address);
+    let key = std::fs::read_to_string(generated().join(s(&lab["jumps"]["keyFile"]))).unwrap();
+    Hop::Ssh(SshHop {
+        name: name.into(),
+        host,
+        port,
+        user: user.into(),
+        auth: SshAuth::PrivateKey {
+            key: key.into(),
+            passphrase: None,
+        },
+        trusted,
+        keepalive: None,
+    })
+}
+
+/// The hops with the last one's host key learned from its HostKey error (trust on first use).
+async fn trusted(mut hops: Vec<Hop>, target: &str) -> Vec<Hop> {
+    let err = dial(&through(hops.clone()), target).await.err().unwrap();
+    assert_eq!(err.kind, RouteErrorKind::HostKey, "{err}");
+    assert_eq!(err.hop.as_ref().unwrap().index, hops.len() - 1);
+    let presented = err.host_key.unwrap().presented;
+    if let Some(Hop::Ssh(last)) = hops.last_mut() {
+        last.trusted = Some(presented);
+    }
+    hops
+}
+
+#[tokio::test]
+async fn two_jump_hosts_reach_the_internal_echo_with_their_keys_trusted() {
+    let lab = lab();
+    let user = s(&lab["jumps"]["user"]);
+    let echo_target = s(&lab["targets"]["echo"]);
+    let hops = trusted(
+        vec![jump(&lab, "jump1", &s(&lab["jumps"]["jump1"]), &user, None)],
+        &echo_target,
+    )
+    .await;
+    echo(dial(&through(hops.clone()), &echo_target).await.unwrap()).await;
+
+    let mut chain = hops.clone();
+    chain.push(jump(
+        &lab,
+        "jump2",
+        &s(&lab["jumps"]["internal"]["jump2"]),
+        &user,
+        None,
+    ));
+    let chain = trusted(chain, &echo_target).await;
+    let dialer = through(chain.clone()).with_pool(SessionPool::new());
+    echo(dial(&dialer, &echo_target).await.unwrap()).await;
+    echo(dial(&dialer, &echo_target).await.unwrap()).await;
+
+    let (host, port) = split(&echo_target);
+    let report = through(chain).test(&host, port).await;
+    assert_eq!(report.len(), 3);
+    assert!(report.iter().all(|r| r.outcome == HopOutcome::Ok));
+    assert!(report[0].host_key.is_some() && report[1].host_key.is_some());
+}
+
+#[tokio::test]
+async fn a_jump_host_that_forbids_forwarding_is_named() {
+    let lab = lab();
+    let echo_target = s(&lab["targets"]["echo"]);
+    let first = trusted(
+        vec![jump(
+            &lab,
+            "jump1",
+            &s(&lab["jumps"]["jump1"]),
+            &s(&lab["jumps"]["user"]),
+            None,
+        )],
+        &echo_target,
+    )
+    .await;
+    let mut chain = first;
+    chain.push(jump(
+        &lab,
+        "jump2",
+        &s(&lab["jumps"]["internal"]["jump2"]),
+        &s(&lab["jumps"]["noForwardUser"]),
+        None,
+    ));
+    let chain = trusted(chain, &echo_target).await;
+    let err = dial(&through(chain), &echo_target).await.err().unwrap();
+    assert_eq!(
+        (err.kind, err.hop.as_ref().unwrap().index),
+        (RouteErrorKind::Forbidden, 1),
+        "{err}"
+    );
+    assert!(
+        err.message.contains("AllowTcpForwarding"),
+        "{}",
+        err.message
+    );
+}
+
+#[tokio::test]
+async fn socks5_then_a_jump_host_on_the_internal_network() {
+    let lab = lab();
+    let echo_target = s(&lab["targets"]["echo"]);
+    let hops = vec![
+        socks(
+            &lab,
+            &s(&lab["socks5"]["address"]),
+            &s(&lab["socks5"]["password"]),
+        ),
+        jump(
+            &lab,
+            "jump2",
+            &s(&lab["jumps"]["internal"]["jump2"]),
+            &s(&lab["jumps"]["user"]),
+            None,
+        ),
+    ];
+    let hops = trusted(hops, &echo_target).await;
+    echo(dial(&through(hops), &echo_target).await.unwrap()).await;
 }

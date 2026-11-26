@@ -6,6 +6,7 @@ use zeroize::Zeroizing;
 
 use crate::error::{HopRef, RouteError, RouteErrorKind};
 use crate::name::{format_address, is_valid_host};
+use crate::ssh::SshHop;
 
 /// The most hops a route may have (DOC-23 Open question (f)).
 pub const MAX_HOPS: usize = 8;
@@ -79,8 +80,9 @@ impl Route {
             ));
         }
         for (index, hop) in self.hops.iter().enumerate() {
-            hop.validate().map_err(|message| {
-                RouteError::new(Some(hop.at(index)), RouteErrorKind::Invalid, message)
+            hop.validate().map_err(|(field, message)| match field {
+                Some(field) => RouteError::invalid(Some(hop.at(index)), field, message),
+                None => RouteError::new(Some(hop.at(index)), RouteErrorKind::Invalid, message),
             })?;
         }
         Ok(())
@@ -93,6 +95,8 @@ impl Route {
 pub enum Hop {
     HttpConnect(HttpConnectHop),
     Socks5(Socks5Hop),
+    /// An SSH jump host: a `direct-tcpip` channel to the next address (DOC-23 4.3).
+    Ssh(SshHop),
 }
 
 impl Hop {
@@ -101,6 +105,7 @@ impl Hop {
         match self {
             Hop::HttpConnect(_) => "httpConnect",
             Hop::Socks5(_) => "socks5",
+            Hop::Ssh(_) => "ssh",
         }
     }
 
@@ -109,6 +114,7 @@ impl Hop {
         match self {
             Hop::HttpConnect(h) => (&h.host, h.port),
             Hop::Socks5(h) => (&h.host, h.port),
+            Hop::Ssh(h) => (&h.host, h.port),
         }
     }
 
@@ -127,17 +133,21 @@ impl Hop {
         }
     }
 
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), (Option<&'static str>, String)> {
         let (host, port) = self.address();
         if !is_valid_host(host) {
-            return Err(format!("{host:?} is not a host name or an address"));
+            return Err((
+                Some("host"),
+                format!("{host:?} is not a host name or an address"),
+            ));
         }
         if port == 0 {
-            return Err(format!("{host}: the port is 1 to 65535"));
+            return Err((Some("port"), format!("{host}: the port is 1 to 65535")));
         }
         match self {
-            Hop::HttpConnect(h) => h.validate(),
-            Hop::Socks5(h) => h.validate(),
+            Hop::HttpConnect(h) => h.validate().map_err(|m| (None, m)),
+            Hop::Socks5(h) => h.validate().map_err(|m| (None, m)),
+            Hop::Ssh(h) => h.validate(),
         }
     }
 }

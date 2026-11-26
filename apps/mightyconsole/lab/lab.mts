@@ -159,14 +159,14 @@ async function check(tools: readonly Tool[]): Promise<number> {
   }
   if (tools.includes("routes")) {
     // The proxies answer on 127.0.0.1 and reach the internal targets; the targets publish nothing.
-    for (const port of [3128, 3129, 1080]) {
+    for (const port of [3128, 3129, 1080, 2223]) {
       try {
         await tcpOpen(port);
       } catch (e) {
         failures.push(`routes: 127.0.0.1:${port}: ${(e as Error).message}`);
       }
     }
-    for (const [service, target] of [["routes-squid", "echo.routes.internal 7"], ["routes-socks", "nats.routes.internal 4222"]] as const) {
+    for (const [service, target] of [["routes-squid", "echo.routes.internal 7"], ["routes-socks", "nats.routes.internal 4222"], ["routes-jump1", "jump2.routes.internal 22"]] as const) {
       try {
         compose(["exec", "-T", service, "sh", "-c", `nc -z -w 3 ${target}`], { stdio: ["ignore", "pipe", "pipe"] });
       } catch {
