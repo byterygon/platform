@@ -17,6 +17,15 @@ dependency (Rust reading or embedding a JS package's files, or the reverse) need
 `scripts/affected-rules.mjs`. Pushes to main run everything; "CI result" sums up the run. The
 Linux Rust jobs run in the CI image (`.github/ci-image/`, see its README).
 
+Merging goes through GitHub's merge queue (TSK-150; the protect-main ruleset requires it instead of
+branches being up to date). `gh pr merge <n>` adds a green pull request to the queue (the queue
+squashes; before the required checks pass it turns on auto-merge instead, which enqueues it once
+they do; never `--admin`, which bypasses the queue); the queue tests its change on top of main and
+the pull requests ahead of it (`merge_group`: ci.yml runs everything there, as on a push to main;
+the lab does not run, its result on the pull request stands; "Lab decision" passes), then merges
+it. A pull request behind main is not rebased for that reason, only for a conflict. A failing queue
+run takes the pull request out of the queue: fix it on the branch and add it again.
+
 Before a push (TSK-128): `node scripts/pre-pr.mjs` runs on your machine the steps CI will run for
 the change, with the same `cargo -p` and `pnpm --filter` arguments (`--dry-run` lists them,
 `--keep-going` runs past a failure), and names what only CI runs: the network namespace, the

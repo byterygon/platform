@@ -106,6 +106,13 @@ test("pushes and manual runs run everything", () => {
   assert.equal(affected([], { event: "pull_request" }).all, false);
 });
 
+// TSK-150: the merge queue is the last check before main, so it runs what a push to main runs,
+// even for a change that alone affects nothing.
+test("the merge queue runs everything", () => {
+  assert.equal(affected(["docs/agents/ci.md"], { event: "merge_group" }).all, true);
+  assert.equal(affected(["docs/agents/ci.md"], { event: "pull_request" }).all, false);
+});
+
 test("documentation only runs none of the conditional jobs", () => {
   const r = affected(["README.md", "packages/ui/AGENTS.md", "apps/dbee/INSTALL.md", "LICENSE-MIT", "deny.toml"]);
   assert.equal(r.all, false);

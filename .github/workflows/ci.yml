@@ -4,6 +4,13 @@ on:
   pull_request:
   push:
     branches: [main]
+  # TSK-150: the merge queue (protect-main requires it). A queued pull request is tested on the
+  # queue's commit (main, the pull requests ahead of it and its own change) before it merges, so a
+  # pull request no longer has to be rebased and re-run each time another one merges first.
+  # scripts/affected.mjs runs everything for this event, as for a push to main: the queue is the
+  # last check before main. The lab does not run here (not a required check; it ran on the pull
+  # request).
+  merge_group:
 
 permissions:
   contents: read
