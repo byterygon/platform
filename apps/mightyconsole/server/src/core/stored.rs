@@ -27,6 +27,8 @@ pub struct Resolved {
     /// The tool's connect profile as JSON (secrets included): deserialized by the tool at once.
     pub profile: Value,
     pub target: TargetRef,
+    /// The route the profile connects through (DOC-23), with its secrets; `None` for Direct.
+    pub route: Option<super::route::ResolvedRoute>,
 }
 
 impl fmt::Debug for Resolved {
@@ -34,6 +36,7 @@ impl fmt::Debug for Resolved {
         f.debug_struct("Resolved")
             .field("profile", &"<redacted>")
             .field("target", &self.target)
+            .field("route", &self.route.as_ref().map(|r| &r.name))
             .finish()
     }
 }
@@ -125,6 +128,22 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| ToolError::new(ToolErrorKind::Remote, tool, e.to_string()))?
 }
 
+/// A tool that does not connect through routes yet refuses a profile that names one: it never
+/// connects Direct instead (DOC-23 (v)).
+fn direct_only(tool: &str, resolved: &Resolved) -> Result<(), ToolError> {
+    match &resolved.route {
+        None => Ok(()),
+        Some(route) => Err(ToolError::invalid(
+            tool,
+            "routeId",
+            format!(
+                "{tool} does not connect through routes yet: choose Direct instead of route {}",
+                route.name
+            ),
+        )),
+    }
+}
+
 fn parse<T: DeserializeOwned>(tool: &str, resolved: Resolved) -> Result<(T, TargetRef), ToolError> {
     let target = resolved.target;
     // serde's message can quote the value it stopped at, which may be a secret: none is kept.
@@ -165,7 +184,56 @@ impl Hub {
         let store = self.stored_profiles(tool)?;
         let p = ctx.principal().clone();
         let resolved = blocking(tool, move || store.connect(&p, tool, &profile_id)).await?;
+        direct_only(tool, &resolved)?;
         parse(tool, resolved)
+    }
+
+    /// [`Hub::connect_profile`] for a tool that connects through routes: the profile and how its
+    /// connections go out.
+    pub async fn connect_profile_via<T: DeserializeOwned + Send + 'static>(
+        &self,
+        ctx: &Ctx,
+        tool: &'static str,
+        profile_id: String,
+    ) -> Result<(T, TargetRef, super::route::Via), ToolError> {
+        let store = self.stored_profiles(tool)?;
+        let p = ctx.principal().clone();
+        let mut resolved = blocking(tool, move || store.connect(&p, tool, &profile_id)).await?;
+        let via = self.via(tool, resolved.route.take())?;
+        let (profile, target) = parse(tool, resolved)?;
+        Ok((profile, target, via))
+    }
+
+    /// [`Hub::test_profile`] for a tool that connects through routes.
+    pub async fn test_profile_via<T: DeserializeOwned + Send + 'static>(
+        &self,
+        ctx: &Ctx,
+        tool: &'static str,
+        input: ToolTestInput,
+    ) -> Result<(T, TargetRef, super::route::Via), ToolError> {
+        let store = self.stored_profiles(tool)?;
+        let p = ctx.principal().clone();
+        let mut resolved = blocking(tool, move || {
+            store.test(&p, tool, input.draft, input.based_on.as_deref())
+        })
+        .await?;
+        let via = self.via(tool, resolved.route.take())?;
+        let (profile, target) = parse(tool, resolved)?;
+        Ok((profile, target, via))
+    }
+
+    /// How a connection of `tool` goes out through `route` (Direct without one).
+    pub fn via(
+        &self,
+        tool: &str,
+        route: Option<super::route::ResolvedRoute>,
+    ) -> Result<super::route::Via, ToolError> {
+        Ok(match route {
+            None => super::route::Via::Direct,
+            Some(route) => {
+                super::route::Via::Route(Arc::new(route.routed(tool, self.session_pool().clone())?))
+            }
+        })
     }
 
     /// The draft profile of a `<tool>.test`, with the target the test acts on.
@@ -181,6 +249,7 @@ impl Hub {
             store.test(&p, tool, input.draft, input.based_on.as_deref())
         })
         .await?;
+        direct_only(tool, &resolved)?;
         parse(tool, resolved)
     }
 }

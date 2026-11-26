@@ -531,14 +531,16 @@ async fn test_connection_uses_draft_secrets_once_and_stored_ones_only_on_the_sam
     )
     .await;
     mia.result(6).await;
-    // Another route: the stored "wrong" is not sent, so the draft connects without a token.
+    // Echo connects to nothing, so it takes no route (TSK-117); that a changed route unbinds the
+    // stored secrets is `spec.rs`'s test.
     mia.call(
         7,
         "echo.test",
         json!({ "draft": { "fields": { "routeId": "R9" }, "secrets": {} }, "basedOn": id }),
     )
     .await;
-    mia.result(7).await;
+    let err = mia.error(7, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "fields.routeId");
 
     // A viewer may use a shared profile but not edit it: its secrets never fill a draft; and
     // testing needs profiles.personal or profiles.manage, which every built-in role holds.

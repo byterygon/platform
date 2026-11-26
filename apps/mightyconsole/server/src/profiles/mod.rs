@@ -21,6 +21,8 @@
 pub mod api;
 pub mod connect;
 pub mod docker;
+pub mod routes;
+pub mod routes_api;
 pub mod spec;
 pub mod ssh_hosts;
 pub mod table;
@@ -561,6 +563,7 @@ impl ProfileService {
         } else {
             self.check_link(&profile.owner, &profile.fields, None)?;
         }
+        self.check_route_link(tool, &profile.owner, &profile.fields)?;
         let stored = self.store.put_profile(profile, None, |write, stored| {
             if let Some(host) = host {
                 self.put_pending_host(write, host, &p.id, now_ms)?;
@@ -633,6 +636,7 @@ impl ProfileService {
             )?;
         }
         self.check_link(&next.owner, &next.fields, None)?;
+        self.check_route_link(&next.tool, &next.owner, &next.fields)?;
         let secrets = check_secrets(spec, secrets)?;
         let unbind: Vec<&str> = spec
             .secrets_to_unbind(&current.fields, &next.fields)

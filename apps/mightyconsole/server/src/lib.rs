@@ -162,6 +162,15 @@ fn mount(router: &Router, state: &Arc<AppState>) {
         .mount(profiles::api::SshHostsApi(state.profiles.clone()))
         .expect("sshHosts API registers");
     router
+        .mount(profiles::routes_api::ProxiesApi(state.profiles.clone()))
+        .expect("proxies API registers");
+    router
+        .mount(profiles::routes_api::RoutesApi(
+            state.profiles.clone(),
+            Some(state.hub.clone()),
+        ))
+        .expect("routes API registers");
+    router
         .mount(profiles::api::AdminProfilesApi(state.profiles.clone()))
         .expect("admin.profiles API registers");
     core::messaging::mount(router, &state.hub).expect("messaging APIs register");

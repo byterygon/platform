@@ -232,6 +232,26 @@ impl Policy {
         Ok(())
     }
 
+    /// Whether `host` may be reached **behind a route's first hop** (DOC-23 (am)): it is resolved
+    /// by the hop, not here, so a name is checked by name only, against the host and domain
+    /// rules (deny first), and an address literal against the address rules and the built-in
+    /// refusals as usual. With `allow` rules, a name must match one of them by name: an `allow`
+    /// network cannot vouch for a name this server never resolves.
+    pub fn decide_remote(&self, host: &str) -> Result<(), Refusal> {
+        let bare = host.trim_matches(['[', ']']);
+        if let Ok(ip) = bare.parse::<IpAddr>() {
+            return self.decide(bare, ip);
+        }
+        let host = bare.trim_end_matches('.').to_ascii_lowercase();
+        if self.deny.iter().any(|r| r.matches_host(&host)) {
+            return Err(Refusal::Denied);
+        }
+        if !self.allow.is_empty() && !self.allow.iter().any(|r| r.matches_host(&host)) {
+            return Err(Refusal::NotAllowed);
+        }
+        Ok(())
+    }
+
     /// Whether the operator narrowed the reach with `allow` rules.
     pub fn is_narrowed(&self) -> bool {
         !self.allow.is_empty()
@@ -269,6 +289,28 @@ fn refusal_message(host: &str, ip: IpAddr, why: &Refusal) -> String {
         ),
         Refusal::NotAllowed => format!("{at} is not among this server's [outbound] allow rules"),
     }
+}
+
+/// Checks a name (or address) a route's hop reaches for this server (DOC-23 (am)): `Forbidden`
+/// with the rule's reason when the policy refuses it.
+pub fn check_remote(system: &str, host: &str) -> Result<(), ToolError> {
+    policy().decide_remote(host).map_err(|why| {
+        let message = match why {
+            Refusal::Denied => {
+                format!("{host} is refused by this server's [outbound] deny rules")
+            }
+            Refusal::BuiltIn => format!(
+                "{host} is a link-local or cloud metadata address, which this server never \
+                 connects to unless an operator allows its network in [outbound] allow"
+            ),
+            Refusal::NotAllowed => format!(
+                "{host} is reached through a route, so this server checks it by name, and no \
+                 [outbound] allow rule names it (an allowed network cannot vouch for a name \
+                 resolved by the hop): an operator can allow the name or its domain"
+            ),
+        };
+        ToolError::new(ToolErrorKind::Forbidden, system, message)
+    })
 }
 
 /// The addresses of `host:port` this server may connect to, in the resolver's order; an error
@@ -448,6 +490,22 @@ mod tests {
 
     fn ip(text: &str) -> IpAddr {
         text.parse().unwrap()
+    }
+
+    #[test]
+    fn names_behind_a_route_are_checked_by_name() {
+        let open = Policy::new(vec![], rules(&["*.denied.example"]));
+        assert_eq!(open.decide_remote("db.internal"), Ok(()));
+        assert_eq!(open.decide_remote("x.denied.example"), Err(Refusal::Denied));
+        assert_eq!(open.decide_remote("169.254.169.254"), Err(Refusal::BuiltIn));
+        let narrowed = Policy::new(rules(&["10.0.0.0/8", "*.corp.example"]), vec![]);
+        assert_eq!(narrowed.decide_remote("db.corp.example"), Ok(()));
+        assert_eq!(narrowed.decide_remote("10.1.2.3"), Ok(()));
+        // An allowed network cannot vouch for a name the hop resolves.
+        assert_eq!(
+            narrowed.decide_remote("db.internal"),
+            Err(Refusal::NotAllowed)
+        );
     }
 
     #[test]

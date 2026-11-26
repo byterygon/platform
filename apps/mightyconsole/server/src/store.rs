@@ -511,6 +511,15 @@ impl Store {
             write
                 .open_table(crate::profiles::table::PROFILES_BACKUP)
                 .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::PROXIES)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::LINKS)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::ROUTES)
+                .map_err(err)?;
         }
         write.commit().map_err(err)
     }
@@ -1018,7 +1027,7 @@ where
 impl Store {
     /// The tables a snapshot copies: every table the store has (a test checks that none is
     /// missing).
-    pub const TABLES: [&'static str; 14] = [
+    pub const TABLES: [&'static str; 17] = [
         "meta",
         "accounts",
         "usernames",
@@ -1033,6 +1042,9 @@ impl Store {
         "imports",
         "ssh_hosts",
         "profiles_backup",
+        "proxies",
+        "links",
+        "routes",
     ];
 
     /// Writes a consistent copy of the store to a new file `to` (DOC-25 §3.4.6): a new redb file
@@ -1066,6 +1078,9 @@ impl Store {
         copy_table(&read, &write, crate::profiles::table::IMPORTS)?;
         copy_table(&read, &write, crate::profiles::table::SSH_HOSTS)?;
         copy_table(&read, &write, crate::profiles::table::PROFILES_BACKUP)?;
+        copy_table(&read, &write, crate::profiles::table::PROXIES)?;
+        copy_table(&read, &write, crate::profiles::table::LINKS)?;
+        copy_table(&read, &write, crate::profiles::table::ROUTES)?;
         write.commit().map_err(err)
     }
 }

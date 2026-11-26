@@ -24,6 +24,12 @@ pub(crate) const SSH_HOSTS: TableDefinition<&str, &[u8]> = TableDefinition::new(
 /// (never a secret: a Docker profile's secrets moved to the SSH host it now names).
 pub(crate) const PROFILES_BACKUP: TableDefinition<&str, &[u8]> =
     TableDefinition::new("profiles_backup");
+/// Saved proxies (DOC-23 (ac)): rows of the profile shape whose `tool` is `proxy`.
+pub(crate) const PROXIES: TableDefinition<&str, &[u8]> = TableDefinition::new("proxies");
+/// Links (DOC-23 (aa)): one way of reaching a node from another; `tool` is `link`.
+pub(crate) const LINKS: TableDefinition<&str, &[u8]> = TableDefinition::new("links");
+/// Routes (DOC-23 (aa)): named paths of links; `tool` is `route`.
+pub(crate) const ROUTES: TableDefinition<&str, &[u8]> = TableDefinition::new("routes");
 
 const SEP: char = '\u{1f}';
 
@@ -131,7 +137,7 @@ impl Store {
         self.row(PROFILES_BACKUP, id)
     }
 
-    fn rows(&self, def: Table) -> Result<Vec<StoredProfile>, WriteError> {
+    pub(crate) fn rows(&self, def: Table) -> Result<Vec<StoredProfile>, WriteError> {
         let read = self.db().begin_read().map_err(store_err)?;
         let table = read.open_table(def).map_err(store_err)?;
         let mut out = Vec::new();
@@ -171,7 +177,7 @@ impl Store {
         Ok((count, bytes))
     }
 
-    fn row(&self, def: Table, id: &str) -> Result<Option<StoredProfile>, WriteError> {
+    pub(crate) fn row(&self, def: Table, id: &str) -> Result<Option<StoredProfile>, WriteError> {
         let read = self.db().begin_read().map_err(store_err)?;
         let table = read.open_table(def).map_err(store_err)?;
         table
@@ -203,7 +209,7 @@ impl Store {
         self.put_row(SSH_HOSTS, host, expected, after)
     }
 
-    fn put_row(
+    pub(crate) fn put_row(
         &self,
         def: Table,
         row: StoredProfile,
@@ -243,45 +249,17 @@ impl Store {
         self.delete_row(SSH_HOSTS, SecretOwner::ssh_host(id), check)
     }
 
-    fn delete_row(
+    /// Deletes a row of `def`, the secrets of `owner` (its id is the row's) and the imports that
+    /// made it, in one transaction with `check`. `None` when it was gone.
+    pub(crate) fn delete_row(
         &self,
         def: Table,
         owner: SecretOwner,
         check: impl FnOnce(&redb::WriteTransaction) -> Result<(), WriteError>,
     ) -> Result<Option<StoredProfile>, WriteError> {
-        let id = owner.id.clone();
         let write = self.db().begin_write().map_err(store_err)?;
         check(&write)?;
-        let removed = {
-            let mut table = write.open_table(def).map_err(store_err)?;
-            let removed = table
-                .remove(id.as_str())
-                .map_err(store_err)?
-                .map(|v| decode(v.value()))
-                .transpose()?;
-            if removed.is_some() {
-                let (mut secrets, _) = crate::secrets::table::open_tables(&write)
-                    .map_err(|e| store_err(e.to_string()))?;
-                let fields: Vec<String> = crate::secrets::table::fields_in(&secrets, &owner)
-                    .map_err(|e| store_err(e.to_string()))?;
-                for field in fields {
-                    crate::secrets::table::remove_in(&mut secrets, &owner, &field)
-                        .map_err(|e| store_err(e.to_string()))?;
-                }
-                let mut imports = write.open_table(IMPORTS).map_err(store_err)?;
-                let keys: Vec<String> = imports
-                    .iter()
-                    .map_err(store_err)?
-                    .filter_map(Result::ok)
-                    .filter(|(_, v)| v.value() == id)
-                    .map(|(k, _)| k.value().to_owned())
-                    .collect();
-                for key in keys {
-                    imports.remove(key.as_str()).map_err(store_err)?;
-                }
-            }
-            removed
-        };
+        let removed = delete_in(&write, def, &owner)?;
         write.commit().map_err(store_err)?;
         Ok(removed)
     }
@@ -297,7 +275,44 @@ impl Store {
     }
 }
 
-type Table = TableDefinition<'static, &'static str, &'static [u8]>;
+pub(crate) type Table = TableDefinition<'static, &'static str, &'static [u8]>;
+
+/// [`Store::delete_row`] inside `write`.
+pub(crate) fn delete_in(
+    write: &redb::WriteTransaction,
+    def: Table,
+    owner: &SecretOwner,
+) -> Result<Option<StoredProfile>, WriteError> {
+    let id = owner.id.as_str();
+    let mut table = write.open_table(def).map_err(store_err)?;
+    let removed = table
+        .remove(id)
+        .map_err(store_err)?
+        .map(|v| decode(v.value()))
+        .transpose()?;
+    if removed.is_some() {
+        let (mut secrets, _) =
+            crate::secrets::table::open_tables(write).map_err(|e| store_err(e.to_string()))?;
+        let fields: Vec<String> = crate::secrets::table::fields_in(&secrets, owner)
+            .map_err(|e| store_err(e.to_string()))?;
+        for field in fields {
+            crate::secrets::table::remove_in(&mut secrets, owner, &field)
+                .map_err(|e| store_err(e.to_string()))?;
+        }
+        let mut imports = write.open_table(IMPORTS).map_err(store_err)?;
+        let keys: Vec<String> = imports
+            .iter()
+            .map_err(store_err)?
+            .filter_map(Result::ok)
+            .filter(|(_, v)| v.value() == id)
+            .map(|(k, _)| k.value().to_owned())
+            .collect();
+        for key in keys {
+            imports.remove(key.as_str()).map_err(store_err)?;
+        }
+    }
+    Ok(removed)
+}
 
 /// Writes `row` into `def` in `write` (a new one when `expected` is `None`, else over the stored
 /// one whose etag is `expected`) with the next etag, after checking that its name is free.

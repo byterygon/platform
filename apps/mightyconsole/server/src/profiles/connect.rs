@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use security_types::{Principal, TargetRef};
 use serde_json::{Map, Value, json};
 
+use super::routes::Resolution;
 use super::spec::{self, ToolSpec};
 use super::{ProfileError, ProfileService, check_record, check_secrets, target_of};
 use crate::core::stored::{Resolved, StoredProfiles, TestDraft};
@@ -490,12 +491,13 @@ impl ProfileService {
         Ok(out)
     }
 
+    #[allow(clippy::type_complexity, reason = "the connection's parts")]
     fn resolve_connect(
         &self,
         p: &Principal,
         tool: &str,
         id: &str,
-    ) -> Result<(Value, TargetRef), ProfileError> {
+    ) -> Result<(Value, TargetRef, Option<Resolution>), ProfileError> {
         let (profile, access) = self.get(p, id)?;
         if profile.tool != tool {
             return Err(ProfileError::Invalid {
@@ -513,6 +515,8 @@ impl ProfileService {
         // here in case the profile changed owner since it was saved.
         let host = self.check_link(&profile.owner, &profile.fields, None)?;
         needs_host(tool, &profile.fields, host.as_ref())?;
+        // The route, checked again too: a deleted one is "Route missing", never Direct.
+        let route = self.route_plan(tool, &profile.owner, &profile.fields)?;
         let (fields, secrets) = self.with_host(host, &profile.fields, secrets)?;
         let view = View {
             id: Some(&profile.id),
@@ -521,7 +525,7 @@ impl ProfileService {
             extras: &profile.extras,
             secrets: &secrets,
         };
-        Ok((connect_profile(tool, &view)?, target_of(id)))
+        Ok((connect_profile(tool, &view)?, target_of(id), route))
     }
 
     fn resolve_test(
@@ -531,7 +535,7 @@ impl ProfileService {
         draft: TestDraft,
         based_on: Option<&str>,
         build: impl FnOnce(&str, &View<'_>) -> Result<Value, ProfileError>,
-    ) -> Result<(Value, TargetRef), ProfileError> {
+    ) -> Result<(Value, TargetRef, Option<Resolution>), ProfileError> {
         let may_keep = self
             .authorizer
             .permits(p, crate::authz::catalogue::PROFILES_PERSONAL, None)
@@ -553,6 +557,7 @@ impl ProfileService {
         let mut target = crate::authz::targets::browser(tool);
         let mut id = None;
         let mut host = None;
+        let mut route_owner = None;
         if let Some(based_on) = based_on {
             let (stored, access) = self.get(p, based_on)?;
             if stored.tool != tool {
@@ -571,7 +576,16 @@ impl ProfileService {
                     "you may not change this profile's SSH host".into(),
                 ));
             }
+            if !access.may_edit()
+                && super::routes::route_id_of(&draft.fields)
+                    != super::routes::route_id_of(&stored.fields)
+            {
+                return Err(ProfileError::Forbidden(
+                    "you may not change the route of this profile".into(),
+                ));
+            }
             host = Some(self.check_link(&stored.owner, &draft.fields, None)?);
+            route_owner = Some(stored.owner.clone());
             if access.may_edit() {
                 let unbound = spec.secrets_to_unbind(&stored.fields, &draft.fields);
                 for (field, value) in self.open_secrets(based_on)? {
@@ -587,6 +601,11 @@ impl ProfileService {
             None => self.check_draft_link(p, &draft.fields)?,
         };
         needs_host(tool, &draft.fields, host.as_ref())?;
+        let route_owner = match route_owner {
+            Some(owner) => owner,
+            None => self.draft_route_owner(p, &draft.fields),
+        };
+        let route = self.route_plan(tool, &route_owner, &draft.fields)?;
         let (fields, secrets) = self.with_host(host, &draft.fields, secrets)?;
         let name = draft.name.unwrap_or_default();
         let name = if name.trim().is_empty() {
@@ -601,7 +620,21 @@ impl ProfileService {
             extras: &extras,
             secrets: &secrets,
         };
-        Ok((build(tool, &view)?, target))
+        Ok((build(tool, &view)?, target, route))
+    }
+
+    /// The owner a draft's route must have: shared when it names a shared route and the caller
+    /// edits shared profiles, else the caller's own.
+    fn draft_route_owner(&self, p: &Principal, fields: &Value) -> super::table::Ownership {
+        let shared = super::routes::route_id_of(fields)
+            .and_then(|id| self.store.row(super::table::ROUTES, id).ok().flatten())
+            .is_some_and(|r| r.owner == super::table::Ownership::Shared)
+            && self.authorizer.permits(p, "profiles.manage", None);
+        if shared {
+            super::table::Ownership::Shared
+        } else {
+            super::table::Ownership::Personal { user: p.id.clone() }
+        }
     }
 
     fn resolve_registry(&self, p: &Principal, id: &str) -> Result<Option<Value>, ProfileError> {
@@ -626,10 +659,14 @@ impl ProfileService {
 
 impl StoredProfiles for ProfileService {
     fn connect(&self, p: &Principal, tool: &str, profile_id: &str) -> Result<Resolved, ToolError> {
-        let (profile, target) = self
+        let (profile, target, route) = self
             .resolve_connect(p, tool, profile_id)
             .map_err(|e| tool_error(tool, e))?;
-        Ok(Resolved { profile, target })
+        Ok(Resolved {
+            profile,
+            target,
+            route,
+        })
     }
 
     fn test(
@@ -639,10 +676,14 @@ impl StoredProfiles for ProfileService {
         draft: TestDraft,
         based_on: Option<&str>,
     ) -> Result<Resolved, ToolError> {
-        let (profile, target) = self
+        let (profile, target, route) = self
             .resolve_test(p, tool, draft, based_on, connect_profile)
             .map_err(|e| tool_error(tool, e))?;
-        Ok(Resolved { profile, target })
+        Ok(Resolved {
+            profile,
+            target,
+            route,
+        })
     }
 
     fn registry(&self, p: &Principal, profile_id: &str) -> Result<Option<Value>, ToolError> {
@@ -658,7 +699,7 @@ impl StoredProfiles for ProfileService {
         based_on: Option<&str>,
     ) -> Result<Value, ToolError> {
         let wire_format = tool == "nats";
-        let (registry, _) = self
+        let (registry, _, _) = self
             .resolve_test(p, tool, draft, based_on, |_, view| {
                 Ok(registry(view, wire_format))
             })

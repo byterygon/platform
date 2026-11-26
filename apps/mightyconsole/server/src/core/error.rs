@@ -86,6 +86,31 @@ pub struct HostKeyDetails {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub expected: Option<HostKeyFingerprint>,
+    /// The hop of a route that met the key (DOC-23 §9): "Jump host 2 (`bastion.prod:22`)".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hop: Option<ErrorHop>,
+    /// The saved SSH host the key belongs to: Trust saves it there (DOC-23 4.3), so every route
+    /// and Docker profile that uses the host trusts it at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ssh_host_id: Option<String>,
+    /// That SSH host's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ssh_host: Option<String>,
+}
+
+/// The node of a route an error is about (DOC-23 §9): a hop, or the target after the hops.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorHop {
+    /// 0-based: the hops in order, then the target (its index is the number of hops).
+    pub index: u32,
+    /// `httpConnect`, `socks5`, `ssh`, `sshCommand`, `command` or `target`.
+    pub kind: String,
+    /// `host:port`, or a local command's program name.
+    pub label: String,
 }
 
 /// `details` of every tool procedure's errors (spec §2.6).
@@ -116,6 +141,10 @@ pub struct ToolError {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub host_key: Option<HostKeyDetails>,
+    /// Through a route: the hop (or the target) that failed (DOC-23 §9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hop: Option<ErrorHop>,
 }
 
 impl ToolError {
@@ -130,6 +159,7 @@ impl ToolError {
             field: None,
             position: None,
             host_key: None,
+            hop: None,
         }
     }
 

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:3addab27b6a69e4bf588e5bfdf22ec4bf395d519d45f2c65fa3f5521ee77d109";
+export const SCHEMA_HASH = "sha256:28057977cf4461161057810e0ae9182639a5a4d690a83b15f1191752417447a9";
 
 // ---- Types
 
@@ -147,7 +147,7 @@ bytesPerSec: number,
 /**
  * `true` on the last event of the stream.
  */
-done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "SshHostChanged", id: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
+done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "SshHostChanged", id: string, } | { "kind": "RouteChanged", id: string, } | { "kind": "ProxyChanged", id: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
 
 /**
  * Output of `app.info`.
@@ -1010,9 +1010,48 @@ bytes: string, size: number, schemaId?: number, schemaRef?: string, };
 export type EndReason = "end" | "limit" | "maxScan" | "cancelled";
 
 /**
+ * A variable of a command hop, as the editor sends it.
+ */
+export type EnvInput = { name: string, secret: boolean, 
+/**
+ * A secret's value is write-only (redacted, never answered); `null` keeps the stored one.
+ */
+value?: string | null, };
+
+/**
  * An environment variable of the container's configuration.
  */
 export type EnvVar = { name: string, value: string, };
+
+/**
+ * A variable of a command hop: a secret's value is never answered.
+ */
+export type EnvView = { name: string, secret: boolean, 
+/**
+ * A plain variable's value.
+ */
+value?: string, 
+/**
+ * A secret's: whether a value is stored.
+ */
+set: boolean, };
+
+/**
+ * The node of a route an error is about (DOC-23 §9): a hop, or the target after the hops.
+ */
+export type ErrorHop = { 
+/**
+ * 0-based: the hops in order, then the target (its index is the number of hops).
+ */
+index: number, 
+/**
+ * `httpConnect`, `socks5`, `ssh`, `sshCommand`, `command` or `target`.
+ */
+kind: string, 
+/**
+ * `host:port`, or a local command's program name.
+ */
+label: string, };
 
 /**
  * Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).
@@ -1255,6 +1294,44 @@ encodings?: Array<string>,
 size: number, };
 
 /**
+ * One hop of a route, as the route editor sends it (DOC-23 §4).
+ */
+export type HopInput = { "kind": "proxy", proxyId: string, } | { "kind": "ssh", sshHostId: string, } | { "kind": "sshCommand", sshHostId: string, command: string, } | { "kind": "command", program: string, args: Array<string>, env: Array<EnvInput>, cwd?: string | null, };
+
+/**
+ * One hop of a route as the editor and the path figure show it.
+ */
+export type HopView = { 
+/**
+ * `httpConnect`, `socks5`, `ssh`, `sshCommand` or `command`.
+ */
+kind: string, 
+/**
+ * `host:port`, or a local command's program name.
+ */
+label: string, proxyId?: string, sshHostId?: string, 
+/**
+ * The proxy's or SSH host's name.
+ */
+nodeName?: string, 
+/**
+ * `sshCommand`: the line run on the host.
+ */
+command?: string, 
+/**
+ * `command`: the program, its arguments, its variables and working directory.
+ */
+program?: string, args: Array<string>, env: Array<EnvView>, cwd?: string, 
+/**
+ * The link this hop's behaviour is saved in (what `routes.confirm` names).
+ */
+linkId: string, 
+/**
+ * A command (local or on the host) a person must confirm before it runs.
+ */
+needsConfirmation: boolean, confirmed?: LinkConfirmation, };
+
+/**
  * `docker.host.counts`: what the tree shows beside Images, Volumes and Networks.
  */
 export type HostCounts = { images: number, volumes: number, networks: number, };
@@ -1314,7 +1391,20 @@ export type HostKeyDetails = { state: HostKeyState, algorithm: string, fingerpri
 /**
  * The trusted key, for `changed`.
  */
-expected?: HostKeyFingerprint, };
+expected?: HostKeyFingerprint, 
+/**
+ * The hop of a route that met the key (DOC-23 §9): "Jump host 2 (`bastion.prod:22`)".
+ */
+hop?: ErrorHop, 
+/**
+ * The saved SSH host the key belongs to: Trust saves it there (DOC-23 4.3), so every route
+ * and Docker profile that uses the host trusts it at once.
+ */
+sshHostId?: string, 
+/**
+ * That SSH host's name.
+ */
+sshHost?: string, };
 
 /**
  * An SSH host key as the profile stores it and the trust dialog shows it.
@@ -1338,6 +1428,8 @@ export type HostKeyState = "unknown" | "changed";
  * What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).
  */
 export type IdConflictPolicy = "fail" | "useExisting" | "terminateExisting";
+
+export type IdInput = { id: string, };
 
 /**
  * What happens when a closed workflow with the same ID exists (`WorkflowIdReusePolicy`).
@@ -1534,6 +1626,15 @@ timestampUs: number, };
  */
 export type Latest = "latest";
 
+/**
+ * Who confirmed a command link, and when (DOC-23 11.3).
+ */
+export type LinkConfirmation = { by: string, 
+/**
+ * RFC 3339.
+ */
+at: string, };
+
 export type LocalGroup = { name: string, members: Array<string>, };
 
 /**
@@ -1725,6 +1826,12 @@ payloadRaw: string, payloadSize: number, payloadTruncated: boolean,
  * The decoded value: canonical JSON text, or text.
  */
 payloadText?: string, payloadCodec: CodecId, schemaRef?: string, decodeError?: string, };
+
+export type NamedIdInput = { id: string, 
+/**
+ * The name, typed as the confirmation (delete) or the new one (duplicate).
+ */
+name: string, };
 
 export type NamespaceDescribeInput = { connId: string, namespace: string, };
 
@@ -2751,6 +2858,86 @@ tool?: string | null, };
 
 export type ProfilesOutput = { profiles: Array<ProfileView>, };
 
+export type ProxiesOutput = { proxies: Array<ProxyView>, };
+
+export type ProxyCreateInput = { name: string, owner: OwnerWire, fields: ProxyFields, 
+/**
+ * The login's password (redacted; never answered).
+ */
+password?: string | null, };
+
+/**
+ * A proxy's fields (never its password).
+ */
+export type ProxyFields = { kind: ProxyKind, host: string, port: number, 
+/**
+ * HTTP CONNECT only: `https://` to the proxy itself.
+ */
+tls: boolean, 
+/**
+ * The login's user: Basic for HTTP CONNECT, RFC 1929 for SOCKS5. No login when absent.
+ */
+username?: string | null, 
+/**
+ * For `tls`: the CA the proxy's certificate must chain to (PEM); the system's roots when
+ * absent.
+ */
+caPem?: string | null, };
+
+export type ProxyImportInput = { 
+/**
+ * The proxy's id in the export file.
+ */
+sourceId: string, owner: OwnerWire, name: string, fields: ProxyFields, password?: string | null, };
+
+export type ProxyImportOutput = { proxy: ProxyView, 
+/**
+ * `false` when an earlier import of the same record made it.
+ */
+created: boolean, };
+
+/**
+ * A proxy's kind.
+ */
+export type ProxyKind = "httpConnect" | "socks5";
+
+export type ProxyUpdateInput = { id: string, etag: string, name?: string | null, 
+/**
+ * A change of any field removes the stored password unless `password` sets it again.
+ */
+fields?: ProxyFields | null, 
+/**
+ * Redacted; `null` keeps the stored one.
+ */
+password?: string | null, };
+
+export type ProxyUpdateOutput = { proxy: ProxyView, 
+/**
+ * Secrets removed because the proxy's address or login changed.
+ */
+removedSecrets: Array<string>, };
+
+/**
+ * A saved proxy as the caller may see it: never its password.
+ */
+export type ProxyView = { id: string, name: string, fields: ProxyFields, 
+/**
+ * `http://…`, `https://…` or `socks5://…`.
+ */
+url: string, owner: OwnerWire, etag: string, createdAt: string, updatedAt: string, createdBy: string, updatedBy: string, 
+/**
+ * `owner`, `edit`, `use` or `metadata`.
+ */
+access: string, 
+/**
+ * The secrets set (none listed for `metadata` and `use`).
+ */
+secrets: Array<SecretRow>, 
+/**
+ * The routes that pass it and the caller sees.
+ */
+usedBy: Array<SshHostUser>, usedByHidden: number, };
+
 /**
  * `messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar
  * and Profile, spec §5.6), run in a worker with the limits of §5.4.1.
@@ -3104,6 +3291,111 @@ id: string, name: string, description?: string | null,
 permissions: Array<string>, };
 
 export type RolesListOutput = { roles: Array<RoleInfo>, catalogue: Array<CataloguePermission>, };
+
+export type RouteConfirmInput = { id: string, 
+/**
+ * The links the confirmation showed (`HopView.linkId`).
+ */
+links: Array<string>, };
+
+export type RouteCreateInput = { name: string, owner: OwnerWire, 
+/**
+ * `path` (the default) or `system`.
+ */
+kind?: RouteKind | null, 
+/**
+ * 1 to 8 hops for a path; none for the System route. Secret variables' values redacted.
+ */
+hops: Array<HopInput>, };
+
+export type RouteImportInput = { sourceId: string, owner: OwnerWire, name: string, kind?: RouteKind | null, hops: Array<HopInput>, };
+
+export type RouteImportOutput = { route: RouteView, created: boolean, };
+
+/**
+ * A route's kind.
+ */
+export type RouteKind = "path" | "system";
+
+export type RouteTestInput = { 
+/**
+ * A saved route (confirmed), or …
+ */
+routeId?: string | null, 
+/**
+ * … the editor's draft (secret variables redacted; empty ones take the stored values of
+ * the same command).
+ */
+hops?: Array<HopInput> | null, target: TestTarget, };
+
+/**
+ * One line of `routes.test` (DOC-23 §9, (q)): a hop, or the target last.
+ */
+export type RouteTestLine = { hop: ErrorHop, ok: boolean, 
+/**
+ * From the end of the line before (or the start) to this one.
+ */
+ms: number, 
+/**
+ * An SSH hop that was reached: the (trusted) key it presented.
+ */
+hostKey?: HostKeyFingerprint, 
+/**
+ * The saved SSH host of an `ssh` or `sshCommand` hop.
+ */
+sshHostId?: string, 
+/**
+ * For a failure: `Invalid`, `Connect`, `Timeout`, `Auth`, `Forbidden` or `HostKey`.
+ */
+failure?: string, 
+/**
+ * For a failure: the error as a connect would report it (host key details included).
+ */
+error?: ToolError, };
+
+export type RouteTestOutput = { 
+/**
+ * One line per hop up to the first failure, then the target when every hop passed.
+ */
+lines: Array<RouteTestLine>, 
+/**
+ * The route's hops (lines after a failure are "Not tried").
+ */
+hops: number, 
+/**
+ * The whole time, ms.
+ */
+ms: number, };
+
+export type RouteUpdateInput = { id: string, etag: string, name?: string | null, 
+/**
+ * The whole path again; a command whose program, arguments, variable names or line
+ * changed is not confirmed. `null` keeps the hops.
+ */
+hops?: Array<HopInput> | null, };
+
+/**
+ * A route as the caller may see it.
+ */
+export type RouteView = { id: string, name: string, kind: RouteKind, 
+/**
+ * In order: the first is the one this server contacts.
+ */
+hops: Array<HopView>, 
+/**
+ * Every command of the route is confirmed: it may be tested, chosen and used.
+ */
+confirmed: boolean, owner: OwnerWire, etag: string, createdAt: string, updatedAt: string, createdBy: string, updatedBy: string, 
+/**
+ * `owner`, `edit`, `use` or `metadata`.
+ */
+access: string, 
+/**
+ * The profiles that name it and the caller sees.
+ */
+usedBy: Array<SshHostUser>, usedByHidden: number, };
+
+export type RoutesOutput = { routes: Array<RouteView>, };
 
 export type Run = { runId: string, threadId: string, assistantId: string, 
 /**
@@ -3572,7 +3864,8 @@ export type SecretOwnerInput = { owner: SecretOwnerWire, };
  */
 export type SecretOwnerWire = { 
 /**
- * `profile` or `sshHost` (routes come with DOC-23).
+ * `profile`, `sshHost` or `proxy` (a command hop's secret variables are set through
+ * `routes.create` and `routes.update`).
  */
 kind: string, id: string, };
 
@@ -3982,6 +4275,11 @@ fields: unknown, extras?: unknown,
 secrets: { [key in string]: string }, };
 
 /**
+ * Where a Test goes.
+ */
+export type TestTarget = { host: string, port: number, };
+
+/**
  * A text match (spec §5.4, `TextMatch`).
  */
 export type TextMatch = { op: MatchOp, value: string, caseSensitive?: boolean | null, };
@@ -4111,7 +4409,11 @@ position?: ErrorPosition,
 /**
  * For `HostKey`: what the trust dialog shows.
  */
-hostKey?: HostKeyDetails, };
+hostKey?: HostKeyDetails, 
+/**
+ * Through a route: the hop (or the target) that failed (DOC-23 §9).
+ */
+hop?: ErrorHop, };
 
 /**
  * What went wrong, as the UI needs to know it (spec §2.6).
@@ -4802,6 +5104,21 @@ export interface Procedures {
   readonly "profiles.import": ProcedureDef<"mutation", ProfileImportInput, ProfileImportOutput, ToolError>;
   readonly "profiles.list": ProcedureDef<"query", ProfilesListInput, ProfilesOutput, ToolError>;
   readonly "profiles.update": ProcedureDef<"mutation", ProfileUpdateInput, ProfileUpdateOutput, ToolError>;
+  readonly "proxies.create": ProcedureDef<"mutation", ProxyCreateInput, ProxyView, ToolError>;
+  readonly "proxies.delete": ProcedureDef<"mutation", NamedIdInput, Empty, ToolError>;
+  readonly "proxies.get": ProcedureDef<"query", IdInput, ProxyView, ToolError>;
+  readonly "proxies.import": ProcedureDef<"mutation", ProxyImportInput, ProxyImportOutput, ToolError>;
+  readonly "proxies.list": ProcedureDef<"query", Empty, ProxiesOutput, ToolError>;
+  readonly "proxies.update": ProcedureDef<"mutation", ProxyUpdateInput, ProxyUpdateOutput, ToolError>;
+  readonly "routes.confirm": ProcedureDef<"mutation", RouteConfirmInput, RouteView, ToolError>;
+  readonly "routes.create": ProcedureDef<"mutation", RouteCreateInput, RouteView, ToolError>;
+  readonly "routes.delete": ProcedureDef<"mutation", NamedIdInput, Empty, ToolError>;
+  readonly "routes.duplicate": ProcedureDef<"mutation", NamedIdInput, RouteView, ToolError>;
+  readonly "routes.get": ProcedureDef<"query", IdInput, RouteView, ToolError>;
+  readonly "routes.import": ProcedureDef<"mutation", RouteImportInput, RouteImportOutput, ToolError>;
+  readonly "routes.list": ProcedureDef<"query", Empty, RoutesOutput, ToolError>;
+  readonly "routes.test": ProcedureDef<"mutation", RouteTestInput, RouteTestOutput, ToolError>;
+  readonly "routes.update": ProcedureDef<"mutation", RouteUpdateInput, RouteView, ToolError>;
   readonly "secrets.remove": ProcedureDef<"mutation", SecretFieldInput, SecretRemoveOutput, ToolError>;
   readonly "secrets.set": ProcedureDef<"mutation", SecretSetInput, SecretRow, ToolError>;
   readonly "secrets.status": ProcedureDef<"query", SecretOwnerInput, SecretsOutput, ToolError>;
@@ -5134,6 +5451,25 @@ export interface Api {
     readonly import: Procedures["profiles.import"];
     readonly list: Procedures["profiles.list"];
     readonly update: Procedures["profiles.update"];
+  };
+  readonly proxies: {
+    readonly create: Procedures["proxies.create"];
+    readonly delete: Procedures["proxies.delete"];
+    readonly get: Procedures["proxies.get"];
+    readonly import: Procedures["proxies.import"];
+    readonly list: Procedures["proxies.list"];
+    readonly update: Procedures["proxies.update"];
+  };
+  readonly routes: {
+    readonly confirm: Procedures["routes.confirm"];
+    readonly create: Procedures["routes.create"];
+    readonly delete: Procedures["routes.delete"];
+    readonly duplicate: Procedures["routes.duplicate"];
+    readonly get: Procedures["routes.get"];
+    readonly import: Procedures["routes.import"];
+    readonly list: Procedures["routes.list"];
+    readonly test: Procedures["routes.test"];
+    readonly update: Procedures["routes.update"];
   };
   readonly secrets: {
     readonly remove: Procedures["secrets.remove"];
@@ -7065,6 +7401,160 @@ export const procedures: Api = {
     },
     update: {
       name: "profiles.update",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+  },
+  proxies: {
+    create: {
+      name: "proxies.create",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    delete: {
+      name: "proxies.delete",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Destructive",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    get: {
+      name: "proxies.get",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    import: {
+      name: "proxies.import",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "proxies.list",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    update: {
+      name: "proxies.update",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+  },
+  routes: {
+    confirm: {
+      name: "routes.confirm",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    create: {
+      name: "routes.create",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    delete: {
+      name: "routes.delete",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Destructive",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    duplicate: {
+      name: "routes.duplicate",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    get: {
+      name: "routes.get",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    import: {
+      name: "routes.import",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "routes.list",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    test: {
+      name: "routes.test",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 60000,
+      timeoutMaxMs: 60000,
+    },
+    update: {
+      name: "routes.update",
       kind: "mutation",
       perm: "profiles.personal",
       risk: "Write",

@@ -67,7 +67,7 @@ pub enum OwnerWire {
 }
 
 impl OwnerWire {
-    fn ownership(&self, caller: &str) -> Ownership {
+    pub(crate) fn ownership(&self, caller: &str) -> Ownership {
         match self {
             OwnerWire::Personal { .. } => Ownership::Personal {
                 user: caller.to_owned(),
@@ -360,7 +360,8 @@ pub struct ProfileImportOutput {
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SecretOwnerWire {
-    /// `profile` or `sshHost` (routes come with DOC-23).
+    /// `profile`, `sshHost` or `proxy` (a command hop's secret variables are set through
+    /// `routes.create` and `routes.update`).
     pub kind: String,
     pub id: String,
 }
@@ -422,20 +423,22 @@ pub struct TransferOutput {
     pub transferred: u32,
 }
 
-/// What a `secrets.*` call names: a profile or an SSH host.
+/// What a `secrets.*` call names: a profile, an SSH host or a proxy.
 enum SecretOwnerRef {
     Profile(String),
     SshHost(String),
+    Proxy(String),
 }
 
 fn owner_of(owner: &SecretOwnerWire) -> Result<SecretOwnerRef, ToolError> {
     match owner.kind.as_str() {
         "profile" => Ok(SecretOwnerRef::Profile(owner.id.clone())),
         "sshHost" => Ok(SecretOwnerRef::SshHost(owner.id.clone())),
+        "proxy" => Ok(SecretOwnerRef::Proxy(owner.id.clone())),
         _ => Err(ToolError::invalid(
             SYSTEM,
             "owner.kind",
-            "profile or sshHost (route secrets come with connection routes)",
+            "profile, sshHost or proxy (a command hop's variables are set with its route)",
         )),
     }
 }
@@ -625,6 +628,9 @@ impl SecretsApi {
                 SecretOwnerRef::SshHost(id) => {
                     s.set_host_secret(&p, &id, &input.field, input.value, now())
                 }
+                SecretOwnerRef::Proxy(id) => {
+                    s.set_proxy_secret(&p, &id, &input.field, input.value, now())
+                }
             }
             .map(SecretRow::from)
         })
@@ -641,6 +647,7 @@ impl SecretsApi {
             match owner {
                 SecretOwnerRef::Profile(id) => s.remove_secret(&p, &id, &input.field),
                 SecretOwnerRef::SshHost(id) => s.remove_host_secret(&p, &id, &input.field),
+                SecretOwnerRef::Proxy(id) => s.remove_proxy_secret(&p, &id, &input.field),
             }
             .map(|removed| SecretRemoveOutput { removed })
         })
@@ -668,6 +675,13 @@ impl SecretsApi {
                         return Err(ProfileError::NotFound);
                     }
                     s.host_secret_status(&id)?
+                }
+                SecretOwnerRef::Proxy(id) => {
+                    let (_, access, _) = s.get_proxy(&p, &id)?;
+                    if !access.may_edit() {
+                        return Err(ProfileError::NotFound);
+                    }
+                    s.proxy_secret_status(&id)?
                 }
             };
             Ok(SecretsOutput {
