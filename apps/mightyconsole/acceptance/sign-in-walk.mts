@@ -147,6 +147,9 @@ async function main(server: string, evidence: string): Promise<number> {
     const summary = await page.evaluate<string>(`document.querySelector('[data-testid="account-summary"]').textContent`);
     check(/member/.test(summary) && /Signed in with the identity provider/.test(summary), `the menu shows the role and how the person signed in (${summary.slice(0, 120)})`);
     await page.screenshot(join(shots, "sign-in-03-account-menu.png"));
+    // A member holds neither `admin.users.read` nor `audit.read`: the menu offers neither screen.
+    const items = await page.evaluate<string>(`[...document.querySelectorAll('[role=menuitem]')].map((i) => i.textContent).join("|")`);
+    check(!/Audit log/.test(items) && !/Users and roles/.test(items), `a member's menu has no Audit log or Users and roles (${items})`);
     // My access (TSK-140 batch 2): the roles in force and the permissions they grant, with where.
     await page.evaluate(`[...document.querySelectorAll('[role=menuitem]')].find((i) => i.textContent.includes("My access")).click()`);
     check(await cdp.waitUntil(page, `document.querySelector('[data-testid="my-access"]') !== null`, 10_000), "My access opens from the account menu");
