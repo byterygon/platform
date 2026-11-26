@@ -159,11 +159,15 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
         run: rustup show active-toolchain || rustup toolchain install
+      # TSK-148: restore only. The "Lab cache" workflow (lab-cache.yml) builds these targets on main
+      # and saves this key (no job id in it, so both jobs share it); this job on main was almost
+      # always skipped and never saved.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' || steps.checklists.outputs.routes != '' }}
         with:
           key: mightyconsole-acceptance
-          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+          add-job-id-key: false
+          save-if: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       - run: pnpm install --frozen-lockfile

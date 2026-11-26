@@ -1,0 +1,50 @@
+name: Lab cache
+
+# TSK-148: the Mightyconsole lab's Rust cache. The lab job (mightyconsole-lab.yml) used to save
+# its rust-cache only on main and weekly, and on main it is almost always skipped (the lab-pass
+# marker of TSK-130, the push path filter), so it never saved and every lab run found "No cache
+# found" and compiled every dependency (about 4 to 5 minutes of its Acceptance step). Here main
+# builds the same cargo targets without bringing the lab up (apps/mightyconsole/acceptance/
+# prebuild.sh) and saves the cache under the key the lab job restores: on every push that can
+# change what cargo builds, daily (a cache unused for 7 days is evicted, and the runner image's
+# own Rust, which is part of rust-cache's key, changes with image updates) and by hand. A pull
+# request that changes this file builds the same way and saves nothing.
+on:
+  push:
+    branches: [main]
+    paths: ["**/*.rs", "**/Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "apps/mightyconsole/acceptance/prebuild.sh", ".github/workflows/lab-cache.yml"]
+  pull_request:
+    paths: ["apps/mightyconsole/acceptance/prebuild.sh", ".github/workflows/lab-cache.yml"]
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The newest main wins; a cancelled run saves nothing, the next one does.
+concurrency:
+  group: lab-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+# The same as mightyconsole-lab.yml's: rust-cache hashes the CARGO_* variables into its key, so
+# this workflow sets exactly the ones the lab job has (add none here without adding it there).
+env:
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  build:
+    name: Build the lab's cargo targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      # The same key as the lab job's rust-cache step, without the job id (the jobs differ).
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: mightyconsole-acceptance
+          add-job-id-key: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: apps/mightyconsole/acceptance/prebuild.sh
