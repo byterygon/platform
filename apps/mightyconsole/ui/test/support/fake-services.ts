@@ -25,6 +25,64 @@ export function everyPermission(): api.PermissionGrant[] {
   return [...perms].sort().map((perm) => ({ perm, everywhere: true, scope: [] }));
 }
 
+/** A few entries of every kind the audit screen draws: a refusal, a failure, a destroy, a sensitive read, a sign-in. */
+export function fakeAudit(): FakeServer["audit"] {
+  const now = Date.now();
+  const row = (seq: number, minutesAgo: number, over: Partial<api.AuditRow>): api.AuditRow => ({
+    seq,
+    timeMs: now - minutesAgo * 60_000,
+    user: "human:account:01ADMIN",
+    session: "ls_current",
+    userKind: "human",
+    action: "nats.js.streams.list",
+    perm: "nats.read",
+    target: "profile/PNATS",
+    risk: "Read",
+    sensitive: false,
+    outcome: "allowed",
+    errorCode: null,
+    phase: "done",
+    durationMs: 12,
+    correlationId: `c-${seq}`,
+    ...over,
+  });
+  const rows = [
+    row(7, 1, { user: "human:oidc:bao", action: "docker.containers.remove", perm: "docker.destroy", target: "profile/PDOCKER", risk: "Destructive", outcome: "refused", durationMs: null }),
+    row(6, 3, { action: "admin.users.list", perm: "admin.users.read", target: null, sensitive: true }),
+    row(5, 9, { user: "human:oidc:bao", action: "nats.kv.get", perm: "nats.read", outcome: "failed", errorCode: "Unavailable", durationMs: 5000 }),
+    row(4, 20, { action: "nats.js.streams.delete", perm: "nats.destroy", risk: "Destructive", durationMs: 140 }),
+    row(3, 45, { user: "human:oidc:lan", action: "auth.login", perm: "app.self", target: null, risk: "Write" }),
+    row(2, 90, { action: "nats.js.streams.list" }),
+    row(1, 120, { user: "system", userKind: "system", action: "server.start", perm: "app.self", target: null, risk: "Write", durationMs: null }),
+  ];
+  const records = new Map<number, api.AuditRecordView>(
+    rows.map((r) => [
+      r.seq,
+      {
+        row: r,
+        tenant: "default",
+        principals: [{ kind: r.userKind, id: r.user, session: r.session }],
+        reason: r.outcome === "refused" ? "missing: docker.destroy" : null,
+        approvalId: null,
+        inputDigest: `sha256:${String(r.seq).padStart(8, "0")}${"ab".repeat(28)}`,
+        statementDigest: null,
+        delivery: null,
+        parentCorrelationId: null,
+        detail: r.target ? [{ key: "target", value: r.target }] : [],
+        prevHash: `${String(r.seq - 1).padStart(8, "0")}${"cd".repeat(28)}`,
+        hash: `${String(r.seq).padStart(8, "0")}${"ef".repeat(28)}`,
+      },
+    ]),
+  );
+  return {
+    rows,
+    records,
+    status: { segments: 2, bytes: 3_400_000, maxBytes: 536_870_912, oldestTimeMs: now - 5 * 86_400_000, records: rows.length, refusing: null, checkpointMs: now - 3600_000, checkpointSeq: 5 },
+    verify: { ok: true, records: rows.length, segments: 2, headSeq: 7, unfinished: [], checkpoint: "intact", broken: null, checkedMs: now },
+    verifyDelay: null,
+  };
+}
+
 export interface FakeServer {
   calls: { procedure: string; input: unknown }[];
   /** Live handles by connId. */
@@ -36,6 +94,8 @@ export interface FakeServer {
   me: api.Me;
   /** The people, roles and group mappings `admin.*` answers (TSK-140 batch 3). */
   admin: { users: api.UserSummary[]; roles: api.RoleInfo[]; mappings: api.MappingRow[]; pinned: api.MappingRow[]; etag: number; deleted: string[] };
+  /** The audit log `audit.*` answers (TSK-140 batch 3c): newest first, as the server returns it. */
+  audit: { rows: api.AuditRow[]; records: Map<number, api.AuditRecordView>; status: api.AuditStatusOutput; verify: api.AuditVerifyOutput; verifyDelay: Promise<void> | null };
   /** The person's own sessions (`app.sessions.list`). */
   sessions: api.SessionRow[];
   /** How many ticks a ticks stream sends before it waits to be cancelled. */
@@ -347,6 +407,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     handles: new Map(),
     down: false,
     signedOut: false,
+    audit: fakeAudit(),
     admin: {
       users: [
         { id: "human:account:01ADMIN", kind: "account", username: "uy.son", displayName: "Uy Son", email: "uy.son@corp.example", groups: [], localGroups: [], roles: [{ role: "admin", scope: null, via: "pinned" }], disabled: false, locked: false, totp: false, defaultAdmin: true, createdMs: 1_700_000_000_000, lastSeenMs: Date.now(), sessions: 1 },
@@ -822,6 +883,42 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
           record("admin.sessions.revoke", input);
           return { revoked: 1 };
         },
+      },
+    },
+    audit: {
+      list: async (input: api.AuditListInput) => {
+        record("audit.list", input);
+        const f = input.filter ?? {};
+        const who = f.principal?.toLowerCase();
+        const kept = server.audit.rows.filter(
+          (r) =>
+            (f.fromMs == null || r.timeMs >= f.fromMs) &&
+            (f.toMs == null || r.timeMs <= f.toMs) &&
+            (!who || r.user.toLowerCase().includes(who)) &&
+            (!f.action || r.action.startsWith(f.action)) &&
+            (!f.risk || r.risk === f.risk) &&
+            (!f.outcome || r.outcome === f.outcome) &&
+            (!f.sensitiveOnly || r.sensitive),
+        );
+        const start = input.cursor ? Number(input.cursor) : 0;
+        const limit = input.limit ?? 100;
+        const records = kept.slice(start, start + limit);
+        return { records, next: start + limit < kept.length ? String(start + limit) : null };
+      },
+      get: async (input: api.AuditGetInput) => {
+        record("audit.get", input);
+        const view = server.audit.records.get(input.seq);
+        if (!view) throw new RpcError("NotFound", `no audit entry ${input.seq}`, { details: { kind: "NotFound", system: "audit", message: "gone", retryable: false, resource: "entry" } });
+        return view;
+      },
+      status: async () => {
+        record("audit.status", {});
+        return server.audit.status;
+      },
+      verify: async () => {
+        record("audit.verify", {});
+        await server.audit.verifyDelay;
+        return server.audit.verify;
       },
     },
     secrets: secretsApi,

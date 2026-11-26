@@ -15,7 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Me, SessionRow } from "@/gen/api";
-import { Globe, Person, Shield, SignOut, Settings as SettingsIcon } from "@/lib/icons";
+import { Globe, History, Person, Shield, SignOut, Settings as SettingsIcon } from "@/lib/icons";
 import type { MightyClient } from "./client";
 import { clock, initialsOf, methodText, nameOf, scopeText, viaText } from "./session";
 
@@ -32,12 +32,14 @@ export interface AccountMenuProps {
   onMyAccess?(): void;
   /** Users and roles, for people who hold `admin.users.read`. */
   onAdmin?(): void;
+  /** The audit log, for people who hold `audit.read`. */
+  onAudit?(): void;
   onSettings(): void;
   onSignOut(): void;
 }
 
 /** The initials button and its menu. The button is the first stop after the title area's tools. */
-export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onMyAccess, onAdmin, onSettings, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onMyAccess, onAdmin, onAudit, onSettings, onSignOut }: AccountMenuProps) {
   const name = nameOf(me);
   return (
     <DropdownMenu>
@@ -79,6 +81,12 @@ export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSession
           <DropdownMenuItem onClick={onAdmin}>
             <Icon icon={Person} />
             Users and roles
+          </DropdownMenuItem>
+        ) : null}
+        {onAudit ? (
+          <DropdownMenuItem onClick={onAudit}>
+            <Icon icon={History} />
+            Audit log
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={onSessions}>
