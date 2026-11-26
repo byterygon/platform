@@ -3,15 +3,13 @@
 //! Authorization (a secret) is opened on the server. The tool's other lab tests call it in-crate
 //! (`src/tools/temporal/lab_*_tests.rs`). Needs
 //! `pnpm --filter @byterygon/mightyconsole lab up temporal`; run with
-//! `cargo test -p mightyconsole-server --features lab-tests --test temporal_lab`.
+//! `cargo test -p mightyconsole-server --features lab-tests --test integration temporal_lab::`.
 #![cfg(feature = "lab-tests")]
-
-mod support;
 
 use std::path::PathBuf;
 
+use crate::support::*;
 use serde_json::{Value, json};
-use support::*;
 
 fn generated() -> PathBuf {
     std::env::var_os("MIGHTYCONSOLE_LAB_GENERATED")

@@ -4,15 +4,13 @@
 //! routes' own cases (lockout, TOTP, setup links, cross-site posts) are the conformance suite's
 //! (`crates/ambidex-conformance/tests/accounts.rs`).
 
-mod support;
-
 use std::sync::Arc;
 
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::StartOptions;
 use security_types::MemoryAuditLog;
 use serde_json::{Value, json};
-use support::*;
 
 async fn post(t: &TestServer, path: &str, body: Value) -> (HttpResponse, Option<String>) {
     t.post_auth(path, &body).await

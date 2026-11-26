@@ -2,11 +2,10 @@
 //! conformance suite's test identity provider over TLS on loopback (the lab's Dex is the other
 //! end-to-end test). CI runs this file in a network namespace with only loopback.
 
-mod support;
-
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::support::*;
 use ambidex::{Code, Kind};
 use ambidex_axum::oidc::{ClaimsSource, TokenAuth};
 use ambidex_conformance::oidc::{CLIENT_ID, CLIENT_SECRET, TestIdp};
@@ -16,7 +15,6 @@ use mightyconsole_server::config::OidcSettings;
 use rustls::pki_types::{CertificateDer, ServerName};
 use security_types::{Clock, SystemClock};
 use serde_json::json;
-use support::*;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
@@ -364,7 +362,7 @@ async fn a_bad_sign_in_configuration_stops_the_start() {
     let dir = tempfile::tempdir().unwrap();
     let mut oidc = settings(&idp, dir.path());
     oidc.issuer = "http://127.0.0.1:1/dex".into();
-    let mut config = support::config(dir.path(), None);
+    let mut config = crate::support::config(dir.path(), None);
     config.auth.oidc = Some(oidc.clone());
     let err = mightyconsole_server::Server::start(config.clone())
         .await

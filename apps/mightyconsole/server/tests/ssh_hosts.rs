@@ -4,12 +4,10 @@
 //! not deleted; Docker profiles of version 1 become an SSH host and a profile of version 2, when
 //! imported and at start, without losing anything.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::secrets::{Owner, Secret};
 use serde_json::{Value, json};
-use support::*;
 
 /// A value no answer may contain.
 const KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nkey-do-not-leak-5e1a\n";

@@ -2,18 +2,16 @@
 //! TSK-85): the main server (password and nkey users, no-auth default user, TLS from the lab CA,
 //! JetStream), a token server and an operator-mode server for `.creds` files. Needs
 //! `pnpm --filter @byterygon/mightyconsole lab up nats`; run with
-//! `cargo test -p mightyconsole-server --features lab-tests --test nats_lab`. Credentials come from
-//! `apps/mightyconsole/lab/.generated` (or `$MIGHTYCONSOLE_LAB_GENERATED`).
+//! `cargo test -p mightyconsole-server --features lab-tests --test integration nats_lab::`.
+//! Credentials come from `apps/mightyconsole/lab/.generated` (or `$MIGHTYCONSOLE_LAB_GENERATED`).
 #![cfg(feature = "lab-tests")]
-
-mod support;
 
 use std::path::PathBuf;
 
+use crate::support::*;
 use ambidex::{Code, Kind};
 use arrow_array::{Array, RecordBatch, StringArray};
 use serde_json::{Value, json};
-use support::*;
 
 const ORDER_PROTO: &str =
     include_str!("../../../../crates/message-codecs/tests/fixtures/order.proto");

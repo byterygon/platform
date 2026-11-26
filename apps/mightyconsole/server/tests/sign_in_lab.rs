@@ -2,15 +2,14 @@
 //! with `[auth.oidc]` pointing at `https://localhost:5556/dex`, its CA from the lab, and a lab user
 //! signing in through Dex's own login form (RS256 tokens, groups from Dex). Needs
 //! `pnpm --filter @byterygon/mightyconsole lab up idp`; run with
-//! `cargo test -p mightyconsole-server --features lab-tests --test sign_in_lab`. Credentials come
-//! from `lab/.generated/credentials.json` (or `MIGHTYCONSOLE_LAB_GENERATED`).
+//! `cargo test -p mightyconsole-server --features lab-tests --test integration sign_in_lab::`.
+//! Credentials come from `lab/.generated/credentials.json` (or `MIGHTYCONSOLE_LAB_GENERATED`).
 #![cfg(feature = "lab-tests")]
-
-mod support;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::support::*;
 use ambidex::{Code, Kind};
 use ambidex_axum::oidc::{ClaimsSource, TokenAuth};
 use mightyconsole_server::StartOptions;
@@ -18,7 +17,6 @@ use mightyconsole_server::config::OidcSettings;
 use rustls::pki_types::{CertificateDer, ServerName};
 use rustls_pki_types::pem::PemObject as _;
 use serde_json::{Value, json};
-use support::*;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
@@ -270,7 +268,7 @@ async fn each_lab_user_gets_their_own_groups_and_session() {
     let (carol, _) = sign_in(&t, "carol", "%2F").await;
     assert_ne!(bob, carol);
     let mut all = t.server.login_sessions().list();
-    all.sort_by(|a, b| a.groups.len().cmp(&b.groups.len()));
+    all.sort_by_key(|s| s.groups.len());
     assert_eq!(all.len(), 2);
     assert!(all[0].groups.is_empty());
     assert_eq!(all[1].groups, ["mc-viewers"]);

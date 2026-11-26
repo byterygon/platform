@@ -4,15 +4,13 @@
 //! the restored server starts (with `server.restore`) and every secret decrypts, without them it
 //! refuses to start.
 
-mod support;
-
 use std::path::Path;
 
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::secrets::{Owner, Secret};
 use mightyconsole_server::{Server, StartError, StartOptions};
 use serde_json::json;
-use support::*;
 
 const BIN: &str = env!("CARGO_BIN_EXE_mightyconsole-server");
 

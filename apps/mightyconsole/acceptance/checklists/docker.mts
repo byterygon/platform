@@ -80,7 +80,7 @@ const AGENT = [
   'trap \'kill "$SSH_AGENT_PID"\' EXIT',
   'test "$SSH_AUTH_SOCK" = "$sock"',
   "ssh-add apps/mightyconsole/lab/.generated/ssh/lab_ed25519",
-  "MIGHTYCONSOLE_LAB_DOCKER_AGENT=1 cargo test -p mightyconsole-server --features lab-tests --test docker_lab -- lab_trust_on_first_use_then_every_login_method",
+  "MIGHTYCONSOLE_LAB_DOCKER_AGENT=1 cargo test -p mightyconsole-server --features lab-tests --test integration -- lab_trust_on_first_use_then_every_login_method",
 ].join("\n");
 
 export default {

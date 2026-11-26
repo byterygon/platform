@@ -250,8 +250,11 @@ test("the Mightyconsole lab brings up only the tools whose own files changed", (
     ["langgraph"],
   );
   assert.deepEqual(lab(["apps/mightyconsole/acceptance/checklists/temporal-more.mts", "apps/mightyconsole/server/tests/nats_lab.rs"]), ["nats", "temporal"]);
+  // TSK-155: a tool's new test file and its `mod` line in the test binary's root.
+  assert.deepEqual(lab(["apps/mightyconsole/server/tests/integration.rs", "apps/mightyconsole/server/tests/kafka_lab.rs"]), ["kafka"]);
   // Alone, the neutral files still need every tool; a core test still does too.
   assert.equal(lab(["apps/mightyconsole/ui/src/gen/api.ts"]), "all");
+  assert.equal(lab(["apps/mightyconsole/server/tests/integration.rs"]), "all");
   assert.equal(lab(["apps/mightyconsole/server/tests/e2e.rs", "apps/mightyconsole/server/tests/langgraph.rs"]), "all");
   // The shell, the server core, the sample tool, shared packages: every tool.
   for (const file of ["apps/mightyconsole/server/src/lib.rs", "apps/mightyconsole/ui/src/tools/echo/index.tsx", "apps/mightyconsole/lab/compose.yaml", "packages/ui/src/index.ts"]) assert.equal(lab([file]), "all", file);

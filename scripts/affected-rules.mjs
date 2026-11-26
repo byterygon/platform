@@ -72,12 +72,14 @@ export const LAB_TOOL_FILES = [
 /**
  * TSK-124: files that change along with any tool's procedures or checklists and say nothing of
  * their own about which tools a change needs: the generated API (written by rpc-gen from the
- * server's routes), its drift test and the test that every checklist name still exists. They do
- * not bring up every tool when they come with a tool's own files; alone, they still do.
+ * server's routes), its drift test and the test that every checklist name still exists; TSK-155:
+ * the root of the server's test binary, which gains a `mod` line with a tool's new test file. They
+ * do not bring up every tool when they come with a tool's own files; alone, they still do.
  */
 export const LAB_NEUTRAL_FILES = [
   "apps/mightyconsole/ui/src/gen/**",
   "apps/mightyconsole/server/tests/codegen.rs",
+  "apps/mightyconsole/server/tests/integration.rs",
   "apps/mightyconsole/ui/test/acceptance.test.ts",
 ];
 /** Lab folders named after something other than their tool. */

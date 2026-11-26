@@ -4,17 +4,15 @@
 //! release of handles). CI runs this file in a network namespace with only loopback: the server
 //! opens no outbound connection.
 
-mod support;
-
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::support::*;
 use ambidex::{Code, Kind};
 use ambidex_conformance::client::Client;
 use base64::Engine as _;
 use mightyconsole_server::{SCHEMA_HASH, StartOptions};
 use serde_json::{Value, json};
-use support::*;
 
 #[tokio::test]
 async fn the_page_signed_out_and_signed_in_with_its_headers() {
