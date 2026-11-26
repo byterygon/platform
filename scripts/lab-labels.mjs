@@ -5,7 +5,8 @@
 // (scripts/pre-pr.mjs):
 //
 //   lab          the scope scripts/affected.mjs gives (its lab_tools)
-//   lab:<tool>   that tool's profile and checklists (several labels add up); lab:all every tool
+//   lab:<tool>   that tool's profile and checklists (several labels add up); lab:all every tool.
+//                Each tool also brings what its checklists need (TSK-154: lab:idp -> idp temporal)
 //   lab:none     no lab run (say why in the pull request)
 //
 // Pushes to main, the weekly run and manual runs still bring up every tool.
@@ -16,18 +17,56 @@
 // `scope` prints the tools to bring up ("all", "none" or names separated by spaces); `decide`
 // exits 1 when the change needs the lab (affected's lab_tools is not "none") and the pull request
 // has no lab label, so no pull request skips the lab without saying so.
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+
+const CHECKLISTS = new URL("../apps/mightyconsole/acceptance/checklists/", import.meta.url);
+
+/**
+ * The checklists a lab tool switches on: the one place that says it, which the lab workflow's
+ * "Checklists to run" step repeats case by case (a test compares them). What each checklist needs
+ * is its own `lab: [...]` field (apps/mightyconsole/acceptance/checklists/*.mts), read by
+ * `labNeeds`, so the two cannot drift. (nats runs only its wired items, but needs its profile.)
+ */
+export const SWITCHES = {
+  langgraph: ["langgraph"],
+  idp: ["security"],
+  kafka: ["messaging"],
+  temporal: ["temporal", "temporal-more", "temporal-detail"],
+  nats: ["nats"],
+};
+
+/** Each checklist's `lab` tools, read from its file: id -> tools (checklists with LAB_ALL are left out). */
+export function checklistLabs(dir = CHECKLISTS) {
+  const labs = {};
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".mts"))) {
+    const text = readFileSync(new URL(file, dir), "utf8");
+    const id = text.match(/^  id: "([^"]+)"/m)?.[1];
+    const lab = text.match(/^  lab: \[([^\]]*)\]/m)?.[1];
+    if (id && lab !== undefined) labs[id] = [...lab.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  }
+  return labs;
+}
+
+/** For each tool the tools to bring up with it: itself plus what the checklists it switches on need. */
+export function labNeeds(labs = checklistLabs()) {
+  const needs = {};
+  for (const [tool, lists] of Object.entries(SWITCHES)) {
+    needs[tool] = [...new Set([tool, ...lists.flatMap((id) => labs[id] ?? [])])].sort();
+  }
+  return needs;
+}
 
 const isLab = (label) => label === "lab" || label.startsWith("lab:");
 
 /**
  * The tools a lab run brings up. `affected` is scripts/affected.mjs's lab_tools ("all", "none" or
- * names); `tools` the lab's tools (apps/mightyconsole/lab/lab.mts's TOOLS).
+ * names); `tools` the lab's tools (apps/mightyconsole/lab/lab.mts's TOOLS); `needs` what `labNeeds`
+ * gives: each chosen tool brings the tools its checklists need (lab:idp -> idp temporal).
  * @returns {{ tools: "all" | "none" | string[], unknown: string[] }}
  */
-export function labScope({ event, labels, affected, tools }) {
+export function labScope({ event, labels, affected, tools, needs = {} }) {
   if (event !== "pull_request") return { tools: "all", unknown: [] };
   const chosen = new Set();
   const unknown = [];
@@ -43,6 +82,7 @@ export function labScope({ event, labels, affected, tools }) {
     if (tools.includes(tool)) chosen.add(tool);
     else unknown.push(label);
   }
+  for (const tool of [...chosen]) for (const more of needs[tool] ?? []) chosen.add(more);
   return { tools: chosen.size ? [...chosen].sort() : "none", unknown };
 }
 
@@ -83,7 +123,7 @@ function main() {
   if (positionals[0] === "scope") {
     const lab = readFileSync(fileURLToPath(new URL("../apps/mightyconsole/lab/lab.mts", import.meta.url)), "utf8");
     const tools = [...(lab.match(/export const TOOLS = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-    const scope = labScope({ event: opt.event, labels, affected, tools });
+    const scope = labScope({ event: opt.event, labels, affected, tools, needs: labNeeds() });
     for (const label of scope.unknown) console.error(`lab scope: ${label} names no lab tool (${tools.join(", ")}); ignored`);
     console.log(show(scope.tools));
     if (opt["github-output"]) appendFileSync(process.env.GITHUB_OUTPUT ?? "", `lab_tools=${show(scope.tools)}\n`);

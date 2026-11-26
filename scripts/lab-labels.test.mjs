@@ -6,10 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { labDecision, labScope } from "./lab-labels.mjs";
+import { readFileSync } from "node:fs";
+import { SWITCHES, checklistLabs, labDecision, labNeeds, labScope } from "./lab-labels.mjs";
 
-const tools = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph"];
-const scope = (labels, affected, event = "pull_request") => labScope({ event, labels, affected, tools });
+const tools = ["nats", "kafka", "k8s", "temporal", "docker", "langgraph", "idp", "routes"];
+const needs = labNeeds();
+const scope = (labels, affected, event = "pull_request") => labScope({ event, labels, affected, tools, needs });
 
 test("pushes, the weekly run and manual runs bring up every tool", () => {
   for (const event of ["push", "schedule", "workflow_dispatch"]) assert.deepEqual(scope([], "none", event).tools, "all", event);
@@ -34,6 +36,30 @@ test("an unknown lab:<name> is reported and ignored", () => {
   const s = scope(["lab:postgres", "lab:docker"], "all");
   assert.deepEqual(s.tools, ["docker"]);
   assert.deepEqual(s.unknown, ["lab:postgres"]);
+});
+
+test("a tool brings the tools its checklists need (TSK-154)", () => {
+  assert.deepEqual(scope(["lab:idp"], "none").tools, ["idp", "temporal"]);
+  assert.deepEqual(scope(["lab:temporal"], "none").tools, ["temporal"]);
+  assert.deepEqual(scope(["lab:kafka"], "none").tools, ["kafka"]);
+  assert.deepEqual(scope(["lab"], ["idp"]).tools, ["idp", "temporal"]);
+  assert.deepEqual(scope(["lab:idp", "lab:kafka"], "none").tools, ["idp", "kafka", "temporal"]);
+});
+
+test("the table matches the checklists and the workflow", () => {
+  const labs = checklistLabs();
+  assert.deepEqual(labs.security, ["idp", "temporal"]);
+  for (const [tool, lists] of Object.entries(SWITCHES)) {
+    assert.ok(tools.includes(tool), tool);
+    for (const id of lists) assert.ok(id in labs, `${tool}: no checklist ${id}`);
+  }
+  // The workflow's "Checklists to run" step switches the same checklists on for each tool.
+  const yml = readFileSync(fileURLToPath(new URL("../.github/workflows/mightyconsole-lab.yml", import.meta.url)), "utf8");
+  const step = yml.slice(yml.indexOf("name: Checklists to run"));
+  const wf = {};
+  for (const m of step.matchAll(/\*" (\w+) "\*\) lists="\$\{lists:\+\$lists \}(\w+)"|\*" (\w+) "\*\) lists="(\w+)"/g)) wf[m[1] ?? m[3]] = m[2] ?? m[4];
+  for (const tool of ["langgraph", "idp", "kafka", "temporal"]) assert.equal(wf[tool], SWITCHES[tool][0], `workflow: ${tool}`);
+  assert.ok(step.includes('" all ") lists="foundation langgraph messaging temporal security"'));
 });
 
 test("the decision: a change that needs the lab must carry a lab label", () => {
