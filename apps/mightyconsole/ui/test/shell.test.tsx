@@ -238,19 +238,19 @@ describe("profiles through the shell (spec §4)", () => {
     expect((await fake.storage.listProfiles())[0]!.secrets).toEqual({});
   });
 
-  test("the browser's own profiles move to the server after a backup (DOC-25 §3.4.9)", async () => {
+  test("the browser's own profiles move to the server in three steps: backup, choose, move (DOC-25 §3.4.9)", async () => {
     const browser = new MemoryStorage();
     await browser.putProfile(profile({ id: "01OLD", name: "old lab", secrets: { token: "s3cret" } }));
     const fake = createFakeServices(new MemoryStorage(), { browserProfiles: browser });
     await mount(fake);
-    // Not listed until moved; the page says so and offers the step.
-    await waitFor(() => byText("1 profile is kept in this browser") !== null, "the prompt");
+    // Not listed until moved; a bar says so and offers the move.
+    await waitFor(() => document.querySelector('[data-testid="move-bar"]') !== null, "the bar");
+    expect(document.querySelector('[data-testid="move-bar"]')?.textContent).toContain("1 connection profile is still saved only in this browser");
     expect(treeItem("old lab")).toBeNull();
-    await click(byRole("button", "Move to the server"));
+    await click(byRole("button", "Move my profiles…"));
     await waitFor(() => dialogWith("Move my profiles to the server") !== null, "the move dialog");
-    expect(byText("token")).not.toBeNull();
-    const move = byRole("button", "Move 1 profile") as HTMLButtonElement;
-    expect(move.disabled).toBe(true);
+    // 1. Backup: the file holds the secrets in plain text, and the dialog says so.
+    expect(dialogWith("Move my profiles to the server")?.textContent).toContain("The backup file holds your secrets in plain text");
     const blobs: Blob[] = [];
     vi.spyOn(URL, "createObjectURL").mockImplementation((b) => {
       blobs.push(b as Blob);
@@ -258,16 +258,34 @@ describe("profiles through the shell (spec §4)", () => {
     });
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    await click(byRole("button", "Save the backup"));
+    await click(byRole("button", "Save backup file…"));
     const backup = JSON.parse(await blobs[0]!.text());
     expect(backup).toMatchObject({ includesSecrets: true });
     expect(backup.profiles[0].secrets).toEqual({ token: "s3cret" });
-    expect(move.disabled).toBe(false);
-    await click(move);
+    // 2. Choose: the table names the profile and its secrets; it moves as personal.
+    await waitFor(() => document.querySelector('table[aria-label="Profiles to move"]') !== null, "the choice");
+    expect(document.querySelector('table[aria-label="Profiles to move"]')?.textContent).toContain("old lab");
+    expect(document.querySelector('table[aria-label="Profiles to move"]')?.textContent).toContain("1 secret");
+    await click(byRole("button", "Move 1 profile"));
+    // 3. Moved: the browser keeps nothing.
+    await waitFor(() => document.querySelector('[data-testid="move-done"]') !== null, "the result");
+    expect(document.querySelector('[data-testid="move-done"]')?.textContent).toContain("1 profile moved");
     await waitFor(() => treeItem("old lab") !== null, "the moved profile, from the server");
     expect(await browser.listProfiles()).toEqual([]);
     const [onServer] = await fake.storage.listProfiles();
     expect(onServer).toMatchObject({ name: "old lab", secrets: { token: "s3cret" } });
+    expect(document.querySelector('[data-testid="move-bar"]')).toBeNull();
+  });
+
+  test("Later hides the bar for this visit and the profiles stay where they are", async () => {
+    const browser = new MemoryStorage();
+    await browser.putProfile(profile({ id: "01OLD", name: "old lab", secrets: { token: "s3cret" } }));
+    const fake = createFakeServices(new MemoryStorage(), { browserProfiles: browser });
+    await mount(fake);
+    await waitFor(() => document.querySelector('[data-testid="move-bar"]') !== null, "the bar");
+    await click(byRole("button", "Later"));
+    expect(document.querySelector('[data-testid="move-bar"]')).toBeNull();
+    expect((await browser.listProfiles()).length).toBe(1);
   });
 
   test("a newer profile is read-only; the in-memory fallback warns", async () => {
