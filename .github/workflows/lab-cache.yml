@@ -47,4 +47,4 @@ jobs:
           key: mightyconsole-acceptance
           add-job-id-key: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: apps/mightyconsole/acceptance/prebuild.sh
+      - run: apps/mightyconsole/acceptance/prebuild.sh all

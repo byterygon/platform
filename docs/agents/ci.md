@@ -36,5 +36,7 @@ The lab's Rust cache (TSK-148) is saved by the "Lab cache" workflow (`lab-cache.
 lab job: on main (pushes that change Rust or Cargo files), daily and by hand it runs
 `apps/mightyconsole/acceptance/prebuild.sh`, which builds the cargo targets of the acceptance
 checklists and net-route's lab test without bringing the lab up; the lab job restores that key
-and saves nothing. A checklist that calls cargo with another package or feature set gets a line
-in `prebuild.sh`.
+and saves nothing. The lab job also runs `prebuild.sh` for its run's checklists in the background
+while the lab comes up (TSK-149, under `nice`), and waits for it before the checklists start, so
+their `cargo` calls find everything built. A checklist that calls cargo with another package or
+feature set gets a line in `prebuild.sh`.
