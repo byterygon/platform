@@ -192,6 +192,7 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
             super::codec::CodecProfile::new(
                 profile.name.clone(),
                 c.allowed_origins.clone().unwrap_or_default(),
+                c.allow_anonymous.unwrap_or(false),
             )
         });
     Ok(TemporalClient {

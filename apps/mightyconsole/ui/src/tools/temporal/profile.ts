@@ -112,12 +112,18 @@ export interface CodecServerFields {
   enabled: boolean;
   /** Comma or line separated. */
   allowedOrigins: string;
+  /** Serve callers that send no token (DOC-25 Open question 9): off. */
+  allowAnonymous: boolean;
 }
 
 export function codecServerOf(fields: Record<string, unknown>): CodecServerFields {
   const raw = fields["codecServer"];
   const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  return { enabled: o["enabled"] === true, allowedOrigins: typeof o["allowedOrigins"] === "string" ? o["allowedOrigins"] : DEFAULT_CODEC_ORIGINS };
+  return {
+    enabled: o["enabled"] === true,
+    allowedOrigins: typeof o["allowedOrigins"] === "string" ? o["allowedOrigins"] : DEFAULT_CODEC_ORIGINS,
+    allowAnonymous: o["allowAnonymous"] === true,
+  };
 }
 
 /** The codec endpoint of a saved profile on this server. */

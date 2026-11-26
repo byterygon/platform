@@ -291,7 +291,11 @@ fn temporal(v: &View<'_>) -> Value {
             Value::String(_) => list_of(&codec_server["allowedOrigins"]),
             _ => vec!["http://localhost:8233", "http://127.0.0.1:8233"],
         };
-        json!({ "enabled": true, "allowedOrigins": origins })
+        json!({
+            "enabled": true,
+            "allowedOrigins": origins,
+            "allowAnonymous": codec_server["allowAnonymous"] == Value::Bool(true),
+        })
     } else {
         Value::Null
     };
@@ -751,7 +755,7 @@ mod tests {
         let with_endpoint = temporal(&view(&f, &json!({}), &s));
         assert_eq!(
             with_endpoint["codecServer"],
-            json!({ "enabled": true, "allowedOrigins": ["http://localhost:8233", "http://127.0.0.1:8233"] })
+            json!({ "enabled": true, "allowedOrigins": ["http://localhost:8233", "http://127.0.0.1:8233"], "allowAnonymous": false })
         );
     }
 

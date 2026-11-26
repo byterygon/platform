@@ -698,6 +698,8 @@ impl Server {
             config.audit.stderr,
             Arc::clone(&log),
         );
+        // The codec endpoint's requests are audited too (DOC-25 §3.5.1, Open question 9).
+        tools::temporal::codec::set_events(events.clone());
         // The first start after a restore (DOC-25 §3.4.6): server.restore names the backup's
         // last audit record.
         match backup::take_restore_marker(&data) {
@@ -910,13 +912,17 @@ impl Server {
             Some(login) => routes.merge(login.routes()),
             None => routes.merge(accounts.logout_routes()),
         };
+        // Every answer, the page's own aside, gets the baseline headers (TSK-141).
+        let routes = routes.layer(axum::middleware::map_response(static_ui::baseline_headers));
         let codec_task = match config.codec_listen {
             Some(addr) => {
                 let listener = TcpListener::bind(addr)
                     .await
                     .map_err(|error| StartError::Bind { addr, error })?;
                 Some(tokio::spawn(async move {
-                    let _ = axum::serve(listener, tools::temporal::codec::routes()).await;
+                    let routes = tools::temporal::codec::routes()
+                        .layer(axum::middleware::map_response(static_ui::baseline_headers));
+                    let _ = axum::serve(listener, routes).await;
                 }))
             }
             None => None,

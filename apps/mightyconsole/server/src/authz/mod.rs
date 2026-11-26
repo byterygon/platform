@@ -887,6 +887,129 @@ mod tests {
         assert_eq!(kind(&f.authz.decide(&req)), "missing");
     }
 
+    /// Every Destructive procedure of every tool, as the router declares it (TSK-141's review,
+    /// DOC-25 §3.3.6): a viewer and an operator are refused naming the permission, an
+    /// administrator is asked to confirm, the phrase lets that call through once, a wrong phrase
+    /// and another person's answer do not, and a call with another input needs its own.
+    #[test]
+    fn every_destructive_procedure_is_guarded_for_every_role() {
+        use ambidex::ProcedureMeta;
+        fn req<'a>(
+            p: &'a Principal,
+            action: &'a Action,
+            target: Option<&'a TargetRef>,
+            digest: u8,
+        ) -> AuthzRequest<'a> {
+            AuthzRequest {
+                principal: p,
+                action,
+                target,
+                risk: Risk::Destructive,
+                input_digest: Digest([digest; 32]),
+            }
+        }
+        let destructive: Vec<Arc<ProcedureMeta>> = crate::codegen_router()
+            .procedures()
+            .into_iter()
+            .filter(|m| m.risk == Risk::Destructive)
+            .collect();
+        assert_eq!(destructive.len(), confirm::SUBJECTS.len());
+        let mut parts = direct("human:account:A", "admin", Scope::everywhere());
+        for (user, role) in [
+            ("human:account:O", "operator"),
+            ("human:account:V", "viewer"),
+            ("human:account:B", "admin"),
+        ] {
+            parts.direct.insert(
+                user.into(),
+                vec![Assignment {
+                    role: role.into(),
+                    scope: Scope::everywhere(),
+                }],
+            );
+        }
+        let f = fixture(parts);
+        let (admin, other_admin, operator, viewer) = (
+            f.user("human:account:A", &[]),
+            f.user("human:account:B", &[]),
+            f.user("human:account:O", &[]),
+            f.user("human:account:V", &[]),
+        );
+        for meta in &destructive {
+            let name = meta.name.as_str();
+            // Fresh challenges per procedure: the wrong answers below would otherwise pause the
+            // session (5 a minute, tested in `confirm`).
+            let confirmations = Arc::new(Confirmations::new(Arc::new(SystemClock)));
+            let authz = f
+                .authz
+                .clone()
+                .with_confirmations(Arc::clone(&confirmations));
+            let (_, _, field) = confirm::SUBJECTS
+                .iter()
+                .find(|(p, _, _)| *p == name)
+                .unwrap_or_else(|| panic!("{name} has no confirmation subject"));
+            let input = serde_json::json!({ *field: "res-1" });
+            let other_input = serde_json::json!({ *field: "res-2" });
+            let action = Action::new(name, meta.perm.as_str());
+            // The tools' procedures act on a profile; the management ones on the server.
+            let target = (!name.starts_with("admin.")).then(|| shared("SHARED"));
+            // `profiles.delete` and `sshHosts.delete` carry `profiles.personal`, which every role
+            // holds: the profile service decides who may delete which one (a shared one needs
+            // `profiles.manage`; tests/profiles.rs), so the Authorizer asks everyone to confirm.
+            let refused: &[&Principal] = if meta.perm.as_str() == "profiles.personal" {
+                &[]
+            } else {
+                &[&viewer, &operator]
+            };
+            for p in refused {
+                let decision = authz.decide(&req(p, &action, target.as_ref(), 1));
+                assert_eq!(kind(&decision), "missing", "{name} for {}", p.id);
+            }
+            let Decision::NeedsApproval { approval } =
+                authz.decide(&req(&admin, &action, target.as_ref(), 1))
+            else {
+                panic!("{name}: an administrator's destroy without a confirmation");
+            };
+            let id = confirmations.record_for_test(&admin, &approval, &input);
+            assert!(
+                confirmations.confirm(&admin, &id, "res-2").is_err(),
+                "{name}: a wrong phrase"
+            );
+            assert!(
+                confirmations.confirm(&other_admin, &id, "res-1").is_err(),
+                "{name}: another person"
+            );
+            confirmations.confirm(&admin, &id, "res-1").unwrap();
+            assert!(
+                matches!(
+                    authz.decide(&req(&other_admin, &action, target.as_ref(), 1)),
+                    Decision::NeedsApproval { .. }
+                ),
+                "{name}: one person's confirmation is not another's"
+            );
+            assert!(
+                matches!(
+                    authz.decide(&req(&admin, &action, target.as_ref(), 2)),
+                    Decision::NeedsApproval { .. }
+                ),
+                "{name}: a confirmation is for that input"
+            );
+            assert_eq!(
+                authz.decide(&req(&admin, &action, target.as_ref(), 1)),
+                Decision::Allow,
+                "{name}"
+            );
+            assert!(
+                matches!(
+                    authz.decide(&req(&admin, &action, target.as_ref(), 1)),
+                    Decision::NeedsApproval { .. }
+                ),
+                "{name}: used once"
+            );
+            let _ = other_input;
+        }
+    }
+
     #[test]
     fn administrators_hold_admin_everywhere() {
         let policy = Policy::new(direct("human:account:U", "admin", Scope::everywhere()));
