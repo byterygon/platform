@@ -3878,6 +3878,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "message-codecs",
+ "net-route",
  "prost",
  "prost-reflect",
  "prost-types",
@@ -4041,13 +4042,16 @@ name = "net-route"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "getrandom 0.4.3",
  "rcgen",
+ "russh",
  "rustls",
  "rustls-native-certs",
  "rustls-pki-types",
  "serde_json",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "zeroize",
 ]
 

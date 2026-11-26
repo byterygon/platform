@@ -17,28 +17,40 @@
 //!   [`Dialer::dial`] closes every half-opened hop.
 //! - **Secrets** ([`Secret`]) never appear in `Debug`, in an error or in a log line.
 //!
-//! Hop kinds so far: HTTP CONNECT (`http://` and `https://` proxies, Basic auth, a pinned CA) and
-//! SOCKS5 (no auth or user and password, the target's name resolved by the proxy). SSH jump hosts,
-//! SSH commands, local commands and the system proxy follow (TSK-115 batches 2 and 3).
+//! Hop kinds so far: HTTP CONNECT (`http://` and `https://` proxies, Basic auth, a pinned CA),
+//! SOCKS5 (no auth or user and password, the target's name resolved by the proxy) and SSH jump
+//! hosts (`direct-tcpip`, the host key checked on every hop, sessions shared through a
+//! [`SessionPool`]). [`SshSession`] also serves a tool's own SSH connection (Docker's socket).
+//! SSH commands, local commands and the system proxy follow (TSK-115 batch 3).
 
 mod connect;
 mod dialer;
 mod error;
 mod http_connect;
 mod name;
+mod pool;
 mod route;
 mod socks5;
+mod ssh;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub use connect::{SystemTcp, TcpConnect, TcpConnectFuture};
 pub use dialer::{
-    DEFAULT_BUDGET, Dialer, HopOutcome, HopReport, PROXY_HANDSHAKE_CAP, TCP_CONNECT_CAP,
+    CHANNEL_OPEN_CAP, DEFAULT_BUDGET, Dialer, HopOutcome, HopReport, PROXY_HANDSHAKE_CAP,
+    TCP_CONNECT_CAP,
 };
-pub use error::{HopRef, RouteError, RouteErrorKind};
+pub use error::{
+    HopRef, HostKeyFingerprint, HostKeyProblem, HostKeyState, RouteError, RouteErrorKind,
+};
 pub use name::{format_address, is_valid_host};
+pub use pool::{POOL_IDLE, SessionPool};
 pub use route::{
     BasicAuth, Hop, HttpConnectHop, MAX_HOPS, ProxyScheme, Route, Secret, Socks5Auth, Socks5Hop,
+};
+pub use ssh::{
+    HostKeyCheck, HostKeyQuery, OpenError, SSH_LOGIN_CAP, SshAuth, SshHop, SshSession, TrustedKey,
+    fingerprint,
 };
 
 /// A bidirectional byte stream: TCP, a proxy tunnel, a TLS session to a proxy and so on.

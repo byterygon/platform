@@ -405,6 +405,27 @@ def ensure_routes_decoy():
     print("generate: added the routes decoy login")
 
 
+def ensure_jumps():
+    """The routes profile's jump hosts (TSK-115 batch 2): the lab's SSH keys and users, added to
+    an existing credentials.json without touching the rest. Their host keys are made when they
+    start: a test trusts them on first use, as a person would."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    routes = credentials.get("routes")
+    if routes is None or "jumps" in routes:
+        return
+    routes["jumps"] = {
+        "jump1": "127.0.0.1:2223",
+        "internal": {"jump1": "jump1.routes.internal:22", "jump2": "jump2.routes.internal:22"},
+        "user": "lab",
+        "noForwardUser": "nofwd",
+        "keyFile": "ssh/lab_ed25519",
+    }
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the routes jump hosts")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
@@ -413,6 +434,7 @@ def main(argv):
         ensure_idp()
         ensure_routes()
         ensure_routes_decoy()
+        ensure_jumps()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -491,6 +513,7 @@ def main(argv):
     ensure_idp()
     ensure_routes()
     ensure_routes_decoy()
+    ensure_jumps()
     print(f"generate: wrote {OUT}")
     return 0
 
