@@ -1,8 +1,10 @@
 //! A stand-in sshd (a russh server): a generated host key, public-key and password logins,
 //! `direct-tcpip` forwarding to the names of its own table (so a jump host behind it is reached
-//! only through it), a user whose forwarding is refused (`AllowTcpForwarding no`), and a log of
-//! what it saw.
+//! only through it), a user whose forwarding is refused (`AllowTcpForwarding no`), commands
+//! (`nc <host> <port>` connects to a name of its table and pipes it to the channel; `refuse` is
+//! refused; `fail` writes to stderr and exits 3), and a log of what it saw.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -11,7 +13,7 @@ use russh::keys::ssh_key::LineEnding;
 use russh::keys::ssh_key::private::Ed25519Keypair;
 use russh::keys::{PrivateKey, PublicKey};
 use russh::server::{self, Auth, Msg, Server as _, Session};
-use russh::{Channel, ChannelOpenFailure};
+use russh::{Channel, ChannelId, ChannelOpenFailure};
 
 use super::{Hosts, Log};
 
@@ -46,6 +48,7 @@ struct Host {
     log: Log,
     user: Arc<Mutex<String>>,
     auth_attempts: Arc<AtomicUsize>,
+    sessions: Arc<Mutex<HashMap<ChannelId, Channel<Msg>>>>,
 }
 
 /// A running fake sshd.
@@ -74,6 +77,7 @@ pub async fn start(client: &ClientKey, hosts: Hosts) -> Sshd {
         log: log.clone(),
         user: Arc::default(),
         auth_attempts: Arc::clone(&auth_attempts),
+        sessions: Arc::default(),
     };
     tokio::spawn(async move {
         let _ = host.run_on_socket(Arc::new(config), &listener).await;
@@ -91,6 +95,7 @@ impl server::Server for Host {
     fn new_client(&mut self, _: Option<SocketAddr>) -> Host {
         let mut host = self.clone();
         host.user = Arc::default();
+        host.sessions = Arc::default();
         host
     }
 }
@@ -151,6 +156,72 @@ impl server::Handler for Host {
             return Ok(Auth::Accept);
         }
         Ok(Auth::reject())
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.sessions.lock().unwrap().insert(channel.id(), channel);
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn exec_request(
+        &mut self,
+        id: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let command = String::from_utf8_lossy(data).into_owned();
+        self.push(format!("exec:{command}"));
+        let words: Vec<&str> = command.split_whitespace().collect();
+        match words.as_slice() {
+            ["refuse", ..] => {
+                session.channel_failure(id)?;
+            }
+            ["fail", ..] => {
+                session.channel_success(id)?;
+                session.extended_data(id, 1, b"nc: no such host\n".to_vec())?;
+                session.exit_status_request(id, 3)?;
+                session.eof(id)?;
+                session.close(id)?;
+            }
+            ["nc", host, port] => {
+                let target = self
+                    .hosts
+                    .get(*host)
+                    .copied()
+                    .or_else(|| Some(SocketAddr::new(host.parse().ok()?, port.parse().ok()?)));
+                let upstream = match target {
+                    Some(target) => tokio::net::TcpStream::connect(target).await.ok(),
+                    None => None,
+                };
+                let channel = self.sessions.lock().unwrap().remove(&id);
+                match (upstream, channel) {
+                    (Some(mut upstream), Some(channel)) => {
+                        session.channel_success(id)?;
+                        tokio::spawn(async move {
+                            let mut stream = channel.into_stream();
+                            let _ = tokio::io::copy_bidirectional(&mut stream, &mut upstream).await;
+                        });
+                    }
+                    _ => {
+                        session.channel_success(id)?;
+                        session.extended_data(id, 1, b"nc: cannot connect\n".to_vec())?;
+                        session.exit_status_request(id, 1)?;
+                        session.eof(id)?;
+                        session.close(id)?;
+                    }
+                }
+            }
+            _ => {
+                session.channel_failure(id)?;
+            }
+        }
+        Ok(())
     }
 
     async fn channel_open_direct_tcpip(

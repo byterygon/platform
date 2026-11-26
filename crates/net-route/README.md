@@ -13,7 +13,9 @@ proxies, links and the network map live in the tools' stores, which resolve a pa
 | Item | What |
 | --- | --- |
 | `Dialer` | `direct()`, `through(route)` (checks the route: 1 to 8 hops, every field, each SSH hop's private key decoded), `with_connector`, `with_host_keys`, `with_pool`, `with_budget`; `dial(host, port)` opens the stream, `test(host, port)` reports each hop then the target, up to the first failure, with each SSH hop's host key. |
-| `Route`, `Hop` | `httpConnect` (`HttpConnectHop`: `http://` or `https://` proxy, Basic login, pinned CA), `socks5` (`Socks5Hop`: no auth or user and password) and `ssh` (`SshHop`: the SSH host's resolved values and name, a private key with passphrase, a password or the ssh-agent, the trusted host key, keepalive). |
+| `Route`, `Hop` | `httpConnect` (`HttpConnectHop`: `http://` or `https://` proxy, Basic login, pinned CA), `socks5` (`Socks5Hop`: no auth or user and password), `ssh` (`SshHop`: the SSH host's resolved values and name, a private key with passphrase, a password or the ssh-agent, the trusted host key, keepalive), `sshCommand` (`SshCommandHop`: an SSH host and a command run there as the stream, `nc {host} {port}`) and `command` (`CommandHop`: a program on this machine, its arguments as a list, extra variables, a working directory; first in a route only). |
+| `Dialer::system` | The System route (DOC-23 4.6): `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` (or lowercase) read at each dial into one `httpConnect` or `socks5` hop, or Direct; only when chosen. |
+| `expand_placeholders` | `{host}` and `{port}` in a command or argument, replaced only by a valid name or address and digits; nothing else is expanded. |
 | `SshSession` | A logged-in SSH session over any stream (moved from Mightyconsole's `tools/docker/ssh.rs`): `connect(dialer, hop)`, `open_direct_tcpip`, `open_streamlocal` (Docker's socket), `exec_output`, `lost`, `close`. Streams opened on it keep it alive. |
 | `HostKeyCheck`, `TrustedKey`, `fingerprint` | The host key of every SSH hop is decided in the handshake, before any login; `TrustedKey` (the default) trusts exactly the hop's `trusted` key. |
 | `SessionPool` | SSH sessions shared by the hops up to and including the SSH hop (by value), one channel per dial, let go 60 s after the last user or when lost. |
@@ -39,6 +41,16 @@ proxies, links and the network map live in the tools' stores, which resolve a pa
   and the `HostKey` error names the hop and the SSH host whose Trust saves the key. sshd's refusal
   to forward (`AllowTcpForwarding no`, `PermitOpen`) is Forbidden and says so; a host that cannot
   reach the next address names that address.
+- **SSH command**: an exec channel whose stdio is the stream; a host that refuses the command is
+  Forbidden, a command that ends at once (watched for 300 ms unless it writes first) is Connect
+  with its exit code and stderr.
+- **Local command**: no shell; a clean environment (`PATH`, `HOME`, `USER`, `LANG`, `TMPDIR`;
+  Windows `SystemRoot`, `USERPROFILE`, `PATH`, `TEMP`) plus the hop's variables; stderr's last
+  8 KiB in the error; a program that ends at once is Connect with its exit code and stderr; dropping
+  the stream closes its stdin, then SIGTERM after 2 s and SIGKILL 3 s later. On Unix its stdin and
+  stdout are one socket pair, not pipes: a program that `splice`s a socket into a pipe (Rust's
+  `std::io::copy` does) makes Linux hold the pipe's lock while it waits for more, and what it
+  already moved cannot be read. Windows uses pipes read and written by threads.
 - **Pool**: with `with_pool`, a dial starts at the deepest SSH hop with a live pooled session and
   opens a channel there; Test never uses the pool (it logs in to every hop itself).
 - **Timeouts**: a budget for the whole route (20 s by default, `with_budget`), and caps per step:
@@ -47,7 +59,7 @@ proxies, links and the network map live in the tools' stores, which resolve a pa
   or the budget ran out.
 - **Cancellation**: dropping the `dial` future closes every half-open connection.
 
-Still to come (TSK-115 batch 3): `sshCommand`, local `command` hops and the opt-in system proxy.
+TSK-117 wires routes into Mightyconsole (storage, Connect through, `routes.test`, `ToolError.hop`).
 
 ## Tests
 
@@ -56,9 +68,15 @@ Still to come (TSK-115 batch 3): `sshCommand`, local `command` hops and the opt-
   silence, a SOCKS5 proxy with a login and forced replies), and `tests/ssh.rs` against stand-in
   sshds (russh servers that forward to the names of their own table, refuse forwarding for one
   user, and log logins and closed sessions). The fakes resolve names from their own table only, so
-  reaching `echo.internal` proves the name went to the proxy or the jump host.
+  reaching `echo.internal` proves the name went to the proxy or the jump host. `tests/command.rs`
+  covers `sshCommand` (a host that forbids forwarding but runs `nc`, a refused and a failing
+  command), local commands with the crate's own test program `net-route-test-command` (echo,
+  exit, a small `nc`, its environment, a program that ignores its closed stdin) and the System
+  route.
 - `cargo test -p net-route --features lab-tests --test lab`: against the Mightyconsole lab's
   `routes` profile (`node apps/mightyconsole/lab/lab.mts up routes`): squid with Basic auth on a
   plain and a TLS port, Dante with a login, two OpenSSH jump hosts (the second reached only through
-  the first or a proxy; a user that may not forward), a SOCKS5 → squid chain, and targets on a
-  Docker network that only the proxies and jump hosts reach. The lab workflow runs it whenever the `routes` profile is up.
+  the first or a proxy; a user that may not forward), a SOCKS5 → squid chain, `ssh -W` as a local
+  command, the test program then squid, an SSH command running `nc` on the jump host that may not
+  forward, the System route through squid, and targets on a Docker network that only the proxies
+  and jump hosts reach. The lab workflow runs it whenever the `routes` profile is up.

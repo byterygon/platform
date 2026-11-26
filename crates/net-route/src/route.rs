@@ -4,9 +4,10 @@ use std::fmt;
 
 use zeroize::Zeroizing;
 
+use crate::command::CommandHop;
 use crate::error::{HopRef, RouteError, RouteErrorKind};
 use crate::name::{format_address, is_valid_host};
-use crate::ssh::SshHop;
+use crate::ssh::{SshCommandHop, SshHop};
 
 /// The most hops a route may have (DOC-23 Open question (f)).
 pub const MAX_HOPS: usize = 8;
@@ -80,6 +81,14 @@ impl Route {
             ));
         }
         for (index, hop) in self.hops.iter().enumerate() {
+            if index > 0 && matches!(hop, Hop::Command(_)) {
+                return Err(RouteError::new(
+                    Some(hop.at(index)),
+                    RouteErrorKind::Invalid,
+                    "a local command hop comes first in a route: it starts on this machine and \
+                     reaches the next address itself (DOC-23 4.4)",
+                ));
+            }
             hop.validate().map_err(|(field, message)| match field {
                 Some(field) => RouteError::invalid(Some(hop.at(index)), field, message),
                 None => RouteError::new(Some(hop.at(index)), RouteErrorKind::Invalid, message),
@@ -97,31 +106,53 @@ pub enum Hop {
     Socks5(Socks5Hop),
     /// An SSH jump host: a `direct-tcpip` channel to the next address (DOC-23 4.3).
     Ssh(SshHop),
+    /// A command run on an SSH host, its stdio the stream (DOC-23 4.3b).
+    SshCommand(SshCommandHop),
+    /// A program on this machine, its stdio the stream; first in a route only (DOC-23 4.4).
+    Command(CommandHop),
 }
 
 impl Hop {
-    /// The kind as the spec names it: `httpConnect`, `socks5`.
+    /// The kind as the spec names it: `httpConnect`, `socks5`, `ssh`, `sshCommand`, `command`.
     pub fn kind(&self) -> &'static str {
         match self {
             Hop::HttpConnect(_) => "httpConnect",
             Hop::Socks5(_) => "socks5",
             Hop::Ssh(_) => "ssh",
+            Hop::SshCommand(_) => "sshCommand",
+            Hop::Command(_) => "command",
         }
     }
 
-    /// The address the stream before this hop must reach.
-    pub fn address(&self) -> (&str, u16) {
+    /// The address the stream before this hop must reach; `None` for a local command, which
+    /// nothing reaches.
+    pub fn address(&self) -> Option<(&str, u16)> {
         match self {
-            Hop::HttpConnect(h) => (&h.host, h.port),
-            Hop::Socks5(h) => (&h.host, h.port),
-            Hop::Ssh(h) => (&h.host, h.port),
+            Hop::HttpConnect(h) => Some((&h.host, h.port)),
+            Hop::Socks5(h) => Some((&h.host, h.port)),
+            Hop::Ssh(h) => Some((&h.host, h.port)),
+            Hop::SshCommand(h) => Some((&h.ssh.host, h.ssh.port)),
+            Hop::Command(_) => None,
         }
     }
 
-    /// `host:port`, as the hop is named in errors and reports.
+    /// The SSH host of an `ssh` or `sshCommand` hop.
+    pub(crate) fn ssh(&self) -> Option<&SshHop> {
+        match self {
+            Hop::Ssh(h) => Some(h),
+            Hop::SshCommand(h) => Some(&h.ssh),
+            _ => None,
+        }
+    }
+
+    /// `host:port` (a local command: its program's name), as the hop is named in errors and
+    /// reports.
     pub fn label(&self) -> String {
-        let (host, port) = self.address();
-        format_address(host, port)
+        match (self, self.address()) {
+            (Hop::Command(h), _) => h.label(),
+            (_, Some((host, port))) => format_address(host, port),
+            (_, None) => self.kind().to_owned(),
+        }
     }
 
     /// This hop as the `index`th of its route.
@@ -134,7 +165,12 @@ impl Hop {
     }
 
     fn validate(&self) -> Result<(), (Option<&'static str>, String)> {
-        let (host, port) = self.address();
+        let Some((host, port)) = self.address() else {
+            return match self {
+                Hop::Command(h) => h.validate(),
+                _ => Ok(()),
+            };
+        };
         if !is_valid_host(host) {
             return Err((
                 Some("host"),
@@ -148,6 +184,8 @@ impl Hop {
             Hop::HttpConnect(h) => h.validate().map_err(|m| (None, m)),
             Hop::Socks5(h) => h.validate().map_err(|m| (None, m)),
             Hop::Ssh(h) => h.validate(),
+            Hop::SshCommand(h) => h.validate(),
+            Hop::Command(h) => h.validate(),
         }
     }
 }

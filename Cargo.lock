@@ -4045,6 +4045,7 @@ dependencies = [
  "getrandom 0.4.3",
  "rcgen",
  "russh",
+ "rustix",
  "rustls",
  "rustls-native-certs",
  "rustls-pki-types",

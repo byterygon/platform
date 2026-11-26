@@ -109,3 +109,39 @@ mod tests {
         assert_eq!(format_address("bastion", 22), "bastion:22");
     }
 }
+
+/// Replaces `{host}` and `{port}` in a command or an argument (DOC-23 4.3b, 4.4) by the next
+/// address: the host checked by [`is_valid_host`] (an IPv6 address without brackets, as `nc`
+/// and `ssh -W` take it) and the port's digits. Nothing else is expanded: no `$VAR`, `~` or
+/// glob, and no other brace.
+pub fn expand_placeholders(template: &str, host: &str, port: u16) -> Result<String, String> {
+    if !is_valid_host(host) {
+        return Err(format!("{host:?} is not a host name or an address"));
+    }
+    Ok(template
+        .replace("{host}", bare_host(host))
+        .replace("{port}", &port.to_string()))
+}
+
+#[cfg(test)]
+mod placeholder_tests {
+    use super::*;
+
+    #[test]
+    fn only_host_and_port_are_replaced_and_only_by_valid_values() {
+        assert_eq!(
+            expand_placeholders("nc {host} {port} ${HOME} ~ {user}", "db.internal", 5432).unwrap(),
+            "nc db.internal 5432 ${HOME} ~ {user}"
+        );
+        assert_eq!(
+            expand_placeholders("{host}:{port}", "[fd00::1]", 22).unwrap(),
+            "fd00::1:22"
+        );
+        for bad in ["db; rm -rf /", "$(id)", "a b", "x\ny", "`id`"] {
+            assert!(
+                expand_placeholders("nc {host} {port}", bad, 1).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+}

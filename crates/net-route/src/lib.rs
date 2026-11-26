@@ -21,8 +21,11 @@
 //! SOCKS5 (no auth or user and password, the target's name resolved by the proxy) and SSH jump
 //! hosts (`direct-tcpip`, the host key checked on every hop, sessions shared through a
 //! [`SessionPool`]). [`SshSession`] also serves a tool's own SSH connection (Docker's socket).
-//! SSH commands, local commands and the system proxy follow (TSK-115 batch 3).
+//! SSH commands (`sshCommand`: a command run on an SSH host as the stream), local commands
+//! (`command`: a program on this machine, no shell, a clean environment) and the opt-in System
+//! route ([`Dialer::system`]) complete the kinds of DOC-23 section 4.
 
+mod command;
 mod connect;
 mod dialer;
 mod error;
@@ -32,26 +35,30 @@ mod pool;
 mod route;
 mod socks5;
 mod ssh;
+mod stream;
+mod system;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
+pub use command::{COMMAND_EARLY_EXIT, CommandHop};
 pub use connect::{SystemTcp, TcpConnect, TcpConnectFuture};
 pub use dialer::{
-    CHANNEL_OPEN_CAP, DEFAULT_BUDGET, Dialer, HopOutcome, HopReport, PROXY_HANDSHAKE_CAP,
-    TCP_CONNECT_CAP,
+    CHANNEL_OPEN_CAP, COMMAND_START_CAP, DEFAULT_BUDGET, Dialer, HopOutcome, HopReport,
+    PROXY_HANDSHAKE_CAP, TCP_CONNECT_CAP,
 };
 pub use error::{
     HopRef, HostKeyFingerprint, HostKeyProblem, HostKeyState, RouteError, RouteErrorKind,
 };
-pub use name::{format_address, is_valid_host};
+pub use name::{expand_placeholders, format_address, is_valid_host};
 pub use pool::{POOL_IDLE, SessionPool};
 pub use route::{
     BasicAuth, Hop, HttpConnectHop, MAX_HOPS, ProxyScheme, Route, Secret, Socks5Auth, Socks5Hop,
 };
 pub use ssh::{
-    HostKeyCheck, HostKeyQuery, OpenError, SSH_LOGIN_CAP, SshAuth, SshHop, SshSession, TrustedKey,
-    fingerprint,
+    HostKeyCheck, HostKeyQuery, OpenError, SSH_LOGIN_CAP, SshAuth, SshCommandHop, SshHop,
+    SshSession, TrustedKey, fingerprint,
 };
+pub use system::EnvLookup;
 
 /// A bidirectional byte stream: TCP, a proxy tunnel, a TLS session to a proxy and so on.
 pub trait AsyncReadWrite: AsyncRead + AsyncWrite {}
