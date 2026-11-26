@@ -34,6 +34,7 @@ import { type Refusal, holdsAnywhere, refusalBefore, toolOpen, toolPerm } from "
 import { AccountMenu, SessionsDialog } from "./account-menu";
 import { AdminDialog } from "./admin/AdminDialog";
 import { AuditDialog } from "./audit/AuditDialog";
+import { useAudience } from "./sharing";
 import { MyAccessDialog } from "./my-access";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
@@ -1074,6 +1075,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   const sheetTool = profileDialog ? (toolById(tools, profileDialog.tool) ?? tool) : tool;
   const sheetBase = profileDialog?.editId ? profiles.find((p) => p.id === profileDialog.editId) : profileDialog?.duplicateOf ? profiles.find((p) => p.id === profileDialog.duplicateOf) : undefined;
   const sheetMode = profileDialog?.editId ? "edit" : profileDialog?.duplicateOf ? "duplicate" : "add";
+  // How many people a new shared profile of this tool reaches: asked of administrators while the add sheet is open.
+  const canShareProfiles = session.me ? holdsAnywhere(session.me, "profiles.manage") && holdsAnywhere(session.me, "admin.users.read") : false;
+  const audience = useAudience(client, canShareProfiles && profileDialog !== null && sheetMode === "add", sheetTool.id);
   const takenNames = new Set(profiles.filter((p) => p.tool === sheetTool.id && !(sheetMode === "edit" && p.id === sheetBase?.id)).map((p) => p.name));
   const exportCount = dialog.kind === "export" ? (dialog.ids ?? profiles.map((p) => p.id)).length : 0;
   const deleting = dialog.kind === "deleteProfile" ? profiles.find((p) => p.id === dialog.id) : undefined;
@@ -1517,6 +1521,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         mode={sheetMode}
         {...(profileDialog?.name && sheetMode === "add" ? { name: profileDialog.name } : {})}
         {...(session.me ? { self: session.me.user } : {})}
+        canShare={session.me ? holdsAnywhere(session.me, "profiles.manage") : false}
+        audience={audience}
         takenNames={takenNames}
         {...(sheetBase && state.recordStates[sheetBase.id] ? { recordState: state.recordStates[sheetBase.id]! } : {})}
         onSave={async (record, { remove, shared }) => {
