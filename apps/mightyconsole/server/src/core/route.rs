@@ -319,6 +319,17 @@ impl Routed {
         })
     }
 
+    /// The route's dialer for a protocol that dials `host` itself (Docker's SSH login through
+    /// [`net_route::SshSession::connect`]): the names are checked first, as for [`Routed::dial`],
+    /// and the dialer's errors go through [`Routed::error`].
+    pub fn dialer_to(&self, host: &str, budget: Option<Duration>) -> Result<Dialer, ToolError> {
+        self.check_names(host).map_err(|e| self.prefixed(e))?;
+        Ok(match budget {
+            Some(b) => self.dialer.clone().with_budget(b),
+            None => self.dialer.clone(),
+        })
+    }
+
     /// A stream to `host:port` through the route, within `budget` (the route's 20 s when
     /// `None`). Errors name the hop.
     pub async fn dial(

@@ -15,7 +15,7 @@ use net_route::{Dialer, OpenError, SshAuth, SshHop};
 use tokio_util::sync::CancellationToken;
 
 use super::TOOL;
-use crate::core::route::{OutboundTcp, fingerprint, route_fingerprint, tool_error};
+use crate::core::route::{OutboundTcp, Via, fingerprint, route_fingerprint, tool_error};
 use crate::core::{HostKeyFingerprint, RemoteError, ToolError, ToolErrorKind};
 
 /// How long the TCP connection (through the outbound policy) may take; the SSH handshake and
@@ -103,13 +103,30 @@ impl SshSession {
     /// changed), `Auth` (rejected), `Invalid` (a private key that does not parse, a wrong
     /// passphrase, no ssh-agent), `Forbidden` (the outbound policy).
     pub async fn connect(target: SshTarget) -> Result<SshSession, ToolError> {
+        SshSession::connect_via(target, &Via::Direct).await
+    }
+
+    /// [`SshSession::connect`] through the profile's route (DOC-23 §6.4): the route reaches the
+    /// host's sshd and Docker's own SSH login runs over that stream, with its own host key.
+    pub async fn connect_via(target: SshTarget, via: &Via) -> Result<SshSession, ToolError> {
         let display = target.display();
-        let dialer = Dialer::direct()
-            .with_connector(OutboundTcp::new(TOOL))
-            .with_budget(CONNECT_TIMEOUT);
-        let session = net_route::SshSession::connect(&dialer, &target.hop())
-            .await
-            .map_err(|e| tool_error(TOOL, e))?;
+        let hop = target.hop();
+        let session = match via.routed() {
+            None => {
+                let dialer = Dialer::direct()
+                    .with_connector(OutboundTcp::new(TOOL))
+                    .with_budget(CONNECT_TIMEOUT);
+                net_route::SshSession::connect(&dialer, &hop)
+                    .await
+                    .map_err(|e| tool_error(TOOL, e))?
+            }
+            Some(routed) => {
+                let dialer = routed.dialer_to(&hop.host, Some(CONNECT_TIMEOUT))?;
+                net_route::SshSession::connect(&dialer, &hop)
+                    .await
+                    .map_err(|e| routed.error(e))?
+            }
+        };
         Ok(SshSession {
             host_key: fingerprint(session.host_key().clone()),
             inner: Arc::new(session),

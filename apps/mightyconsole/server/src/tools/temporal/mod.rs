@@ -326,22 +326,22 @@ impl TemporalApi {
             draft: input.draft,
             based_on: input.based_on,
         };
-        let (profile, _) = self
+        let (profile, _, via) = self
             .0
-            .test_profile::<ConnectTemporalProfile>(&ctx, TOOL, test)
+            .test_profile_via::<ConnectTemporalProfile>(&ctx, TOOL, test)
             .await?;
-        Ok(codec_client::test(&profile, input.namespace.as_deref()).await?)
+        Ok(codec_client::test(&profile, input.namespace.as_deref(), via).await?)
     }
 
     /// Test connection of the profile form: the draft connects and the server says who it is;
     /// nothing is kept.
     #[rpc::mutation(perm = "temporal.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
     async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
-        let (profile, _) = self
+        let (profile, _, via) = self
             .0
-            .test_profile::<ConnectTemporalProfile>(&ctx, TOOL, input)
+            .test_profile_via::<ConnectTemporalProfile>(&ctx, TOOL, input)
             .await?;
-        let client = client::connect(&profile).await?;
+        let client = client::connect_via(&profile, via).await?;
         server_info(&client).await?;
         Ok(Empty {})
     }
@@ -357,8 +357,11 @@ impl TemporalApi {
         ctx: Ctx,
         input: TemporalConnectInput,
     ) -> ToolResult<TemporalConnectOutput> {
-        let (profile, target) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
-        let client = Arc::new(client::connect(&profile).await?);
+        let (profile, target, via) = self
+            .0
+            .connect_profile_via(&ctx, TOOL, input.profile_id)
+            .await?;
+        let client = Arc::new(client::connect_via(&profile, via).await?);
         let info = server_info(&client).await?;
         // The codec endpoint serves the profile while this connection lives (TSK-103).
         if client.codec.is_some()

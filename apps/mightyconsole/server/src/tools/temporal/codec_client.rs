@@ -75,6 +75,7 @@ impl PayloadCodec {
     pub fn from_profile(
         options: Option<&PayloadCodecOptions>,
         authorization: Option<&str>,
+        via: crate::core::route::Via,
     ) -> Result<Option<PayloadCodec>, ToolError> {
         let Some(o) = options.filter(|o| o.enabled.unwrap_or(false)) else {
             return Ok(None);
@@ -117,7 +118,8 @@ impl PayloadCodec {
             (false, _) => plain_config(),
         };
         // Through the server's outbound policy (TSK-141): the address connected to is checked.
-        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(Duration::from_secs(10)));
+        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(Duration::from_secs(10)))
+            .via(via);
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()
@@ -413,12 +415,13 @@ pub async fn encode_input(
 pub async fn test(
     profile: &super::types::ConnectTemporalProfile,
     namespace: Option<&str>,
+    via: crate::core::route::Via,
 ) -> Result<super::types::TemporalTestCodecOutput, ToolError> {
     use super::proto::temporal::api::common::v1::WorkflowExecution;
     use super::proto::temporal::api::history::v1::history_event::Attributes;
     use super::proto::temporal::api::workflowservice::v1 as ws;
 
-    let client = super::client::connect(profile).await?;
+    let client = super::client::connect_via(profile, via).await?;
     let Some(codec) = client.payload_codec.as_deref() else {
         return Err(bad("codec.enabled", "turn the codec server on to test it"));
     };
@@ -546,14 +549,14 @@ mod tests {
             json!({ "enabled": true, "endpoint": "https://codec.internal:8888" }),
         )
         .unwrap();
-        let e = PayloadCodec::from_profile(Some(&options), None)
+        let e = PayloadCodec::from_profile(Some(&options), None, crate::core::route::Via::Direct)
             .err()
             .unwrap();
         assert_eq!(e.field.as_deref(), Some("codec.caPem"));
         let off: PayloadCodecOptions =
             serde_json::from_value(json!({ "enabled": false, "endpoint": "nonsense" })).unwrap();
         assert!(
-            PayloadCodec::from_profile(Some(&off), None)
+            PayloadCodec::from_profile(Some(&off), None, crate::core::route::Via::Direct)
                 .unwrap()
                 .is_none()
         );

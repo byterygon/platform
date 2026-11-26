@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:28057977cf4461161057810e0ae9182639a5a4d690a83b15f1191752417447a9";
+export const SCHEMA_HASH = "sha256:de1ed66f7c1f76a95788978bc892f47587b9889d444a2a1c430d9c04fd9c0304";
 
 // ---- Types
 
@@ -1362,6 +1362,10 @@ unencrypted: boolean,
  * The SSH side, for the SSH transport.
  */
 ssh?: SshFacts, 
+/**
+ * The route the connection goes through, by name; absent for Direct (DOC-23 §10).
+ */
+route?: string, 
 /**
  * The API version the connection speaks (the host's, at least 1.41).
  */

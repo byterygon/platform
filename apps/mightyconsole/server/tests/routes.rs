@@ -382,3 +382,44 @@ async fn a_test_reports_each_hop_and_names_the_one_that_failed() {
         "{out}"
     );
 }
+
+#[tokio::test]
+async fn temporal_s_error_names_the_hop_through_tonic() {
+    let t = start().await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let refusing = connect_proxy(407).await;
+    a.call(
+        1,
+        "proxies.create",
+        json!({ "name": "p", "owner": { "kind": "personal" }, "fields": http_proxy("127.0.0.1", refusing) }),
+    )
+    .await;
+    let proxy = a.result(1).await["id"].clone();
+    a.call(
+        2,
+        "routes.create",
+        json!({ "name": "r", "owner": { "kind": "personal" }, "hops": [{ "kind": "proxy", "proxyId": proxy }] }),
+    )
+    .await;
+    let route = a.result(2).await["id"].clone();
+    a.call(
+        3,
+        "profiles.create",
+        json!({ "tool": "temporal", "name": "T", "owner": { "kind": "personal" },
+                "fields": { "address": "temporal.prod.internal:7233", "routeId": route } }),
+    )
+    .await;
+    let profile = a.result(3).await["id"].clone();
+    a.call(4, "temporal.connect", json!({ "profileId": profile }))
+        .await;
+    let err = a.error(4, Code::Unauthenticated).await;
+    let details = err.details.unwrap();
+    assert_eq!(details["kind"], "Auth");
+    assert_eq!(details["hop"]["index"], 0);
+    assert!(
+        err.message.starts_with("through route r: hop 1"),
+        "{}",
+        err.message
+    );
+}

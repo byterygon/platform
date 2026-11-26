@@ -1216,3 +1216,62 @@ async fn https_verifies_against_the_pinned_ca_and_the_expected_name() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn a_langgraph_server_is_reached_through_a_route() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (_t, mock, addr, mut tab) = setup().await;
+    // An HTTP CONNECT proxy that records what it was asked for.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = asked.clone();
+    tokio::spawn(async move {
+        while let Ok((mut client, _)) = listener.accept().await {
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    if client.read(&mut byte).await.unwrap_or(0) == 0 {
+                        return;
+                    }
+                    head.push(byte[0]);
+                }
+                let text = String::from_utf8_lossy(&head).to_string();
+                let target = text
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_owned();
+                seen.lock().unwrap().push(target.clone());
+                let mut upstream = tokio::net::TcpStream::connect(&target).await.unwrap();
+                let _ = client.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await;
+                let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+            });
+        }
+    });
+    tab.call(
+        2,
+        "proxies.create",
+        json!({ "name": "corp", "owner": { "kind": "personal" },
+                "fields": { "kind": "httpConnect", "host": "127.0.0.1", "port": port, "tls": false } }),
+    )
+    .await;
+    let proxy = tab.result(2).await["id"].clone();
+    tab.call(
+        3,
+        "routes.create",
+        json!({ "name": "corp", "owner": { "kind": "personal" }, "hops": [{ "kind": "proxy", "proxyId": proxy }] }),
+    )
+    .await;
+    let route = tab.result(3).await["id"].clone();
+    connect(
+        &mut tab,
+        4,
+        json!({ "name": "lab", "url": format!("http://{addr}/"), "routeId": route }),
+    )
+    .await;
+    assert_eq!(asked.lock().unwrap().as_slice(), [addr.to_string()]);
+    assert!(mock.last("/info").headers.get("host").is_some());
+}

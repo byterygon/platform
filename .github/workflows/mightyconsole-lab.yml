@@ -236,6 +236,11 @@ jobs:
       - name: net-route through the lab's proxies (TSK-115)
         if: ${{ !cancelled() && steps.lab-ready.conclusion == 'success' && steps.checklists.outputs.routes != '' }}
         run: cargo test -p net-route --locked --features lab-tests --test lab
+      # TSK-117: the tools through routes (Docker on routes-internal over TCP, TLS and SSH, Temporal
+      # and LangGraph through squid, routes.test through two jump hosts); needs every tool up.
+      - name: The tools through routes (TSK-117)
+        if: ${{ !cancelled() && steps.lab-ready.conclusion == 'success' && steps.checklists.outputs.routes != '' && steps.tools.outputs.lab_tools == 'all' }}
+        run: cargo test -p mightyconsole-server --locked --features lab-tests --test integration routes_lab:: -- --test-threads=2
       # TSK-130: the marker main looks for, only when every tool ran and every step passed.
       - name: Lab-pass marker
         if: ${{ success() && github.event_name == 'pull_request' && steps.tools.outputs.lab_tools == 'all' }}

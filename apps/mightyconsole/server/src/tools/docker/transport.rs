@@ -292,6 +292,8 @@ pub struct TcpTransport {
     pub port: u16,
     /// `None` for plain TCP (the profile carries the person's acceptance).
     pub tls: Option<TcpTls>,
+    /// Direct, or the profile's route to the API port; TLS runs end to end over it.
+    pub via: crate::core::route::Via,
 }
 
 impl TcpTransport {
@@ -306,15 +308,24 @@ impl DockerTransport for TcpTransport {
         Box::pin(async move {
             let address = self.address();
             let open = async {
-                let tcp = crate::core::outbound::connect_tcp(
-                    TOOL,
-                    &self.host,
-                    self.port,
-                    Some(OPEN_TIMEOUT),
-                )
-                .await?;
+                let tcp: BoxStream = match self.via.routed() {
+                    Some(routed) => {
+                        routed
+                            .dial(&self.host, self.port, Some(OPEN_TIMEOUT))
+                            .await?
+                    }
+                    None => Box::new(
+                        crate::core::outbound::connect_tcp(
+                            TOOL,
+                            &self.host,
+                            self.port,
+                            Some(OPEN_TIMEOUT),
+                        )
+                        .await?,
+                    ),
+                };
                 let Some(tls) = &self.tls else {
-                    return Ok(Box::new(tcp) as BoxStream);
+                    return Ok(tcp);
                 };
                 let connector = tokio_rustls::TlsConnector::from(Arc::clone(&tls.config));
                 match connector.connect(tls.server_name.clone(), tcp).await {

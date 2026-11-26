@@ -4729,6 +4729,13 @@
         "rootless": {
           "type": "boolean"
         },
+        "route": {
+          "description": "The route the connection goes through, by name; absent for Direct (DOC-23 §10).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "securityOptions": {
           "description": "`apparmor`, `seccomp`, `rootless`, ... (the names of `SecurityOptions`).",
           "items": {
@@ -22192,5 +22199,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:28057977cf4461161057810e0ae9182639a5a4d690a83b15f1191752417447a9"
+  "schema_hash": "sha256:de1ed66f7c1f76a95788978bc892f47587b9889d444a2a1c430d9c04fd9c0304"
 }

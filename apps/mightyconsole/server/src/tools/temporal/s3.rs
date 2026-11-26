@@ -36,6 +36,8 @@ pub struct S3Config {
     pub access_key_id: String,
     pub secret_access_key: String,
     pub session_token: Option<String>,
+    /// The profile's route (DOC-23 §7): S3 is reached through it too.
+    pub via: crate::core::route::Via,
 }
 
 impl std::fmt::Debug for S3Config {
@@ -120,7 +122,8 @@ impl S3Client {
             plain_config()
         };
         // Through the server's outbound policy (TSK-141): the address connected to is checked.
-        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT));
+        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT))
+            .via(config.via.clone());
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()

@@ -75,6 +75,14 @@ fn header_value(field: &str, text: &str, what: &str) -> Result<HeaderValue, Tool
 
 impl LangGraphClient {
     pub fn new(profile: &ConnectLanggraphProfile) -> Result<LangGraphClient, ToolError> {
+        LangGraphClient::new_via(profile, crate::core::route::Via::Direct)
+    }
+
+    /// [`LangGraphClient::new`] through the profile's route (DOC-23 §7).
+    pub fn new_via(
+        profile: &ConnectLanggraphProfile,
+        via: crate::core::route::Via,
+    ) -> Result<LangGraphClient, ToolError> {
         let url = Url::parse(profile.url.trim()).map_err(|_| {
             ToolError::invalid(TOOL, "url", "not a URL, e.g. http://127.0.0.1:2024")
         })?;
@@ -123,7 +131,8 @@ impl LangGraphClient {
             plain_config()
         };
         // Through the server's outbound policy (TSK-141): the address connected to is checked.
-        let tcp = crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT));
+        let tcp =
+            crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT)).via(via);
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls)
             .https_or_http()
@@ -317,6 +326,9 @@ fn transport_error(
     e: &(dyn std::error::Error + 'static),
     connect: bool,
 ) -> ToolError {
+    if let Some(route) = crate::core::outbound::route_failure(e) {
+        return route;
+    }
     if let Some(tls) = tls_cause(e) {
         return ToolError::new(
             ToolErrorKind::Tls,

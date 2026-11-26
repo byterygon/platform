@@ -1744,3 +1744,127 @@ async fn tls_checks_the_engines_certificate_and_sends_the_client_certificate() {
         assert_eq!(details(&err)["field"], field);
     }
 }
+
+/// A tiny HTTP CONNECT proxy (DOC-23 4.1): answers `status` to every CONNECT and, with 200, joins
+/// the client to the address it asked for. Returns its port and the addresses asked for.
+async fn connect_proxy(status: u16) -> (u16, Arc<Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&asked);
+    tokio::spawn(async move {
+        while let Ok((mut client, _)) = listener.accept().await {
+            let seen = Arc::clone(&seen);
+            tokio::spawn(async move {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    if client.read(&mut byte).await.unwrap_or(0) == 0 {
+                        return;
+                    }
+                    head.push(byte[0]);
+                }
+                let text = String::from_utf8_lossy(&head).to_string();
+                let target = text
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_owned();
+                seen.lock().unwrap().push(target.clone());
+                if status != 200 {
+                    let _ = client
+                        .write_all(format!("HTTP/1.1 {status} No\r\n\r\n").as_bytes())
+                        .await;
+                    return;
+                }
+                let Ok(mut upstream) = tokio::net::TcpStream::connect(&target).await else {
+                    let _ = client.write_all(b"HTTP/1.1 502 Bad\r\n\r\n").await;
+                    return;
+                };
+                let _ = client.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await;
+                let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+            });
+        }
+    });
+    (port, asked)
+}
+
+/// A personal route of one HTTP CONNECT proxy on `port`; its id.
+async fn proxy_route(tab: &mut Tab, id: u32, name: &str, port: u16) -> String {
+    tab.call(
+        id,
+        "proxies.create",
+        json!({ "name": name, "owner": { "kind": "personal" },
+                "fields": { "kind": "httpConnect", "host": "127.0.0.1", "port": port, "tls": false } }),
+    )
+    .await;
+    let proxy = tab.result(id).await["id"].clone();
+    tab.call(
+        id + 1,
+        "routes.create",
+        json!({ "name": name, "owner": { "kind": "personal" }, "hops": [{ "kind": "proxy", "proxyId": proxy }] }),
+    )
+    .await;
+    tab.result(id + 1).await["id"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn a_docker_host_is_reached_through_a_route_over_ssh_and_tcp() {
+    let (_t, lab, mut tab) = setup().await;
+    let (port, asked) = connect_proxy(200).await;
+    let route = proxy_route(&mut tab, 2, "corp", port).await;
+
+    // SSH: the route reaches the host's sshd, and Docker's login runs over it.
+    let profile = lab.profile(json!({ "routeId": route }));
+    tab.call(4, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let out = tab.result(4).await;
+    assert_eq!(out["host"]["route"], "corp");
+    assert_eq!(
+        asked.lock().unwrap().as_slice(),
+        [format!("127.0.0.1:{}", lab.addr.port())]
+    );
+
+    // TCP: the route reaches the API port.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((tcp, _)) = listener.accept().await {
+            serve_engine(tcp);
+        }
+    });
+    let plain = json!({ "name": "plain", "transport": "tcp", "host": "127.0.0.1", "port": addr.port(),
+                        "unencrypted": { "accepted": true }, "routeId": route });
+    tab.call(5, "docker.connect", json!({ "profile": plain }))
+        .await;
+    let out = tab.result(5).await;
+    assert_eq!(out["host"]["route"], "corp");
+    assert!(
+        asked
+            .lock()
+            .unwrap()
+            .contains(&format!("127.0.0.1:{}", addr.port()))
+    );
+}
+
+#[tokio::test]
+async fn a_hop_that_refuses_is_named_in_docker_s_error() {
+    let (_t, lab, mut tab) = setup().await;
+    let (port, _) = connect_proxy(407).await;
+    let route = proxy_route(&mut tab, 2, "needs-login", port).await;
+    let profile = lab.profile(json!({ "routeId": route }));
+    tab.call(4, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let err = tab.error(4, Code::Unauthenticated).await;
+    let d = details(&err);
+    assert_eq!(d["kind"], "Auth");
+    assert_eq!(d["hop"]["index"], 0);
+    assert_eq!(d["hop"]["kind"], "httpConnect");
+    assert!(
+        err.message
+            .starts_with("through route needs-login: hop 1 (httpConnect 127.0.0.1:"),
+        "{}",
+        err.message
+    );
+}

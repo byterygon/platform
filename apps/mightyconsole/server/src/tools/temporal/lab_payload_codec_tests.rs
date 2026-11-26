@@ -188,7 +188,9 @@ async fn test_codec_reports_the_sample() {
         c["authorization"].as_str(),
     ))
     .unwrap();
-    let report = super::codec_client::test(&profile, None).await.unwrap();
+    let report = super::codec_client::test(&profile, None, crate::core::route::Via::Direct)
+        .await
+        .unwrap();
     assert_eq!(report.namespace, "lab");
     assert_eq!(report.codec, "127.0.0.1:8234");
     assert!(report.sampled >= 1, "{report:?}");
