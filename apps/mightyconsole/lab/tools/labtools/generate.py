@@ -385,6 +385,26 @@ def ensure_routes():
     print("generate: added the connection routes (squid, Dante)")
 
 
+def ensure_routes_decoy():
+    """A second squid login for the tests of a wrong password (TSK-147): squid keeps one auth
+    record per Basic user (password, state and the queue of requests waiting for the helper), so a
+    wrong password for the user the other tests use can give a concurrent right one a 407. Its
+    password is never sent by a test. Added to an existing routes/env and credentials.json."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    proxy = credentials.get("routes", {}).get("httpProxy")
+    if proxy is None or "decoyUser" in proxy:
+        return
+    proxy["decoyUser"] = "labdecoy"
+    with open(os.path.join(OUT, "routes/env")) as f:
+        env = f.read()
+    env += f"DECOY_USER=labdecoy\nDECOY_PASSWORD={secrets.token_urlsafe(12)}\n"
+    write("routes/env", env, 0o600)
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the routes decoy login")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
@@ -392,6 +412,7 @@ def main(argv):
         ensure_codec()
         ensure_idp()
         ensure_routes()
+        ensure_routes_decoy()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -469,6 +490,7 @@ def main(argv):
     ensure_codec()
     ensure_idp()
     ensure_routes()
+    ensure_routes_decoy()
     print(f"generate: wrote {OUT}")
     return 0
 

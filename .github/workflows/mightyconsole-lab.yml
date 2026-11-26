@@ -164,9 +164,6 @@ jobs:
         with:
           key: mightyconsole-acceptance
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
-      - name: net-route through the lab's proxies (TSK-115)
-        if: ${{ steps.checklists.outputs.routes != '' }}
-        run: cargo test -p net-route --locked --features lab-tests --test lab
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       - run: pnpm install --frozen-lockfile
@@ -191,6 +188,12 @@ jobs:
           if [ -n "$NATS_ONLY" ]; then node apps/mightyconsole/acceptance/acceptance.mts nats --only "$NATS_ONLY" || status=$?; fi
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
+      # TSK-115, TSK-147 (approved by Uy Son 2026-11-26): after the checklists, and whether or not
+      # they passed (the lab came up and was checked: the checklists step ran), so neither result
+      # hides the other; either failing fails the job and withholds the lab-pass marker.
+      - name: net-route through the lab's proxies (TSK-115)
+        if: ${{ !cancelled() && steps.checklists.conclusion == 'success' && steps.checklists.outputs.routes != '' }}
+        run: cargo test -p net-route --locked --features lab-tests --test lab
       # TSK-130: the marker main looks for, only when every tool ran and every step passed.
       - name: Lab-pass marker
         if: ${{ success() && github.event_name == 'pull_request' && steps.tools.outputs.lab_tools == 'all' }}
