@@ -15,7 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Me, SessionRow } from "@/gen/api";
-import { Globe, Shield, SignOut, Settings as SettingsIcon } from "@/lib/icons";
+import { Globe, Person, Shield, SignOut, Settings as SettingsIcon } from "@/lib/icons";
 import type { MightyClient } from "./client";
 import { clock, initialsOf, methodText, nameOf, scopeText, viaText } from "./session";
 
@@ -30,12 +30,14 @@ export interface AccountMenuProps {
   onSessions(): void;
   /** "My access": the roles and the permissions they grant. */
   onMyAccess?(): void;
+  /** Users and roles, for people who hold `admin.users.read`. */
+  onAdmin?(): void;
   onSettings(): void;
   onSignOut(): void;
 }
 
 /** The initials button and its menu. The button is the first stop after the title area's tools. */
-export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onMyAccess, onSettings, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSessions, onMyAccess, onAdmin, onSettings, onSignOut }: AccountMenuProps) {
   const name = nameOf(me);
   return (
     <DropdownMenu>
@@ -71,6 +73,12 @@ export function AccountMenu({ me, idpName, startedMs, settingsBinding, onSession
           <DropdownMenuItem onClick={onMyAccess}>
             <Icon icon={Shield} />
             My access
+          </DropdownMenuItem>
+        ) : null}
+        {onAdmin ? (
+          <DropdownMenuItem onClick={onAdmin}>
+            <Icon icon={Person} />
+            Users and roles
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={onSessions}>
