@@ -286,6 +286,20 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        // Reading the audit log (DOC-25 §3.5.7, TSK-140): all under audit.read.
+        ("audit.get", Query, "audit.read", Risk::Read, defaults),
+        ("audit.list", Query, "audit.read", Risk::Read, defaults),
+        ("audit.status", Query, "audit.read", Risk::Read, defaults),
+        (
+            "audit.verify",
+            Query,
+            "audit.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(300)),
+                Some(Duration::from_secs(600)),
+            ),
+        ),
         // Docker over SSH (TSK-81, spec §10.6): connect waits for SSH, the login and the ping.
         (
             "docker.compose.projects",

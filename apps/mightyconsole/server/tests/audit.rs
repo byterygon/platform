@@ -215,6 +215,9 @@ fn the_sensitive_reads_are_the_ones_the_spec_names() {
     assert_eq!(
         marked,
         [
+            // Reading the log is itself recorded (DOC-25 §3.5.7, TSK-140).
+            "audit.get",
+            "audit.list",
             "docker.connect",
             "docker.containers.files.download",
             "docker.containers.files.read",
