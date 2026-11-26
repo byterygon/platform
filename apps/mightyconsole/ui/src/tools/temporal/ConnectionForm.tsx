@@ -1,9 +1,9 @@
 // The Temporal connection form (Mightyconsole spec §9.1): address, namespace, TLS and mTLS, an API
 // key, the workflow list's page size, External Storage on S3 (TSK-103). The profile's name and
 // colour are the shell's.
+import { SecretControl } from "@/app/secret-control";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
@@ -20,7 +20,7 @@ import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, payloadCodecOf, profile, DEFAUL
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled, profileId, client, draft }: ConnectionFormProps) {
+export function ConnectionForm({ fields, secrets, errors, onFields, onSecrets, disabled, profileId, client, draft }: ConnectionFormProps) {
   const pc = payloadCodecOf(fields);
   const setPc = (patch: Partial<typeof pc>) => onFields({ codec: { ...pc, ...patch } });
   const [testing, setTesting] = useState(false);
@@ -93,14 +93,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
           </Field>
           <Field>
             <FieldLabel>Client private key (PEM)</FieldLabel>
-            <Textarea
-              value={str(secrets["clientKeyPem"])}
-              onValueChange={(v) => onSecrets({ clientKeyPem: v })}
-              rows={4}
-              spellCheck={false}
-              placeholder={storedSecrets.has("clientKeyPem") ? "Set (paste to replace)" : "Not set"}
-              disabled={disabled}
-            />
+            <SecretControl secretKey="clientKeyPem" noun="private key" multiline rows={4} value={str(secrets["clientKeyPem"])} onValueChange={(v) => onSecrets({ clientKeyPem: v })} disabled={disabled} />
           </Field>
           <Field>
             <FieldLabel>Server name</FieldLabel>
@@ -111,13 +104,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
       ) : null}
       <Field>
         <FieldLabel>API key</FieldLabel>
-        <PasswordInput
-          value={str(secrets["apiKey"])}
-          onValueChange={(v) => onSecrets({ apiKey: v })}
-          placeholder={storedSecrets.has("apiKey") ? "Set (type to replace)" : "Not set"}
-          autoComplete="off"
-          disabled={disabled}
-        />
+        <SecretControl secretKey="apiKey" noun="API key" value={str(secrets["apiKey"])} onValueChange={(v) => onSecrets({ apiKey: v })} disabled={disabled} />
         <FieldDescription>Temporal Cloud API key, sent as a bearer token over TLS only.</FieldDescription>
       </Field>
       <Field>
@@ -143,7 +130,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
           <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
             <Field>
               <FieldLabel>Authorization header</FieldLabel>
-              <PasswordInput value={str(secrets["codecAuthorization"])} onValueChange={(v) => onSecrets({ codecAuthorization: v })} placeholder={storedSecrets.has("codecAuthorization") ? "Set (type to replace)" : "Bearer …"} autoComplete="off" disabled={disabled} />
+              <SecretControl secretKey="codecAuthorization" noun="authorization header" value={str(secrets["codecAuthorization"])} onValueChange={(v) => onSecrets({ codecAuthorization: v })} placeholder="Bearer …" disabled={disabled} />
               <FieldDescription>Stored as a secret of this profile.</FieldDescription>
             </Field>
             <Field invalid={errors["codec.caPem"] !== undefined}>
@@ -225,16 +212,16 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
           </Field>
           <Field>
             <FieldLabel>Access key ID</FieldLabel>
-            <PasswordInput value={str(secrets["s3AccessKeyId"])} onValueChange={(v) => onSecrets({ s3AccessKeyId: v })} placeholder={storedSecrets.has("s3AccessKeyId") ? "Set (type to replace)" : "Not set"} autoComplete="off" disabled={disabled} />
+            <SecretControl secretKey="s3AccessKeyId" noun="access key ID" value={str(secrets["s3AccessKeyId"])} onValueChange={(v) => onSecrets({ s3AccessKeyId: v })} disabled={disabled} />
           </Field>
           <Field>
             <FieldLabel>Secret access key</FieldLabel>
-            <PasswordInput value={str(secrets["s3SecretAccessKey"])} onValueChange={(v) => onSecrets({ s3SecretAccessKey: v })} placeholder={storedSecrets.has("s3SecretAccessKey") ? "Set (type to replace)" : "Not set"} autoComplete="off" disabled={disabled} />
+            <SecretControl secretKey="s3SecretAccessKey" noun="secret access key" value={str(secrets["s3SecretAccessKey"])} onValueChange={(v) => onSecrets({ s3SecretAccessKey: v })} disabled={disabled} />
             <FieldDescription>Read-only keys are enough to read payloads; writing large inputs needs write access to the bucket.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Session token</FieldLabel>
-            <PasswordInput value={str(secrets["s3SessionToken"])} onValueChange={(v) => onSecrets({ s3SessionToken: v })} placeholder={storedSecrets.has("s3SessionToken") ? "Set (type to replace)" : "Not set"} autoComplete="off" disabled={disabled} />
+            <SecretControl secretKey="s3SessionToken" noun="session token" value={str(secrets["s3SessionToken"])} onValueChange={(v) => onSecrets({ s3SessionToken: v })} disabled={disabled} />
             <FieldDescription>Only for temporary credentials.</FieldDescription>
           </Field>
           <Field>

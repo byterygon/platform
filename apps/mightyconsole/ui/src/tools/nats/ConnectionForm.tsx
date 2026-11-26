@@ -1,9 +1,9 @@
 // The NATS connection form (Mightyconsole spec §6.1): servers, the five authentications, TLS and
 // mTLS, then the connection name, the JetStream domain or API prefix, the inbox prefix and the
 // request timeout. Secrets are write-only ("Set" / "Not set"); the name and colour are the shell's.
+import { SecretControl } from "@/app/secret-control";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,14 +13,13 @@ import { AUTH_LABELS, DEFAULT_CONNECTION_NAME, DEFAULT_REQUEST_TIMEOUT_MS, DEFAU
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 const AUTHS = Object.keys(AUTH_LABELS) as NatsAuth[];
 
-export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
+export function ConnectionForm({ fields, secrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
   const tls = tlsOf(fields);
   const setTls = (patch: Partial<typeof tls>) => onFields({ tls: { ...tls, ...patch } });
   const auth = authOf(fields);
   const servers = Array.isArray(fields["servers"]) ? (fields["servers"] as unknown[]).map(str).join("\n") : "";
   const js = typeof fields["jetstream"] === "object" && fields["jetstream"] !== null ? (fields["jetstream"] as Record<string, unknown>) : {};
   const timeout = fields["requestTimeoutMs"];
-  const placeholder = (key: string, set: string, unset: string) => (storedSecrets.has(key) ? set : unset);
   const error = (key: string) => (errors[key] ? <FieldError match>{errors[key]}</FieldError> : null);
   return (
     <>
@@ -56,7 +55,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
           </Field>
           <Field invalid={errors["password"] !== undefined}>
             <FieldLabel>Password</FieldLabel>
-            <PasswordInput value={str(secrets["password"])} onValueChange={(v) => onSecrets({ password: v })} placeholder={placeholder("password", "Set (type to replace)", "Not set")} autoComplete="off" disabled={disabled} />
+            <SecretControl secretKey="password" noun="password" value={str(secrets["password"])} onValueChange={(v) => onSecrets({ password: v })} placeholder="Not set" disabled={disabled} />
             {error("password")}
           </Field>
         </>
@@ -64,14 +63,14 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
       {auth === "token" ? (
         <Field invalid={errors["token"] !== undefined}>
           <FieldLabel>Token</FieldLabel>
-          <PasswordInput value={str(secrets["token"])} onValueChange={(v) => onSecrets({ token: v })} placeholder={placeholder("token", "Set (type to replace)", "Not set")} autoComplete="off" disabled={disabled} />
+          <SecretControl secretKey="token" noun="token" value={str(secrets["token"])} onValueChange={(v) => onSecrets({ token: v })} placeholder="Not set" disabled={disabled} />
           {error("token")}
         </Field>
       ) : null}
       {auth === "nkey" ? (
         <Field invalid={errors["nkeySeed"] !== undefined}>
           <FieldLabel>NKey seed</FieldLabel>
-          <PasswordInput value={str(secrets["nkeySeed"])} onValueChange={(v) => onSecrets({ nkeySeed: v })} placeholder={placeholder("nkeySeed", "Set (type to replace)", "SUA…")} autoComplete="off" disabled={disabled} />
+          <SecretControl secretKey="nkeySeed" noun="NKey seed" value={str(secrets["nkeySeed"])} onValueChange={(v) => onSecrets({ nkeySeed: v })} placeholder="SUA…" disabled={disabled} />
           <FieldDescription>The user's seed (SU…), as in a .nk file. It signs the server's nonce; it is never sent.</FieldDescription>
           {error("nkeySeed")}
         </Field>
@@ -79,14 +78,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
       {auth === "creds" ? (
         <Field invalid={errors["creds"] !== undefined}>
           <FieldLabel>Credentials file</FieldLabel>
-          <Textarea
-            value={str(secrets["creds"])}
-            onValueChange={(v) => onSecrets({ creds: v })}
-            rows={5}
-            spellCheck={false}
-            placeholder={placeholder("creds", "Set (paste to replace)", "-----BEGIN NATS USER JWT-----")}
-            disabled={disabled}
-          />
+          <SecretControl secretKey="creds" noun="credentials" multiline rows={5} value={str(secrets["creds"])} onValueChange={(v) => onSecrets({ creds: v })} placeholder="-----BEGIN NATS USER JWT-----" disabled={disabled} />
           <FieldDescription>The text of a .creds file (the user JWT and its seed), for servers in operator mode.</FieldDescription>
           {error("creds")}
         </Field>
@@ -112,14 +104,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
           </Field>
           <Field>
             <FieldLabel>Client private key (PEM)</FieldLabel>
-            <Textarea
-              value={str(secrets["clientKeyPem"])}
-              onValueChange={(v) => onSecrets({ clientKeyPem: v })}
-              rows={4}
-              spellCheck={false}
-              placeholder={placeholder("clientKeyPem", "Set (paste to replace)", "Not set")}
-              disabled={disabled}
-            />
+            <SecretControl secretKey="clientKeyPem" noun="private key" multiline rows={4} value={str(secrets["clientKeyPem"])} onValueChange={(v) => onSecrets({ clientKeyPem: v })} disabled={disabled} />
           </Field>
           <Field>
             <FieldLabel>Server name</FieldLabel>
