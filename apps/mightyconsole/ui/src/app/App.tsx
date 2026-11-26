@@ -26,7 +26,7 @@ import { Add, ArrowImport, Eye, Info, Options, Person, Pin, QuestionCircle, Sear
 import { loadProfiles, recordStatesOf } from "@/profiles/migrate";
 import { deleteProfile as deleteServerProfile, importRecord, listProfiles as listServerProfiles, saveProfile as saveServerProfile, updateRecord as updateServerRecord } from "@/profiles/server";
 import type { ProfileRecord } from "@/profiles/record";
-import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
+import { applyImport, exportFile, exportFileName, type ImportPlan, planImport, remapHop } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { AccessPage, AccessProvider, type AccessValue, DeniedTab } from "./access-ui";
@@ -43,6 +43,8 @@ import { HostKeyDialog } from "./dialogs/HostKeyDialog";
 import { MoveDialog, type MovePlan, type MoveRun } from "./dialogs/MoveDialog";
 import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { moveToServer } from "@/profiles/move";
+import { proxies as savedProxies, reloadRoutes, routeById, routes as savedRoutes } from "@/profiles/routes";
+import { targetOf as routeTargetOf } from "./routes/ConnectThrough";
 import { reloadSshHosts, sshHosts } from "@/profiles/ssh-hosts";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError, diagnosticLine } from "./messages";
@@ -333,6 +335,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   // SSH hosts (DOC-23 §4.3): the Docker form, its trust dialog and Settings read the same list.
   const reloadHosts = useCallback(() => {
     reloadSshHosts(client).catch(() => {});
+    // Routes list the hosts and proxies they pass, and a host's change shows in a route's hops.
+    reloadRoutes(client).catch(() => {});
   }, [client]);
 
   useEffect(() => {
@@ -445,7 +449,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   const handleEvent = (event: AppEvent) => {
     if (event.kind === "StreamProgress") return services.progress.publish(event);
-    if (event.kind === "SshHostChanged") return reloadHosts();
+    if (event.kind === "SshHostChanged" || event.kind === "RouteChanged" || event.kind === "ProxyChanged") return reloadHosts();
     if (event.kind === "ProfileChanged") {
       // A host lists the profiles that use it.
       reloadHosts();
@@ -1080,7 +1084,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     const ids = new Set(dialog.ids ?? profiles.map((p) => p.id));
     const file = exportFile(
       profiles.filter((p) => ids.has(p.id)),
-      { includeSecrets, app: state.info?.version ?? "0.1.0", hosts: sshHosts() },
+      { includeSecrets, app: state.info?.version ?? "0.1.0", hosts: sshHosts(), routes: savedRoutes(), proxies: savedProxies() },
     );
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1098,16 +1102,35 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     // Replace keeps the stored profile (an edit of it); anything else is a new profile, imported
     // once per record id (a second import of the same file makes nothing new).
     const { writes } = applyImport(plan, stored);
-    // The SSH hosts the profiles name come first, once per host of the file (DOC-23 §8.1).
-    const hostIds = new Map<string, string>();
+    // The SSH hosts and proxies come first, then the routes over them, then the profiles, each
+    // once per item of the file (DOC-23 §8.1). An imported route's command arrives not confirmed.
+    const routesNamed = new Set(writes.map((w) => w.fields["routeId"]).filter((id): id is string => typeof id === "string"));
+    const fileRoutes = plan.routes.filter((r) => routesNamed.has(r.id));
+    const hostsNamed = new Set(writes.map((w) => w.fields["sshHostId"]));
+    for (const r of fileRoutes) for (const h of r.hops) if (h.kind === "ssh" || h.kind === "sshCommand") hostsNamed.add(h.sshHostId);
+    const ids = new Map<string, string>();
     for (const host of plan.hosts) {
-      if (!writes.some((w) => w.fields["sshHostId"] === host.id)) continue;
+      if (!hostsNamed.has(host.id)) continue;
       const out = await client.sshHosts.import({ sourceId: host.id, name: host.name, owner: { kind: "personal" }, fields: host.fields });
-      hostIds.set(host.id, out.host.id);
+      ids.set(host.id, out.host.id);
     }
+    for (const proxy of plan.proxies) {
+      if (!fileRoutes.some((r) => r.hops.some((h) => h.kind === "proxy" && h.proxyId === proxy.id))) continue;
+      const out = await client.proxies.import({ sourceId: proxy.id, name: proxy.name, owner: { kind: "personal" }, fields: proxy.fields });
+      ids.set(proxy.id, out.proxy.id);
+    }
+    for (const r of fileRoutes) {
+      const out = await client.routes.import({ sourceId: r.id, name: r.name, owner: { kind: "personal" }, kind: r.kind, hops: r.hops.map((h) => remapHop(h, ids)) });
+      ids.set(r.id, out.route.id);
+    }
+    if (fileRoutes.length > 0) await reloadRoutes(client).catch(() => {});
     for (const write of writes) {
-      const id = write.fields["sshHostId"];
-      const record = typeof id === "string" && hostIds.has(id) ? { ...write, fields: { ...write.fields, sshHostId: hostIds.get(id) } } : write;
+      const host = write.fields["sshHostId"];
+      const route = write.fields["routeId"];
+      const fields = { ...write.fields };
+      if (typeof host === "string" && ids.has(host)) fields["sshHostId"] = ids.get(host);
+      if (typeof route === "string" && ids.has(route)) fields["routeId"] = ids.get(route);
+      const record = { ...write, fields };
       const existing = stored.find((p) => p.id === record.id);
       if (existing) await saveServerProfile(client, record, { mode: "edit", base: existing });
       else await importRecord(client, record);
@@ -1670,7 +1693,9 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
   } else if (conn.status === "connecting" || conn.status === "reconnecting") {
     overlay = <ConnectingState name={profile.name} since={conn.since ?? Date.now()} onCancel={cancelConnect} />;
   } else if (conn.status === "failed" && conn.error) {
-    const failed = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} onTrust={trust} />;
+    const route = routeById(typeof profile.fields["routeId"] === "string" ? profile.fields["routeId"] : null);
+    const routeShape = route ? { name: route.name, hops: route.hops.map((h) => ({ kind: h.kind, label: h.label, name: h.nodeName })), target: routeTargetOf(t.id, profile.fields) ?? null } : undefined;
+    const failed = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} onTrust={trust} route={routeShape} />;
     overlay = conn.error.denied ? <DeniedTab error={conn.error} tool={t.label} profile={profile.name} onRefresh={connect} fallback={failed} /> : failed;
   } else if (conn.status === "disconnected") {
     overlay = <DisconnectedState name={profile.name} onConnect={connect} />;

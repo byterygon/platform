@@ -410,7 +410,7 @@ export function RouteEditor({ open, onOpenChange, client, route, kind = "path", 
                   <Icon icon={PlugConnected} /> Test
                 </Button>
               </div>
-              <FieldDescription>Each hop in order, then TCP to the target (not the tool's own protocol); the test stops at the first failure. Up to 60 s.</FieldDescription>
+              <p className="text-caption-1 text-fg-muted">Each hop in order, then TCP to the target (not the tool's own protocol); the test stops at the first failure. Up to 60 s.</p>
               {test.status === "done" ? (
                 <ol className="flex flex-col gap-stack-xs" aria-label="Test result">
                   {Array.from({ length: test.out.hops + 1 }, (_, i) => {

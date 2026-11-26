@@ -6,7 +6,8 @@
 // the id or the name already exists the user chooses Replace, Keep both (a new id, the name
 // suffixed " (2)") or Skip. A record of an unknown tool, or newer than the app knows, is listed
 // and skipped with the reason. Nothing is written until the user presses Import.
-import type { SshHostFields, SshHostView } from "@/gen/api";
+import type { HopInput, ProxyFields, ProxyView, RouteKind, RouteView, SshHostFields, SshHostView } from "@/gen/api";
+import { hopsOf } from "./routes";
 import type { ProfileSchema } from "@/tools/types";
 import { migrateRecord } from "./migrate";
 import { type ProfileRecord, freeName, isRecord, ulid } from "./record";
@@ -21,8 +22,27 @@ export interface ExportFile {
   app: string;
   includesSecrets: boolean;
   profiles: ProfileRecord[];
-  /** The SSH hosts the profiles name (DOC-23 §8.1, TSK-144): never their secrets. */
+  /** The SSH hosts the profiles and their routes name (DOC-23 §8.1, TSK-144): never their secrets. */
   sshHosts?: ExportedHost[];
+  /** The routes the profiles connect through (TSK-117): their hops, never a secret variable's value. */
+  routes?: ExportedRoute[];
+  /** The proxies those routes pass, never their passwords. */
+  proxies?: ExportedProxy[];
+}
+
+/** A route in an export file: its hops name the file's proxies and SSH hosts by their ids. */
+export interface ExportedRoute {
+  id: string;
+  name: string;
+  kind: RouteKind;
+  hops: HopInput[];
+}
+
+/** A proxy in an export file: its settings, never its password. */
+export interface ExportedProxy {
+  id: string;
+  name: string;
+  fields: ProxyFields;
 }
 
 /** An SSH host in an export file: its settings, never a secret. */
@@ -32,12 +52,28 @@ export interface ExportedHost {
   fields: SshHostFields;
 }
 
-export function exportFile(records: readonly ProfileRecord[], options: { includeSecrets: boolean; app: string; now?: Date; hosts?: readonly SshHostView[] }): ExportFile {
+export function exportFile(
+  records: readonly ProfileRecord[],
+  options: { includeSecrets: boolean; app: string; now?: Date; hosts?: readonly SshHostView[]; routes?: readonly RouteView[]; proxies?: readonly ProxyView[] },
+): ExportFile {
   const now = options.now ?? new Date();
+  const routeIds = new Set(records.map((r) => r.fields["routeId"]).filter((id): id is string => typeof id === "string" && id !== ""));
+  const routes = (options.routes ?? [])
+    .filter((r) => routeIds.has(r.id))
+    .map((r): ExportedRoute => ({ id: r.id, name: r.name, kind: r.kind, hops: hopsOf(r).map(withoutSecretValues) }));
   const named = new Set(records.map((r) => r.fields["sshHostId"]).filter((id): id is string => typeof id === "string" && id !== ""));
+  const proxyIds = new Set<string>();
+  for (const r of routes)
+    for (const h of r.hops) {
+      if (h.kind === "proxy") proxyIds.add(h.proxyId);
+      if (h.kind === "ssh" || h.kind === "sshCommand") named.add(h.sshHostId);
+    }
   const hosts = (options.hosts ?? []).filter((h) => named.has(h.id)).map((h) => ({ id: h.id, name: h.name, fields: structuredClone(h.fields) }));
+  const proxies = (options.proxies ?? []).filter((p) => proxyIds.has(p.id)).map((p): ExportedProxy => ({ id: p.id, name: p.name, fields: structuredClone(p.fields) }));
   return {
     ...(hosts.length > 0 ? { sshHosts: hosts } : {}),
+    ...(routes.length > 0 ? { routes } : {}),
+    ...(proxies.length > 0 ? { proxies } : {}),
     format: EXPORT_FORMAT,
     formatVersion: EXPORT_FORMAT_VERSION,
     exportedAt: now.toISOString(),
@@ -68,6 +104,9 @@ export interface ImportPlan {
   rows: ImportRow[];
   /** The SSH hosts the file carries, imported before the profiles that name them. */
   hosts: ExportedHost[];
+  /** The routes and proxies it carries (TSK-117): proxies and hosts first, then routes, then profiles. */
+  routes: ExportedRoute[];
+  proxies: ExportedProxy[];
 }
 
 /** Why a file is not a profiles export. */
@@ -105,7 +144,32 @@ export function planImport(text: string, stored: readonly ProfileRecord[], schem
   const hosts = (Array.isArray(file.sshHosts) ? file.sshHosts : []).filter(
     (h): h is ExportedHost => typeof h === "object" && h !== null && typeof h.id === "string" && typeof h.name === "string" && typeof h.fields === "object" && h.fields !== null && typeof h.fields.host === "string" && typeof h.fields.username === "string",
   );
-  return { includesSecrets: file.includesSecrets === true, rows, hosts };
+  const routes = (Array.isArray(file.routes) ? file.routes : []).filter(
+    (r): r is ExportedRoute => typeof r === "object" && r !== null && typeof r.id === "string" && typeof r.name === "string" && (r.kind === "path" || r.kind === "system") && Array.isArray(r.hops),
+  );
+  const proxies = (Array.isArray(file.proxies) ? file.proxies : []).filter(
+    (p): p is ExportedProxy => typeof p === "object" && p !== null && typeof p.id === "string" && typeof p.name === "string" && typeof p.fields === "object" && p.fields !== null && typeof p.fields.host === "string",
+  );
+  return { includesSecrets: file.includesSecrets === true, rows, hosts, routes, proxies };
+}
+
+/** A hop as an export file keeps it: a secret variable's value never leaves the server. */
+function withoutSecretValues(h: HopInput): HopInput {
+  return h.kind === "command" ? { ...h, env: h.env.map((v) => (v.secret ? { name: v.name, secret: true, value: null } : v)) } : h;
+}
+
+/** A hop of an imported route with the file's ids replaced by those the import made. */
+export function remapHop(h: HopInput, ids: ReadonlyMap<string, string>): HopInput {
+  const map = (id: string) => ids.get(id) ?? id;
+  switch (h.kind) {
+    case "proxy":
+      return { ...h, proxyId: map(h.proxyId) };
+    case "ssh":
+    case "sshCommand":
+      return { ...h, sshHostId: map(h.sshHostId) };
+    default:
+      return h;
+  }
 }
 
 function skipped(record: ProfileRecord, reason: string): ImportRow {
