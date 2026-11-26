@@ -40,6 +40,9 @@ pub struct AppState {
     pub secrets: Option<Arc<crate::secrets::service::SecretService>>,
     /// Stored profiles, for `profiles.*` and `secrets.*` (`None` only in the codegen router).
     pub profiles: Option<Arc<crate::profiles::ProfileService>>,
+    /// The durable audit log, for `audit.*` (`None` in the codegen router, and when the log is a
+    /// test's sink).
+    pub audit: Option<Arc<crate::audit_api::AuditView>>,
 }
 
 /// A tool built into the server.

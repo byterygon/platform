@@ -16,13 +16,16 @@
 
 pub mod check;
 pub mod checkpoint;
+pub mod reader;
 pub mod segments;
 
 pub use check::{
     Break, BreakKind, CheckError, Checked, NEW_CHAIN_ACTION, RETENTION_ACTION, SegmentInfo,
     check_files, segment_files,
 };
-pub use segments::{BackupSet, SegmentOptions, SegmentPolicy, SegmentStatus, SegmentedSink};
+pub use segments::{
+    BackupSet, SegmentOptions, SegmentPolicy, SegmentStatus, SegmentedSink, VerifyOutcome,
+};
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead as _, Write as _};

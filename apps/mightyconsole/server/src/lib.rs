@@ -30,6 +30,7 @@ pub mod admin;
 pub mod admin_api;
 pub mod api;
 pub mod audit;
+pub mod audit_api;
 pub mod authz;
 pub mod backup;
 pub mod cli;
@@ -143,6 +144,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
         .mount(admin_api::AdminSessionsApi(m))
         .expect("admin.sessions API registers");
     router
+        .mount(audit_api::AuditApi(state.audit.clone()))
+        .expect("audit API registers");
+    router
         .mount(secrets::api::AdminSecretsApi(state.secrets.clone()))
         .expect("admin.secrets API registers");
     router
@@ -184,6 +188,7 @@ pub fn codegen_router() -> Router {
         management: None,
         secrets: None,
         profiles: None,
+        audit: None,
     });
     let router = Router::new(RoleAuthorizer::new(
         "codegen",
@@ -854,6 +859,7 @@ impl Server {
         }
         let stored: Arc<dyn core::stored::StoredProfiles> = profile_service.clone();
         hub.set_stored_profiles(&stored);
+        let sensitive = SensitiveTable::default();
         let state = Arc::new(AppState {
             hub: Arc::clone(&hub),
             facts: ServerFacts {
@@ -872,10 +878,16 @@ impl Server {
             ))),
             secrets: Some(Arc::clone(&secret_service)),
             profiles: Some(Arc::clone(&profile_service)),
+            audit: durable_log.as_ref().map(|sink| {
+                Arc::new(audit_api::AuditView {
+                    dir: sink.dir().to_path_buf(),
+                    sink: Arc::clone(sink),
+                    sensitive: sensitive.clone(),
+                })
+            }),
         });
         // The router offers every call and refusal to the filter in front of the log; which reads
         // are sensitive is read from the router's own table once everything is mounted.
-        let sensitive = SensitiveTable::default();
         let router = Router::with_approvals(authorizer, SharedConfirmations(confirmations))
             .with_audit(McAuditSink::new(
                 sink,
