@@ -1,4 +1,5 @@
-// TSK-81, Docker over SSH (Mightyconsole spec section 18, against the lab's docker-host). The
+// TSK-81, Docker over SSH (Mightyconsole spec section 18, against the lab's docker-host), and
+// TSK-116's transports (item transports: the local socket and TCP with or without TLS, DOC-23 §6). The
 // server's checks: tests/docker.rs against a stand-in SSH server, tests/docker_lab.rs (feature
 // lab-tests) against the lab's sshd and Docker. The UI's: test/docker.test.tsx and
 // test/docker-containers.test.tsx (jsdom), and a walk in the browser against the lab. Batch 1
@@ -363,6 +364,22 @@ export default {
           await until(`${here} === "etc" && ${entry("passwd")}`, "a stopped container's /etc");
           await shot("files, stopped container");
         }),
+      ],
+    },
+    {
+      id: "transports",
+      text: "(TSK-116, DOC-23 §6) Beside SSH, a Docker profile connects over a local socket (a Unix socket or a Windows named pipe; saving one needs profiles.hostAccess, and the sheet says whoever opens the page is root on the machine) or over TCP: with TLS against the pinned CA and with a client certificate (no skip), or without TLS only once the person ticks the warning, recorded with who and when. A plain TCP profile carries the Unencrypted badge in the connection list and on the Host page, whose banner cannot be dismissed. Every Docker screen works on each transport (one stream per request through the transport).",
+      lab: true,
+      checks: [
+        cargo("a_local_socket_reaches_the_engine_and_says_why_it_cannot"),
+        cargo("plain_tcp_connects_only_with_the_persons_acceptance"),
+        cargo("tls_checks_the_engines_certificate_and_sends_the_client_certificate"),
+        lab("lab_tcp_with_tls_and_client_certificates"),
+        lab("lab_plain_tcp_only_with_the_acceptance"),
+        lab("lab_the_local_socket"),
+        vitest("test/docker-transports.test.tsx", "profile"),
+        vitest("test/docker-transports.test.tsx", "the form"),
+        vitest("test/docker-transports.test.tsx", "the Host page"),
       ],
     },
     {

@@ -1,5 +1,6 @@
-// `docker`: Docker over SSH (Mightyconsole spec §10, TSK-81), a Portainer-like view of a host the
-// server reaches through SSH with nothing installed on it. Batch 1: the profile and its form (the
+// `docker`: Docker (Mightyconsole spec §10, TSK-81), a Portainer-like view of a host the server
+// reaches with nothing installed on it: over SSH, a local socket or TCP (DOC-23 §6, TSK-116; a
+// plain TCP profile carries the Unencrypted badge in the connection list). Batch 1: the profile and its form (the
 // SSH login is a saved SSH host since TSK-144), trust on first use of the host key (the shell's HostKeyDialog through `trustHostKey`), and
 // the Host page. Batch 2b: the Containers list, live through `docker.events`, and a container's
 // Overview, Logs and Inspect; the tree groups the containers by Compose project (spec §10.4).
@@ -21,7 +22,7 @@ import { HostTab } from "./HostTab";
 import { ImagesTab } from "./ImagesTab";
 import { NetworksTab } from "./NetworksTab";
 import { trustHostKey as trustOnHost } from "@/profiles/ssh-hosts";
-import { hostIdOf, profile, targetOf } from "./profile";
+import { hostIdOf, isPlainTcp, profile, targetOf } from "./profile";
 import { PROJECT_VIEWS, ProjectTab } from "./ProjectTab";
 import { dockerTreeData, treeContainersOf, treeCountsOf } from "./tree-data";
 import { VolumesTab } from "./VolumesTab";
@@ -90,7 +91,7 @@ export const dockerTool: ToolModule = {
   icon: BoxMultiple,
   category: "Infrastructure",
   order: 40,
-  description: "Containers, images, volumes and networks of a Docker host, over SSH.",
+  description: "Containers, images, volumes and networks of a Docker host, over SSH, a local socket or TCP.",
   profile,
   ConnectionForm,
   sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
@@ -241,4 +242,7 @@ export const dockerTool: ToolModule = {
     await trustOnHost(client, hostIdOf(record.fields), key);
   },
   targetOf,
+  profileBadges(record) {
+    return isPlainTcp(record.fields) ? [{ label: "Unencrypted", tone: "warning", hint: "Docker over TCP without TLS: anyone on the network who reaches the port is root on that host." }] : [];
+  },
 };

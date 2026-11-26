@@ -19,10 +19,11 @@ import { DisconnectedState, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { keyTypeLabel } from "@/app/dialogs/HostKeyDialog";
 import type { DiskUsage, DiskUsageKind, HostInfo } from "@/gen/api";
-import { ArrowClockwise } from "@/lib/icons";
+import { ArrowClockwise, Warning } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { type DockerEvent, changesRows, eventText, formatBytes } from "./format";
 import { useDockerEvents } from "./live";
+import { acceptanceOf } from "./profile";
 import { RELOAD_DEBOUNCE_MS } from "./resources";
 import { clockText } from "./StatsPanel";
 
@@ -65,7 +66,7 @@ export function containerCounts(host: HostInfo): string {
 
 /**
  * The subtitle: `deploy@build-host.lan:22 · ED25519 key · socket /var/run/docker.sock · 3 ms` over SSH,
- * `local socket /var/run/docker.sock · 1 ms`, `TCP docker.prod:2376 · TLS · 4 ms` or `TCP … · unencrypted`.
+ * `local socket /var/run/docker.sock · ping 1 ms`, `tcp://docker.prod:2376 · TLS · ping 4 ms` or `tcp://… · no TLS`.
  */
 export function hostSubtitle(host: HostInfo): string {
   const ssh = host.ssh;
@@ -74,7 +75,22 @@ export function hostSubtitle(host: HostInfo): string {
     return `${ssh.target} · ${how} · ${keyTypeLabel(ssh.hostKey.algorithm)} host key trusted · socket ${ssh.socketPath} · ping ${host.pingMs} ms`;
   }
   if (host.transport === "socket") return `local socket ${host.endpoint} · ping ${host.pingMs} ms`;
-  return `TCP ${host.endpoint} · ${host.tls ? "TLS" : "unencrypted"} · ping ${host.pingMs} ms`;
+  return `tcp://${host.endpoint} · ${host.tls ? "TLS" : "no TLS"} · ping ${host.pingMs} ms`;
+}
+
+/**
+ * The banner of an unencrypted profile (DOC-23 (u), mockup frame routes-docker-host-plain): what it
+ * means and how to remove it. It has no Dismiss: it stays while the profile is unencrypted.
+ */
+export function UnencryptedBanner({ endpoint, acceptedAt }: { endpoint: string; acceptedAt: string | null }) {
+  return (
+    <Alert intent="warning" data-testid="unencrypted-banner">
+      <AlertTitle>This connection is not encrypted.</AlertTitle>
+      <AlertDescription>
+        Anyone on the network between this server and {endpoint} can read it and act as root on the host. {acceptedAt ? `You accepted this on ${acceptedAt.slice(0, 10)}. ` : ""}Switch the profile to TCP with TLS to remove the warning.
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 /** A fact of the header row, as the Workflow tab's. */
@@ -220,6 +236,11 @@ export function HostTab({ profile, connId, client, useTabActions, note, active }
               <Badge appearance="tint" variant="success">
                 Connected
               </Badge>
+              {host.unencrypted ? (
+                <Badge appearance="tint" variant="warning">
+                  <Icon icon={Warning} /> Unencrypted
+                </Badge>
+              ) : null}
             </>
           ) : null
         }
@@ -245,6 +266,7 @@ export function HostTab({ profile, connId, client, useTabActions, note, active }
           {loading && host === null ? <LoadingRows label="Loading the host" /> : null}
           {host ? (
             <div className="flex flex-col gap-stack-lg px-inset-lg py-inset-md">
+              {host.unencrypted ? <UnencryptedBanner endpoint={host.endpoint} acceptedAt={acceptanceOf(profile.fields)?.at ?? null} /> : null}
               {host.warnings.length > 0 ? (
                 <Alert intent="warning">
                   <AlertTitle>The engine reports {host.warnings.length === 1 ? "a warning" : `${host.warnings.length} warnings`}</AlertTitle>
