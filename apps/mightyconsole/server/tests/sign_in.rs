@@ -322,10 +322,22 @@ async fn under_a_base_path_the_routes_and_cookies_follow_it() {
 
 /// The IdP down gives `login_error=unreachable`, and the default administrator still signs in
 /// with its password (DOC-25 §3.2.1, §3.2.7, §6).
+///
+/// The IdP is down before the server starts (TSK-151), so discovery is never loaded: once it is,
+/// `/auth/login` redirects to the IdP without asking it (302), and taking the IdP down after the
+/// start raced the start's background fetch of discovery (a 302 in some CI runs).
 #[tokio::test]
 async fn the_default_administrator_signs_in_while_the_idp_is_down() {
-    let (t, idp, _dir) = signed_in_server().await;
-    idp.shutdown();
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let idp = TestIdp::start(clock, &format!("{ORIGIN}/auth/callback")).await;
+    idp.set_down(true);
+    let dir = tempfile::tempdir().unwrap();
+    let oidc = settings(&idp, dir.path());
+    let t = start_configured(None, StartOptions::default(), |config| {
+        config.auth.oidc = Some(oidc);
+        config.auth.tenant = "acme".into();
+    })
+    .await;
     let login = t.http("/auth/login?next=/", HOST, None).await;
     assert_eq!(login.status, 303, "{}", login.body);
     assert!(
