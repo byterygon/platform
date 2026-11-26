@@ -69,18 +69,20 @@ impl Budget {
     }
 }
 
-/// Whether `input` holds a value at one of `meta`'s redacted paths.
+/// Whether `input` holds a value at one of `meta`'s redacted paths. As in Ambidex's redaction,
+/// a path goes through arrays: `hops.env.value` is the value of every variable of every hop.
 pub fn carries_secret(meta: &ProcedureMeta, input: &Value) -> bool {
-    meta.redact.iter().any(|path| {
-        let mut at = input;
-        for part in path.split('.') {
-            match at.get(part) {
-                Some(next) => at = next,
-                None => return false,
-            }
-        }
-        has_value(at)
-    })
+    meta.redact.iter().any(|path| value_at(input, path))
+}
+
+fn value_at(at: &Value, path: &str) -> bool {
+    if let Value::Array(items) = at {
+        return items.iter().any(|item| value_at(item, path));
+    }
+    match path.split_once('.') {
+        None => at.get(path).is_some_and(has_value),
+        Some((part, rest)) => at.get(part).is_some_and(|next| value_at(next, rest)),
+    }
 }
 
 fn has_value(value: &Value) -> bool {
@@ -229,6 +231,19 @@ mod tests {
     fn limits() -> (Arc<TestClock>, SecretCallLimits<()>) {
         let clock = Arc::new(TestClock(AtomicU64::new(1_000_000)));
         (clock.clone(), SecretCallLimits::new((), clock))
+    }
+
+    #[test]
+    fn a_secret_inside_arrays_counts() {
+        let m = meta("routes.create", &["hops.env.value"]);
+        let with = serde_json::json!({ "hops": [{ "kind": "proxy" }, { "env": [{ "name": "A" }, { "name": "B", "value": "s" }] }] });
+        let without = serde_json::json!({ "hops": [{ "env": [{ "name": "A", "value": "" }] }] });
+        assert!(carries_secret(&m, &with));
+        assert!(!carries_secret(&m, &without));
+        assert!(carries_secret(
+            &meta("x.set", &["secrets"]),
+            &serde_json::json!({ "secrets": { "a": "1" } })
+        ));
     }
 
     #[test]

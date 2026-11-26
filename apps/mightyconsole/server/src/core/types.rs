@@ -59,6 +59,11 @@ pub enum AppEvent {
     /// A saved SSH host was made, changed or deleted (DOC-23 §4.3): sent to the sessions that may
     /// see it, which read the hosts again.
     SshHostChanged { id: String },
+    /// A route was made, changed, confirmed or deleted (DOC-23 §8.1): sent to the sessions that
+    /// may see it, which read the routes again.
+    RouteChanged { id: String },
+    /// A saved proxy was made, changed or deleted (DOC-23 (ac)).
+    ProxyChanged { id: String },
     /// A terminal ended; `term.*` calls on it answer `NotFound` from now on.
     TerminalExit {
         terminal_id: String,

@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 use security_types::Principal;
 use serde_json::{Map, Value, json};
 
+use super::routes::Node;
 use super::spec::{self, SSH_HOST, SSH_HOST_KEY};
 use super::table::{self, Ownership, PROFILES, SSH_HOSTS, StoredProfile, WriteError};
 use super::{
@@ -318,6 +319,14 @@ impl ProfileService {
                     .iter()
                     .filter(|profile| host_id_of(&profile.fields) == Some(&host.id))
                     .any(|profile| self.access(p, profile).may_use())
+                    || self.graph().is_ok_and(|graph| {
+                        graph
+                            .routes_through(&Node::SshHost {
+                                id: host.id.clone(),
+                            })
+                            .iter()
+                            .any(|route| self.route_access(p, route, &graph).may_use())
+                    })
                 {
                     Access::Use
                 } else {
@@ -337,14 +346,15 @@ impl ProfileService {
         });
     }
 
-    /// The profiles that name `host_id`, and whether `p` sees each.
+    /// The profiles that name `host_id` and the routes that pass it (`tool` = `route`), and
+    /// whether `p` sees each.
     pub fn host_users(
         &self,
         p: &Principal,
         host_id: &str,
         profiles: &[StoredProfile],
     ) -> Vec<User> {
-        profiles
+        let mut users: Vec<User> = profiles
             .iter()
             .filter(|profile| host_id_of(&profile.fields) == Some(host_id))
             .map(|profile| User {
@@ -353,7 +363,14 @@ impl ProfileService {
                 name: profile.name.clone(),
                 visible: self.access(p, profile) > Access::None,
             })
-            .collect()
+            .collect();
+        if let Ok(graph) = self.graph() {
+            let node = Node::SshHost {
+                id: host_id.to_owned(),
+            };
+            users.extend(self.node_users(p, &node, &graph));
+        }
+        users
     }
 
     /// The host `id` as `p` may see it, with that access.
@@ -561,8 +578,21 @@ impl ProfileService {
         let mut in_use = None;
         self.store
             .delete_ssh_host(id, |write| {
-                let profiles = table::rows_in(write, PROFILES)?;
-                let users = self.host_users(p, id, &profiles);
+                // Read in the write, so a route saved meanwhile is counted.
+                let graph = super::routes::Graph::in_write(write)?;
+                let node = Node::SshHost { id: id.to_owned() };
+                let mut users: Vec<User> = graph
+                    .profiles
+                    .iter()
+                    .filter(|profile| host_id_of(&profile.fields) == Some(id))
+                    .map(|profile| User {
+                        id: profile.id.clone(),
+                        tool: profile.tool.clone(),
+                        name: profile.name.clone(),
+                        visible: self.access(p, profile) > Access::None,
+                    })
+                    .collect();
+                users.extend(self.node_users(p, &node, &graph));
                 if !users.is_empty() {
                     in_use = Some(users);
                     return Err(WriteError::Stale);

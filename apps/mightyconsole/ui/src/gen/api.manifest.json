@@ -576,6 +576,40 @@
           "type": "object"
         },
         {
+          "description": "A route was made, changed, confirmed or deleted (DOC-23 §8.1): sent to the sessions that\nmay see it, which read the routes again.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "RouteChanged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A saved proxy was made, changed or deleted (DOC-23 (ac)).",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "ProxyChanged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
           "description": "A terminal ended; `term.*` calls on it answer `NotFound` from now on.",
           "properties": {
             "exitCode": {
@@ -3528,6 +3562,31 @@
         }
       ]
     },
+    "EnvInput": {
+      "additionalProperties": false,
+      "description": "A variable of a command hop, as the editor sends it.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "boolean"
+        },
+        "value": {
+          "default": null,
+          "description": "A secret's value is write-only (redacted, never answered); `null` keeps the stored one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "secret"
+      ],
+      "type": "object"
+    },
     "EnvVar": {
       "description": "An environment variable of the container's configuration.",
       "properties": {
@@ -3541,6 +3600,59 @@
       "required": [
         "name",
         "value"
+      ],
+      "type": "object"
+    },
+    "EnvView": {
+      "description": "A variable of a command hop: a secret's value is never answered.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "boolean"
+        },
+        "set": {
+          "description": "A secret's: whether a value is stored.",
+          "type": "boolean"
+        },
+        "value": {
+          "description": "A plain variable's value.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "secret",
+        "set"
+      ],
+      "type": "object"
+    },
+    "ErrorHop": {
+      "description": "The node of a route an error is about (DOC-23 §9): a hop, or the target after the hops.",
+      "properties": {
+        "index": {
+          "description": "0-based: the hops in order, then the target (its index is the number of hops).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "description": "`httpConnect`, `socks5`, `ssh`, `sshCommand`, `command` or `target`.",
+          "type": "string"
+        },
+        "label": {
+          "description": "`host:port`, or a local command's program name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "label"
       ],
       "type": "object"
     },
@@ -4302,6 +4414,195 @@
       ],
       "type": "object"
     },
+    "HopInput": {
+      "description": "One hop of a route, as the route editor sends it (DOC-23 §4).",
+      "oneOf": [
+        {
+          "description": "A saved proxy: HTTP CONNECT or SOCKS5 by the proxy's kind.",
+          "properties": {
+            "kind": {
+              "const": "proxy",
+              "type": "string"
+            },
+            "proxyId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "proxyId"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "An SSH jump host.",
+          "properties": {
+            "kind": {
+              "const": "ssh",
+              "type": "string"
+            },
+            "sshHostId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "sshHostId"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A command run on an SSH host; `{host}` and `{port}` are the next address.",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "sshCommand",
+              "type": "string"
+            },
+            "sshHostId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "sshHostId",
+            "command"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A program on this server (first hop only); `{host}` and `{port}` in the arguments.",
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "env": {
+              "items": {
+                "$ref": "#/$defs/EnvInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "command",
+              "type": "string"
+            },
+            "program": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "program",
+            "args",
+            "env"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "HopView": {
+      "description": "One hop of a route as the editor and the path figure show it.",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "description": "`sshCommand`: the line run on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirmed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LinkConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "items": {
+            "$ref": "#/$defs/EnvView"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "description": "`httpConnect`, `socks5`, `ssh`, `sshCommand` or `command`.",
+          "type": "string"
+        },
+        "label": {
+          "description": "`host:port`, or a local command's program name.",
+          "type": "string"
+        },
+        "linkId": {
+          "description": "The link this hop's behaviour is saved in (what `routes.confirm` names).",
+          "type": "string"
+        },
+        "needsConfirmation": {
+          "description": "A command (local or on the host) a person must confirm before it runs.",
+          "type": "boolean"
+        },
+        "nodeName": {
+          "description": "The proxy's or SSH host's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "program": {
+          "description": "`command`: the program, its arguments, its variables and working directory.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proxyId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sshHostId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "label",
+        "args",
+        "env",
+        "linkId",
+        "needsConfirmation"
+      ],
+      "type": "object"
+    },
     "HostCounts": {
       "description": "`docker.host.counts`: what the tree shows beside Images, Volumes and Networks.",
       "properties": {
@@ -4532,6 +4833,31 @@
         "fingerprintSha256": {
           "type": "string"
         },
+        "hop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorHop"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The hop of a route that met the key (DOC-23 §9): \"Jump host 2 (`bastion.prod:22`)\"."
+        },
+        "sshHost": {
+          "description": "That SSH host's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sshHostId": {
+          "description": "The saved SSH host the key belongs to: Trust saves it there (DOC-23 4.3), so every route\nand Docker profile that uses the host trusts it at once.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "state": {
           "$ref": "#/$defs/HostKeyState"
         }
@@ -4584,6 +4910,18 @@
         "terminateExisting"
       ],
       "type": "string"
+    },
+    "IdInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
     },
     "IdReusePolicy": {
       "description": "What happens when a closed workflow with the same ID exists (`WorkflowIdReusePolicy`).",
@@ -5073,6 +5411,23 @@
         "latest"
       ],
       "type": "string"
+    },
+    "LinkConfirmation": {
+      "description": "Who confirmed a command link, and when (DOC-23 11.3).",
+      "properties": {
+        "at": {
+          "description": "RFC 3339.",
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ],
+      "type": "object"
     },
     "LocalGroup": {
       "properties": {
@@ -5675,6 +6030,23 @@
         "payloadSize",
         "payloadTruncated",
         "payloadCodec"
+      ],
+      "type": "object"
+    },
+    "NamedIdInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The name, typed as the confirmation (delete) or the new one (duplicate).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
       ],
       "type": "object"
     },
@@ -9875,6 +10247,341 @@
       ],
       "type": "object"
     },
+    "ProxiesOutput": {
+      "properties": {
+        "proxies": {
+          "items": {
+            "$ref": "#/$defs/ProxyView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "proxies"
+      ],
+      "type": "object"
+    },
+    "ProxyCreateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ProxyFields"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "password": {
+          "default": null,
+          "description": "The login's password (redacted; never answered).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "owner",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ProxyFields": {
+      "additionalProperties": false,
+      "description": "A proxy's fields (never its password).",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "For `tls`: the CA the proxy's certificate must chain to (PEM); the system's roots when\nabsent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ProxyKind"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tls": {
+          "description": "HTTP CONNECT only: `https://` to the proxy itself.",
+          "type": "boolean"
+        },
+        "username": {
+          "default": null,
+          "description": "The login's user: Basic for HTTP CONNECT, RFC 1929 for SOCKS5. No login when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "host",
+        "port",
+        "tls"
+      ],
+      "type": "object"
+    },
+    "ProxyFields.Output": {
+      "additionalProperties": false,
+      "description": "A proxy's fields (never its password).",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "For `tls`: the CA the proxy's certificate must chain to (PEM); the system's roots when\nabsent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ProxyKind"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tls": {
+          "description": "HTTP CONNECT only: `https://` to the proxy itself.",
+          "type": "boolean"
+        },
+        "username": {
+          "default": null,
+          "description": "The login's user: Basic for HTTP CONNECT, RFC 1929 for SOCKS5. No login when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "host",
+        "port",
+        "tls",
+        "username",
+        "caPem"
+      ],
+      "type": "object"
+    },
+    "ProxyImportInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/ProxyFields"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "password": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "description": "The proxy's id in the export file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "owner",
+        "name",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ProxyImportOutput": {
+      "properties": {
+        "created": {
+          "description": "`false` when an earlier import of the same record made it.",
+          "type": "boolean"
+        },
+        "proxy": {
+          "$ref": "#/$defs/ProxyView"
+        }
+      },
+      "required": [
+        "proxy",
+        "created"
+      ],
+      "type": "object"
+    },
+    "ProxyKind": {
+      "description": "A proxy's kind.",
+      "oneOf": [
+        {
+          "const": "httpConnect",
+          "description": "HTTP CONNECT (DOC-23 4.1).",
+          "type": "string"
+        },
+        {
+          "const": "socks5",
+          "description": "SOCKS5 (DOC-23 4.2).",
+          "type": "string"
+        }
+      ]
+    },
+    "ProxyUpdateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProxyFields"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A change of any field removes the stored password unless `password` sets it again."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password": {
+          "default": null,
+          "description": "Redacted; `null` keeps the stored one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "etag"
+      ],
+      "type": "object"
+    },
+    "ProxyUpdateOutput": {
+      "properties": {
+        "proxy": {
+          "$ref": "#/$defs/ProxyView"
+        },
+        "removedSecrets": {
+          "description": "Secrets removed because the proxy's address or login changed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "proxy",
+        "removedSecrets"
+      ],
+      "type": "object"
+    },
+    "ProxyView": {
+      "description": "A saved proxy as the caller may see it: never its password.",
+      "properties": {
+        "access": {
+          "description": "`owner`, `edit`, `use` or `metadata`.",
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/ProxyFields.Output"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire.Output"
+        },
+        "secrets": {
+          "description": "The secrets set (none listed for `metadata` and `use`).",
+          "items": {
+            "$ref": "#/$defs/SecretRow"
+          },
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "url": {
+          "description": "`http://…`, `https://…` or `socks5://…`.",
+          "type": "string"
+        },
+        "usedBy": {
+          "description": "The routes that pass it and the caller sees.",
+          "items": {
+            "$ref": "#/$defs/SshHostUser"
+          },
+          "type": "array"
+        },
+        "usedByHidden": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "fields",
+        "url",
+        "owner",
+        "etag",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "access",
+        "secrets",
+        "usedBy",
+        "usedByHidden"
+      ],
+      "type": "object"
+    },
     "QueryInput": {
       "description": "`messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar\nand Profile, spec §5.6), run in a worker with the limits of §5.4.1.",
       "properties": {
@@ -10810,6 +11517,373 @@
       "required": [
         "roles",
         "catalogue"
+      ],
+      "type": "object"
+    },
+    "RouteConfirmInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "links": {
+          "description": "The links the confirmation showed (`HopView.linkId`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "links"
+      ],
+      "type": "object"
+    },
+    "RouteCreateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "hops": {
+          "description": "1 to 8 hops for a path; none for the System route. Secret variables' values redacted.",
+          "items": {
+            "$ref": "#/$defs/HopInput"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RouteKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`path` (the default) or `system`."
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        }
+      },
+      "required": [
+        "name",
+        "owner",
+        "hops"
+      ],
+      "type": "object"
+    },
+    "RouteImportInput": {
+      "additionalProperties": false,
+      "properties": {
+        "hops": {
+          "items": {
+            "$ref": "#/$defs/HopInput"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RouteKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "owner",
+        "name",
+        "hops"
+      ],
+      "type": "object"
+    },
+    "RouteImportOutput": {
+      "properties": {
+        "created": {
+          "type": "boolean"
+        },
+        "route": {
+          "$ref": "#/$defs/RouteView"
+        }
+      },
+      "required": [
+        "route",
+        "created"
+      ],
+      "type": "object"
+    },
+    "RouteKind": {
+      "description": "A route's kind.",
+      "oneOf": [
+        {
+          "const": "path",
+          "description": "A path of links.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The proxy variables of the server's environment (DOC-23 4.6, decision 3).",
+          "type": "string"
+        }
+      ]
+    },
+    "RouteTestInput": {
+      "additionalProperties": false,
+      "properties": {
+        "hops": {
+          "default": null,
+          "description": "… the editor's draft (secret variables redacted; empty ones take the stored values of\nthe same command).",
+          "items": {
+            "$ref": "#/$defs/HopInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "routeId": {
+          "default": null,
+          "description": "A saved route (confirmed), or …",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/TestTarget"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "RouteTestLine": {
+      "description": "One line of `routes.test` (DOC-23 §9, (q)): a hop, or the target last.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a failure: the error as a connect would report it (host key details included)."
+        },
+        "failure": {
+          "description": "For a failure: `Invalid`, `Connect`, `Timeout`, `Auth`, `Forbidden` or `HostKey`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hop": {
+          "$ref": "#/$defs/ErrorHop"
+        },
+        "hostKey": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "An SSH hop that was reached: the (trusted) key it presented."
+        },
+        "ms": {
+          "description": "From the end of the line before (or the start) to this one.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "sshHostId": {
+          "description": "The saved SSH host of an `ssh` or `sshCommand` hop.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hop",
+        "ok",
+        "ms"
+      ],
+      "type": "object"
+    },
+    "RouteTestOutput": {
+      "properties": {
+        "hops": {
+          "description": "The route's hops (lines after a failure are \"Not tried\").",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lines": {
+          "description": "One line per hop up to the first failure, then the target when every hop passed.",
+          "items": {
+            "$ref": "#/$defs/RouteTestLine"
+          },
+          "type": "array"
+        },
+        "ms": {
+          "description": "The whole time, ms.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lines",
+        "hops",
+        "ms"
+      ],
+      "type": "object"
+    },
+    "RouteUpdateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "hops": {
+          "default": null,
+          "description": "The whole path again; a command whose program, arguments, variable names or line\nchanged is not confirmed. `null` keeps the hops.",
+          "items": {
+            "$ref": "#/$defs/HopInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "etag"
+      ],
+      "type": "object"
+    },
+    "RouteView": {
+      "description": "A route as the caller may see it.",
+      "properties": {
+        "access": {
+          "description": "`owner`, `edit`, `use` or `metadata`.",
+          "type": "string"
+        },
+        "confirmed": {
+          "description": "Every command of the route is confirmed: it may be tested, chosen and used.",
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "hops": {
+          "description": "In order: the first is the one this server contacts.",
+          "items": {
+            "$ref": "#/$defs/HopView"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RouteKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire.Output"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "usedBy": {
+          "description": "The profiles that name it and the caller sees.",
+          "items": {
+            "$ref": "#/$defs/SshHostUser"
+          },
+          "type": "array"
+        },
+        "usedByHidden": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "hops",
+        "confirmed",
+        "owner",
+        "etag",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "access",
+        "usedBy",
+        "usedByHidden"
+      ],
+      "type": "object"
+    },
+    "RoutesOutput": {
+      "properties": {
+        "routes": {
+          "items": {
+            "$ref": "#/$defs/RouteView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "routes"
       ],
       "type": "object"
     },
@@ -12289,7 +13363,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "`profile` or `sshHost` (routes come with DOC-23).",
+          "description": "`profile`, `sshHost` or `proxy` (a command hop's secret variables are set through\n`routes.create` and `routes.update`).",
           "type": "string"
         }
       },
@@ -13763,6 +14837,26 @@
       ],
       "type": "object"
     },
+    "TestTarget": {
+      "additionalProperties": false,
+      "description": "Where a Test goes.",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host",
+        "port"
+      ],
+      "type": "object"
+    },
     "TextMatch": {
       "description": "A text match (spec §5.4, `TextMatch`).",
       "properties": {
@@ -14093,6 +15187,17 @@
             "string",
             "null"
           ]
+        },
+        "hop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorHop"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Through a route: the hop (or the target) that failed (DOC-23 §9)."
         },
         "hostKey": {
           "anyOf": [
@@ -19538,6 +20643,336 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ProxyCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "proxies.create",
+      "output": {
+        "$ref": "#/$defs/ProxyView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "password"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NamedIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "proxies.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/IdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "proxies.get",
+      "output": {
+        "$ref": "#/$defs/ProxyView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProxyImportInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "proxies.import",
+      "output": {
+        "$ref": "#/$defs/ProxyImportOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "password"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "proxies.list",
+      "output": {
+        "$ref": "#/$defs/ProxiesOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ProxyUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "proxies.update",
+      "output": {
+        "$ref": "#/$defs/ProxyUpdateOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "password"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RouteConfirmInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.confirm",
+      "output": {
+        "$ref": "#/$defs/RouteView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RouteCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.create",
+      "output": {
+        "$ref": "#/$defs/RouteView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "hops.env.value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NamedIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NamedIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.duplicate",
+      "output": {
+        "$ref": "#/$defs/RouteView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/IdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "routes.get",
+      "output": {
+        "$ref": "#/$defs/RouteView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RouteImportInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.import",
+      "output": {
+        "$ref": "#/$defs/RouteImportOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "hops.env.value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "routes.list",
+      "output": {
+        "$ref": "#/$defs/RoutesOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RouteTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.test",
+      "output": {
+        "$ref": "#/$defs/RouteTestOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "hops.env.value"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 60000,
+      "timeout_max_ms": 60000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RouteUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "routes.update",
+      "output": {
+        "$ref": "#/$defs/RouteView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "hops.env.value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/SecretFieldInput"
       },
       "kind": "mutation",
@@ -20757,5 +22192,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:3addab27b6a69e4bf588e5bfdf22ec4bf395d519d45f2c65fa3f5521ee77d109"
+  "schema_hash": "sha256:28057977cf4461161057810e0ae9182639a5a4d690a83b15f1191752417447a9"
 }

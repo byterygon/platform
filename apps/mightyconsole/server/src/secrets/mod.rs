@@ -78,6 +78,10 @@ pub enum OwnerKind {
     Account,
     /// A saved SSH host's key, passphrase or password (DOC-23 §4.3, §8.1).
     SshHost,
+    /// A saved proxy's password (DOC-23 (ac)).
+    Proxy,
+    /// A link's secret command variables (DOC-23 (aa)).
+    Link,
 }
 
 impl OwnerKind {
@@ -87,6 +91,8 @@ impl OwnerKind {
             OwnerKind::Route => "route",
             OwnerKind::Account => "account",
             OwnerKind::SshHost => "sshHost",
+            OwnerKind::Proxy => "proxy",
+            OwnerKind::Link => "link",
         }
     }
 
@@ -96,6 +102,8 @@ impl OwnerKind {
             "route" => Some(OwnerKind::Route),
             "account" => Some(OwnerKind::Account),
             "sshHost" => Some(OwnerKind::SshHost),
+            "proxy" => Some(OwnerKind::Proxy),
+            "link" => Some(OwnerKind::Link),
             _ => None,
         }
     }
@@ -122,6 +130,14 @@ impl Owner {
 
     pub fn ssh_host(id: impl Into<String>) -> Owner {
         Owner::new(OwnerKind::SshHost, id)
+    }
+
+    pub fn proxy(id: impl Into<String>) -> Owner {
+        Owner::new(OwnerKind::Proxy, id)
+    }
+
+    pub fn link(id: impl Into<String>) -> Owner {
+        Owner::new(OwnerKind::Link, id)
     }
 }
 

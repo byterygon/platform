@@ -39,8 +39,8 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
 pub use error::{
-    ErrorPosition, HostKeyDetails, HostKeyFingerprint, HostKeyState, RemoteError, ToolError,
-    ToolErrorKind, ToolResult,
+    ErrorHop, ErrorPosition, HostKeyDetails, HostKeyFingerprint, HostKeyState, RemoteError,
+    ToolError, ToolErrorKind, ToolResult,
 };
 pub use types::{AppEvent, ConnectionState, Empty};
 
@@ -162,6 +162,9 @@ pub struct Hub {
     /// The profile store the tools connect from ([`stored`]); unset in the codegen router. Weak:
     /// the store holds the Hub.
     profiles: OnceLock<std::sync::Weak<dyn stored::StoredProfiles>>,
+    /// SSH sessions of routes, shared by every profile and tool going through the same jump
+    /// hosts (DOC-23 (e)).
+    sessions: net_route::SessionPool,
 }
 
 /// A live handle as a tool sees it.
@@ -296,7 +299,13 @@ impl Hub {
             idle_ms: idle.as_millis() as u64,
             state: Mutex::default(),
             profiles: OnceLock::new(),
+            sessions: net_route::SessionPool::new(),
         }
+    }
+
+    /// The SSH sessions routes share (DOC-23 (e)).
+    pub fn session_pool(&self) -> &net_route::SessionPool {
+        &self.sessions
     }
 
     /// The server's clock (tests use a fake one).
