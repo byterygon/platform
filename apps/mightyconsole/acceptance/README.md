@@ -28,6 +28,10 @@ fails), `--server PATH` (another `mightyconsole-server`; a release binary serves
 A tool that is not built yet is skipped as a whole, saying so: `docker` waits for
 `apps/mightyconsole/server/src/tools/docker`.
 
+In CI the lab job restores a Rust cache that the "Lab cache" workflow saves on main from
+`prebuild.sh` (TSK-148): the cargo targets the checklists build, one line per package and feature
+set. A new `cargo` check with another package or feature set adds its line there.
+
 ## Evidence
 
 Each run writes `evidence/<time>-<checklists>/` (git-ignored):

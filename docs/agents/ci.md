@@ -31,3 +31,10 @@ progress (job-level concurrency, so a label that is not a lab label never cancel
 decision" workflow (`lab-decision.yml`, seconds, separate from ci.yml so a label change does not
 re-run CI) fails a pull request whose change needs the lab and that has no lab label. Pushes to
 main, the weekly run and manual runs bring up every tool.
+
+The lab's Rust cache (TSK-148) is saved by the "Lab cache" workflow (`lab-cache.yml`), not by the
+lab job: on main (pushes that change Rust or Cargo files), daily and by hand it runs
+`apps/mightyconsole/acceptance/prebuild.sh`, which builds the cargo targets of the acceptance
+checklists and net-route's lab test without bringing the lab up; the lab job restores that key
+and saves nothing. A checklist that calls cargo with another package or feature set gets a line
+in `prebuild.sh`.
