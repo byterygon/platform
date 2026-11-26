@@ -2,8 +2,9 @@
 # The roles of the routes lab image (TSK-115). The logins come from /generated/routes/env and the
 # squid TLS certificate from /generated/routes/, both written by `lab up` (generate).
 #
-#   squid   HTTP CONNECT proxy: 3128 plain, 3129 TLS; Basic auth required; CONNECT to port 25
-#           refused (403), every other port allowed
+#   squid   HTTP CONNECT proxy: 3128 plain, 3129 TLS; Basic auth required (PROXY_USER, and
+#           DECOY_USER for the tests of a wrong password); CONNECT to port 25 refused (403), every
+#           other port allowed
 #   socks   Dante SOCKS5 on 1080: user and password (a system user of this container)
 #   echo    targets: 7 says "HELLO routes-echo" and echoes, 8080 serves an HTTP page
 set -eu
@@ -16,7 +17,12 @@ squid)
   install -d -o squid -g squid /run/squid /var/log/squid /var/cache/squid
   install -m 0640 -o root -g squid /generated/routes/squid.pem /etc/squid/lab.pem
   install -m 0640 -o root -g squid /generated/routes/squid-key.pem /etc/squid/lab-key.pem
-  printf '%s:%s\n' "$PROXY_USER" "$(cryptpw -m sha512 "$PROXY_PASSWORD")" > /etc/squid/passwd
+  {
+    printf '%s:%s\n' "$PROXY_USER" "$(cryptpw -m sha512 "$PROXY_PASSWORD")"
+    # A second login, so a test of a wrong password never shares squid's per-user auth record
+    # with the user the other tests log in with (TSK-147).
+    printf '%s:%s\n' "$DECOY_USER" "$(cryptpw -m sha512 "$DECOY_PASSWORD")"
+  } > /etc/squid/passwd
   chown root:squid /etc/squid/passwd && chmod 0640 /etc/squid/passwd
   cat > /etc/squid/lab.conf <<'EOF'
 http_port 3128
@@ -36,6 +42,8 @@ http_access deny CONNECT smtp
 http_access allow authed
 http_access deny all
 EOF
+  # A restarted container keeps /run: a PID file naming PID 1 would stop squid as "already running".
+  rm -f /run/squid/squid.pid
   exec squid -N -f /etc/squid/lab.conf
   ;;
 socks)

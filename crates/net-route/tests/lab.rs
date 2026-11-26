@@ -125,13 +125,18 @@ async fn squid_errors_name_the_hop_or_the_target() {
     let address = s(&lab["httpProxy"]["http"]);
     let password = s(&lab["httpProxy"]["password"]);
 
-    let err = dial(
-        &through(vec![squid(&lab, &address, Some("wrong"))]),
-        &s(&lab["targets"]["echo"]),
-    )
-    .await
-    .err()
-    .unwrap();
+    // The wrong password goes to a user of its own (TSK-147). squid keeps one cached record per
+    // Basic user, password, state and the queue of requests waiting for the helper together: a
+    // wrong password for the user the other tests log in with can make a concurrent right one get
+    // the helper's ERR and a 407.
+    let mut decoy = squid(&lab, &address, Some("wrong"));
+    if let Hop::HttpConnect(hop) = &mut decoy {
+        hop.auth.as_mut().unwrap().user = s(&lab["httpProxy"]["decoyUser"]);
+    }
+    let err = dial(&through(vec![decoy]), &s(&lab["targets"]["echo"]))
+        .await
+        .err()
+        .unwrap();
     assert_eq!(
         (err.kind, err.hop.unwrap().index),
         (RouteErrorKind::Auth, 0)
