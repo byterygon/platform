@@ -34,6 +34,7 @@ import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { HostKeyDialog } from "./dialogs/HostKeyDialog";
 import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, MoveProfilesDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { moveToServer } from "@/profiles/move";
+import { reloadSshHosts, sshHosts } from "@/profiles/ssh-hosts";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError, diagnosticLine } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
@@ -307,9 +308,15 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     }
   }, [storage, schemaOf, dispatch, note, toast]);
 
+  // SSH hosts (DOC-23 §4.3): the Docker form, its trust dialog and Settings read the same list.
+  const reloadHosts = useCallback(() => {
+    reloadSshHosts(client).catch(() => {});
+  }, [client]);
+
   useEffect(() => {
     void reloadProfiles();
     void reloadBrowserProfiles();
+    reloadHosts();
     // A store opened in memory on purpose (tests) has no reason and no warning.
     if (storage.kind === "memory" && storage.fallbackReason !== null) {
       toast.add({
@@ -406,10 +413,14 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     const record = profileById(profileId);
     const t = record ? toolById(tools, record.tool) : undefined;
     if (!record || !t?.trustHostKey) return;
-    const next = { ...t.trustHostKey(record, key), updatedAt: new Date().toISOString() };
-    await saveProfile(next);
+    try {
+      await t.trustHostKey(client, record, key);
+    } catch (e) {
+      note(e);
+      return;
+    }
     setConn(profileId, DISCONNECTED);
-    void connectProfile(profileId, next);
+    void connectProfile(profileId, record);
   };
 
   const disconnectProfile = (profileId: string) => {
@@ -422,7 +433,12 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   const handleEvent = (event: AppEvent) => {
     if (event.kind === "StreamProgress") return services.progress.publish(event);
-    if (event.kind === "ProfileChanged") return void reloadProfiles();
+    if (event.kind === "SshHostChanged") return reloadHosts();
+    if (event.kind === "ProfileChanged") {
+      // A host lists the profiles that use it.
+      reloadHosts();
+      return void reloadProfiles();
+    }
     if (event.kind !== "ConnectionStatus") return;
     const entry = Object.entries(stateRef.current.conns).find(([, c]) => c.connId === event.connId);
     if (!entry) return;
@@ -1042,7 +1058,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     const ids = new Set(dialog.ids ?? profiles.map((p) => p.id));
     const file = exportFile(
       profiles.filter((p) => ids.has(p.id)),
-      { includeSecrets, app: state.info?.version ?? "0.1.0" },
+      { includeSecrets, app: state.info?.version ?? "0.1.0", hosts: sshHosts() },
     );
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1060,7 +1076,16 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     // Replace keeps the stored profile (an edit of it); anything else is a new profile, imported
     // once per record id (a second import of the same file makes nothing new).
     const { writes } = applyImport(plan, stored);
-    for (const record of writes) {
+    // The SSH hosts the profiles name come first, once per host of the file (DOC-23 §8.1).
+    const hostIds = new Map<string, string>();
+    for (const host of plan.hosts) {
+      if (!writes.some((w) => w.fields["sshHostId"] === host.id)) continue;
+      const out = await client.sshHosts.import({ sourceId: host.id, name: host.name, owner: { kind: "personal" }, fields: host.fields });
+      hostIds.set(host.id, out.host.id);
+    }
+    for (const write of writes) {
+      const id = write.fields["sshHostId"];
+      const record = typeof id === "string" && hostIds.has(id) ? { ...write, fields: { ...write.fields, sshHostId: hostIds.get(id) } } : write;
       const existing = stored.find((p) => p.id === record.id);
       if (existing) await saveServerProfile(client, record, { mode: "edit", base: existing });
       else await importRecord(client, record);
@@ -1473,6 +1498,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         storageUsed={() => storage.estimate()}
         onExportAll={() => exportIds(null)}
         onImport={() => perform("importProfiles")}
+        client={client}
+        onOpenProfile={(id, tool) => dispatch({ type: "dialog", dialog: { kind: "profile", tool, editId: id } })}
         onForgetEverything={async () => {
           for (const [id, conn] of Object.entries(stateRef.current.conns)) if (conn.connId) disconnectProfile(id);
           await storage.forgetEverything();

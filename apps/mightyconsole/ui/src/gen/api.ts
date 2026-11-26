@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:1af1798d64ae9b8576bbddfe6427c6723d78a35a4b6d43dfa4a1b01c31e54ce9";
+export const SCHEMA_HASH = "sha256:d49dff3755997e9746b4fdf4d683b39ed83ade6b2061bf8c2b4f67f1f37c65a8";
 
 // ---- Types
 
@@ -147,7 +147,7 @@ bytesPerSec: number,
 /**
  * `true` on the last event of the stream.
  */
-done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
+done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "SshHostChanged", id: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
 
 /**
  * Output of `app.info`.
@@ -3353,7 +3353,7 @@ export type SecretOwnerInput = { owner: SecretOwnerWire, };
  */
 export type SecretOwnerWire = { 
 /**
- * `profile` (routes come with DOC-23).
+ * `profile` or `sshHost` (routes come with DOC-23).
  */
 kind: string, id: string, };
 
@@ -3454,6 +3454,110 @@ export type SshFacts = {
  * `user@host:port`.
  */
 target: string, hostKey: HostKeyFingerprint, socketPath: string, auth: DockerAuth, };
+
+export type SshHostCreateInput = { name: string, owner: OwnerWire, fields: SshHostFields, 
+/**
+ * `privateKey`, `passphrase`, `password` (redacted; never answered).
+ */
+secrets?: { [key in string]: string } | null, };
+
+export type SshHostDeleteInput = { id: string, 
+/**
+ * The host's name: the confirmation phrase.
+ */
+name: string, };
+
+/**
+ * An SSH host's settings: never a secret (DOC-23 §4.3).
+ */
+export type SshHostFields = { 
+/**
+ * Host name or IP address of the SSH server.
+ */
+host: string, 
+/**
+ * 22 when absent.
+ */
+port?: number | null, username: string, 
+/**
+ * `privateKey` when absent.
+ */
+auth?: DockerAuth | null, 
+/**
+ * SSH keepalive interval, 30 s when absent; 0 turns it off.
+ */
+keepaliveSec?: number | null, 
+/**
+ * The trusted host key; `null` until the person trusts it on first use.
+ */
+hostKey?: HostKeyFingerprint | null, };
+
+export type SshHostIdInput = { id: string, };
+
+export type SshHostImportInput = { 
+/**
+ * The host's id in the file it comes from: a repeated import answers the same host.
+ */
+sourceId: string, name: string, owner: OwnerWire, fields: SshHostFields, secrets?: { [key in string]: string } | null, };
+
+export type SshHostImportOutput = { host: SshHostView, created: boolean, };
+
+export type SshHostTestInput = { fields: SshHostFields, 
+/**
+ * The secrets typed in the form: used for this call only, never stored, logged or audited.
+ */
+secrets: { [key in string]: string }, 
+/**
+ * The stored host the form edits, whose secrets fill those left empty while the form keeps
+ * its address, port, user and trusted key.
+ */
+hostId?: string | null, };
+
+export type SshHostTestOutput = { 
+/**
+ * The key the host presented (the trusted one).
+ */
+hostKey: HostKeyFingerprint, 
+/**
+ * The login's time, handshake included.
+ */
+ms: number, };
+
+export type SshHostUpdateInput = { id: string, etag: string, name?: string | null, fields?: SshHostFields | null, secrets?: { [key in string]: string } | null, };
+
+export type SshHostUpdateOutput = { host: SshHostView, 
+/**
+ * Secrets removed because the address, port, user or trusted key changed (DOC-25 §3.4.8).
+ */
+removedSecrets: Array<string>, };
+
+/**
+ * A profile that names an SSH host.
+ */
+export type SshHostUser = { id: string, tool: string, name: string, };
+
+/**
+ * A saved SSH host as the caller may see it: never a secret value.
+ */
+export type SshHostView = { id: string, name: string, fields: SshHostFields, owner: OwnerWire, etag: string, createdAt: string, updatedAt: string, createdBy: string, updatedBy: string, 
+/**
+ * `owner`, `edit`, `use` or `metadata`.
+ */
+access: string, 
+/**
+ * The secrets set (none listed for `metadata` and `use`).
+ */
+secrets: Array<SecretRow>, 
+/**
+ * The profiles that name it and the caller sees.
+ */
+usedBy: Array<SshHostUser>, 
+/**
+ * How many more name it that the caller does not see.
+ */
+usedByHidden: number, };
+
+export type SshHostsOutput = { hosts: Array<SshHostView>, };
 
 /**
  * Whether the server runs standalone activities on the profile's namespace (`temporal.connect`'s
@@ -4478,6 +4582,13 @@ export interface Procedures {
   readonly "secrets.remove": ProcedureDef<"mutation", SecretFieldInput, SecretRemoveOutput, ToolError>;
   readonly "secrets.set": ProcedureDef<"mutation", SecretSetInput, SecretRow, ToolError>;
   readonly "secrets.status": ProcedureDef<"query", SecretOwnerInput, SecretsOutput, ToolError>;
+  readonly "sshHosts.create": ProcedureDef<"mutation", SshHostCreateInput, SshHostView, ToolError>;
+  readonly "sshHosts.delete": ProcedureDef<"mutation", SshHostDeleteInput, Empty, ToolError>;
+  readonly "sshHosts.get": ProcedureDef<"query", SshHostIdInput, SshHostView, ToolError>;
+  readonly "sshHosts.import": ProcedureDef<"mutation", SshHostImportInput, SshHostImportOutput, ToolError>;
+  readonly "sshHosts.list": ProcedureDef<"query", Empty, SshHostsOutput, ToolError>;
+  readonly "sshHosts.test": ProcedureDef<"mutation", SshHostTestInput, SshHostTestOutput, ToolError>;
+  readonly "sshHosts.update": ProcedureDef<"mutation", SshHostUpdateInput, SshHostUpdateOutput, ToolError>;
   readonly "temporal.activities.cancel": ProcedureDef<"mutation", ActivityReasonInput, Empty, ToolError>;
   readonly "temporal.activities.count": ProcedureDef<"query", ActivitiesCountInput, ActivitiesCountOutput, ToolError>;
   readonly "temporal.activities.describe": ProcedureDef<"query", ActivityRef, ActivityDetail, ToolError>;
@@ -4799,6 +4910,15 @@ export interface Api {
     readonly remove: Procedures["secrets.remove"];
     readonly set: Procedures["secrets.set"];
     readonly status: Procedures["secrets.status"];
+  };
+  readonly sshHosts: {
+    readonly create: Procedures["sshHosts.create"];
+    readonly delete: Procedures["sshHosts.delete"];
+    readonly get: Procedures["sshHosts.get"];
+    readonly import: Procedures["sshHosts.import"];
+    readonly list: Procedures["sshHosts.list"];
+    readonly test: Procedures["sshHosts.test"];
+    readonly update: Procedures["sshHosts.update"];
   };
   readonly temporal: {
     readonly activities: {
@@ -6709,6 +6829,78 @@ export const procedures: Api = {
       kind: "query",
       perm: "profiles.personal",
       risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+  },
+  sshHosts: {
+    create: {
+      name: "sshHosts.create",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    delete: {
+      name: "sshHosts.delete",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Destructive",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    get: {
+      name: "sshHosts.get",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    import: {
+      name: "sshHosts.import",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "sshHosts.list",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    test: {
+      name: "sshHosts.test",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    update: {
+      name: "sshHosts.update",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
       agent: "hidden",
       deprecated: false,
       timeoutDefaultMs: 30000,

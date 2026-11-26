@@ -559,6 +559,23 @@
           "type": "object"
         },
         {
+          "description": "A saved SSH host was made, changed or deleted (DOC-23 §4.3): sent to the sessions that may\nsee it, which read the hosts again.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "SshHostChanged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
           "description": "A terminal ended; `term.*` calls on it answer `NotFound` from now on.",
           "properties": {
             "exitCode": {
@@ -11699,7 +11716,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "`profile` (routes come with DOC-23).",
+          "description": "`profile` or `sshHost` (routes come with DOC-23).",
           "type": "string"
         }
       },
@@ -12020,6 +12037,462 @@
         "hostKey",
         "socketPath",
         "auth"
+      ],
+      "type": "object"
+    },
+    "SshHostCreateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/SshHostFields"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "description": "`privateKey`, `passphrase`, `password` (redacted; never answered).",
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "owner",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "SshHostDeleteInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The host's name: the confirmation phrase.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SshHostFields": {
+      "additionalProperties": false,
+      "description": "An SSH host's settings: never a secret (DOC-23 §4.3).",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DockerAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`privateKey` when absent."
+        },
+        "host": {
+          "description": "Host name or IP address of the SSH server.",
+          "type": "string"
+        },
+        "hostKey": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The trusted host key; `null` until the person trusts it on first use."
+        },
+        "keepaliveSec": {
+          "default": null,
+          "description": "SSH keepalive interval, 30 s when absent; 0 turns it off.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "port": {
+          "default": null,
+          "description": "22 when absent.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host",
+        "username"
+      ],
+      "type": "object"
+    },
+    "SshHostFields.Output": {
+      "additionalProperties": false,
+      "description": "An SSH host's settings: never a secret (DOC-23 §4.3).",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DockerAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`privateKey` when absent."
+        },
+        "host": {
+          "description": "Host name or IP address of the SSH server.",
+          "type": "string"
+        },
+        "hostKey": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The trusted host key; `null` until the person trusts it on first use."
+        },
+        "keepaliveSec": {
+          "default": null,
+          "description": "SSH keepalive interval, 30 s when absent; 0 turns it off.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "port": {
+          "default": null,
+          "description": "22 when absent.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "username",
+        "auth",
+        "keepaliveSec",
+        "hostKey"
+      ],
+      "type": "object"
+    },
+    "SshHostIdInput": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SshHostImportInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/SshHostFields"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "description": "The host's id in the file it comes from: a repeated import answers the same host.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "name",
+        "owner",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "SshHostImportOutput": {
+      "properties": {
+        "created": {
+          "type": "boolean"
+        },
+        "host": {
+          "$ref": "#/$defs/SshHostView"
+        }
+      },
+      "required": [
+        "host",
+        "created"
+      ],
+      "type": "object"
+    },
+    "SshHostTestInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/SshHostFields"
+        },
+        "hostId": {
+          "default": null,
+          "description": "The stored host the form edits, whose secrets fill those left empty while the form keeps\nits address, port, user and trusted key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The secrets typed in the form: used for this call only, never stored, logged or audited.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "fields",
+        "secrets"
+      ],
+      "type": "object"
+    },
+    "SshHostTestOutput": {
+      "properties": {
+        "hostKey": {
+          "$ref": "#/$defs/HostKeyFingerprint",
+          "description": "The key the host presented (the trusted one)."
+        },
+        "ms": {
+          "description": "The login's time, handshake included.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "hostKey",
+        "ms"
+      ],
+      "type": "object"
+    },
+    "SshHostUpdateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SshHostFields"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "etag"
+      ],
+      "type": "object"
+    },
+    "SshHostUpdateOutput": {
+      "properties": {
+        "host": {
+          "$ref": "#/$defs/SshHostView"
+        },
+        "removedSecrets": {
+          "description": "Secrets removed because the address, port, user or trusted key changed (DOC-25 §3.4.8).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "host",
+        "removedSecrets"
+      ],
+      "type": "object"
+    },
+    "SshHostUser": {
+      "description": "A profile that names an SSH host.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SshHostView": {
+      "description": "A saved SSH host as the caller may see it: never a secret value.",
+      "properties": {
+        "access": {
+          "description": "`owner`, `edit`, `use` or `metadata`.",
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/SshHostFields.Output"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire.Output"
+        },
+        "secrets": {
+          "description": "The secrets set (none listed for `metadata` and `use`).",
+          "items": {
+            "$ref": "#/$defs/SecretRow"
+          },
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "usedBy": {
+          "description": "The profiles that name it and the caller sees.",
+          "items": {
+            "$ref": "#/$defs/SshHostUser"
+          },
+          "type": "array"
+        },
+        "usedByHidden": {
+          "description": "How many more name it that the caller does not see.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "fields",
+        "owner",
+        "etag",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "access",
+        "secrets",
+        "usedBy",
+        "usedByHidden"
+      ],
+      "type": "object"
+    },
+    "SshHostsOutput": {
+      "properties": {
+        "hosts": {
+          "items": {
+            "$ref": "#/$defs/SshHostView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "hosts"
       ],
       "type": "object"
     },
@@ -18471,6 +18944,162 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/SshHostCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sshHosts.create",
+      "output": {
+        "$ref": "#/$defs/SshHostView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SshHostDeleteInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sshHosts.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SshHostIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "sshHosts.get",
+      "output": {
+        "$ref": "#/$defs/SshHostView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SshHostImportInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sshHosts.import",
+      "output": {
+        "$ref": "#/$defs/SshHostImportOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "sshHosts.list",
+      "output": {
+        "$ref": "#/$defs/SshHostsOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "audit": "always",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SshHostTestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sshHosts.test",
+      "output": {
+        "$ref": "#/$defs/SshHostTestOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SshHostUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sshHosts.update",
+      "output": {
+        "$ref": "#/$defs/SshHostUpdateOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "secrets"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ActivityReasonInput"
       },
       "kind": "mutation",
@@ -19469,5 +20098,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:1af1798d64ae9b8576bbddfe6427c6723d78a35a4b6d43dfa4a1b01c31e54ce9"
+  "schema_hash": "sha256:d49dff3755997e9746b4fdf4d683b39ed83ade6b2061bf8c2b4f67f1f37c65a8"
 }

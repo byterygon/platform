@@ -16,8 +16,9 @@
 //! - `group_roles`: `mappings` → the editable group mappings with their etag as JSON.
 //! - `groups`: local group name → its members (principal ids) as JSON.
 //!
-//! - `profiles`, `imports`: stored profiles and the browser records imported as them
-//!   ([`crate::profiles::table`]).
+//! - `profiles`, `imports`: stored profiles and the browser records imported as them; `ssh_hosts`:
+//!   saved SSH hosts (DOC-23 §4.3); `profiles_backup`: profiles as they were before a migration
+//!   rewrote them ([`crate::profiles::table`]).
 //! - `secrets`: one encrypted entry per secret ([`crate::secrets::table`]); `meta` also counts
 //!   the data keys wrapped under each key (`wraps:<kekId>`).
 //!
@@ -503,6 +504,12 @@ impl Store {
                 .map_err(err)?;
             write
                 .open_table(crate::profiles::table::IMPORTS)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::SSH_HOSTS)
+                .map_err(err)?;
+            write
+                .open_table(crate::profiles::table::PROFILES_BACKUP)
                 .map_err(err)?;
         }
         write.commit().map_err(err)
@@ -1011,7 +1018,7 @@ where
 impl Store {
     /// The tables a snapshot copies: every table the store has (a test checks that none is
     /// missing).
-    pub const TABLES: [&'static str; 12] = [
+    pub const TABLES: [&'static str; 14] = [
         "meta",
         "accounts",
         "usernames",
@@ -1024,6 +1031,8 @@ impl Store {
         "secrets",
         "profiles",
         "imports",
+        "ssh_hosts",
+        "profiles_backup",
     ];
 
     /// Writes a consistent copy of the store to a new file `to` (DOC-25 §3.4.6): a new redb file
@@ -1055,6 +1064,8 @@ impl Store {
         copy_table(&read, &write, crate::secrets::table::SECRETS)?;
         copy_table(&read, &write, crate::profiles::table::PROFILES)?;
         copy_table(&read, &write, crate::profiles::table::IMPORTS)?;
+        copy_table(&read, &write, crate::profiles::table::SSH_HOSTS)?;
+        copy_table(&read, &write, crate::profiles::table::PROFILES_BACKUP)?;
         write.commit().map_err(err)
     }
 }

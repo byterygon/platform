@@ -38,7 +38,7 @@ pub const EXCEPTIONS: [(&str, &str); 5] = [
 ];
 
 /// The permissions the procedures of a namespace that is not a tool may carry.
-pub const NAMESPACES: [(&str, &[&str]); 9] = [
+pub const NAMESPACES: [(&str, &[&str]); 10] = [
     ("app", &["app.read", catalogue::APP_SELF]),
     ("term", &[catalogue::TERM_WRITE]),
     ("messaging", &["messaging.read"]),
@@ -71,6 +71,10 @@ pub const NAMESPACES: [(&str, &[&str]); 9] = [
     ),
     (
         "secrets",
+        &[catalogue::PROFILES_PERSONAL, "profiles.manage"],
+    ),
+    (
+        "sshHosts",
         &[catalogue::PROFILES_PERSONAL, "profiles.manage"],
     ),
     ("app.account", &[catalogue::APP_SELF]),

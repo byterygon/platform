@@ -311,6 +311,100 @@ async fn no_seeded_secret_leaves_the_server_anywhere() {
         tab.disconnect().await;
     }
 
+    // SSH hosts (TSK-144): a host's key and password through create, Test, set, update, a
+    // Docker profile that names the host and its connect and Test, and a Docker record of
+    // version 1 imported (its login moves to a host).
+    let browser = t.browser_as("human:account:redaction-ssh", &[]).await;
+    let mut tab = t.tab(&browser).await;
+    let closed = json!({ "host": "127.0.0.1", "port": 1, "username": "u", "auth": "password" });
+    let key = seeds.for_field("privateKey");
+    let password = seeds.for_field("password");
+    let passphrase = seeds.for_field("passphrase");
+    tab.call(
+        8000,
+        "sshHosts.test",
+        json!({ "fields": closed, "secrets": { "password": password } }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8000).await);
+    tab.call(
+        8001,
+        "sshHosts.create",
+        json!({ "name": "h", "owner": { "kind": "personal" }, "fields": closed,
+                "secrets": { "password": password, "privateKey": key, "passphrase": passphrase } }),
+    )
+    .await;
+    let made = answer(&mut tab, 8001).await;
+    answers.push(made.clone());
+    let host: Value = serde_json::from_str(&made).unwrap_or(Value::Null);
+    let host_id = host["id"].clone();
+    let password = seeds.for_field("password");
+    tab.call(
+        8002,
+        "secrets.set",
+        json!({ "owner": { "kind": "sshHost", "id": host_id }, "field": "password", "value": password }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8002).await);
+    tab.call(
+        8003,
+        "sshHosts.test",
+        json!({ "fields": closed, "secrets": {}, "hostId": host_id }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8003).await);
+    tab.call(
+        8004,
+        "profiles.create",
+        json!({ "tool": "docker", "name": "d", "owner": { "kind": "personal" }, "fields": { "sshHostId": host_id } }),
+    )
+    .await;
+    let profile: Value = serde_json::from_str(&answer(&mut tab, 8004).await).unwrap_or(Value::Null);
+    tab.call_raw(
+        8005,
+        "docker.connect",
+        json!({ "profileId": profile["id"] }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8005).await);
+    tab.call(
+        8006,
+        "docker.test",
+        json!({ "draft": { "fields": { "sshHostId": host_id }, "secrets": {} }, "basedOn": profile["id"] }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8006).await);
+    let password = seeds.for_field("password");
+    tab.call(8007, "sshHosts.get", json!({ "id": host_id }))
+        .await;
+    let current: Value = serde_json::from_str(&answer(&mut tab, 8007).await).unwrap_or(Value::Null);
+    tab.call(
+        8008,
+        "sshHosts.update",
+        json!({ "id": host_id, "etag": current["etag"], "fields": { "host": "127.0.0.2", "port": 1, "username": "u", "auth": "password" },
+                "secrets": { "password": password } }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8008).await);
+    let password = seeds.for_field("password");
+    tab.call(
+        8009,
+        "profiles.import",
+        json!({ "sourceId": "d1", "owner": { "kind": "personal" },
+                "record": { "tool": "docker", "version": 1, "name": "old", "fields": { "host": "127.0.0.3", "port": 1, "username": "u", "auth": "password" } },
+                "secrets": { "password": password } }),
+    )
+    .await;
+    answers.push(answer(&mut tab, 8009).await);
+    tab.call(8010, "sshHosts.list", json!({})).await;
+    answers.push(answer(&mut tab, 8010).await);
+    answers.extend(
+        tab.pending
+            .iter()
+            .map(|f| String::from_utf8_lossy(&f.payload).into_owned()),
+    );
+    tab.disconnect().await;
+
     // A browser record imported once.
     let browser = t.browser_as("human:account:redaction-import", &[]).await;
     let mut tab = t.tab(&browser).await;
@@ -384,6 +478,7 @@ fn debug_formats_hold_no_secret() {
     use mightyconsole_server::core::stored::ToolTestInput;
     use mightyconsole_server::profiles::api::{
         ProfileCreateInput, ProfileImportInput, ProfileUpdateInput, SecretSetInput,
+        SshHostCreateInput, SshHostImportInput, SshHostTestInput, SshHostUpdateInput,
     };
     const S: &str = "SEEDdebug77";
     fn shown<T: serde::de::DeserializeOwned + std::fmt::Debug>(value: Value) -> String {
@@ -406,6 +501,18 @@ fn debug_formats_hold_no_secret() {
                                             "secrets": { "token": S } })),
         shown::<SecretSetInput>(
             json!({ "owner": { "kind": "profile", "id": "p" }, "field": "token", "value": S }),
+        ),
+        shown::<SshHostCreateInput>(json!({ "name": "h", "owner": { "kind": "personal" },
+                                            "fields": { "host": "h", "username": "u" }, "secrets": { "privateKey": S } })),
+        shown::<SshHostUpdateInput>(
+            json!({ "id": "h", "etag": "1", "secrets": { "password": S } }),
+        ),
+        shown::<SshHostImportInput>(
+            json!({ "sourceId": "s", "name": "h", "owner": { "kind": "personal" },
+                                            "fields": { "host": "h", "username": "u" }, "secrets": { "passphrase": S } }),
+        ),
+        shown::<SshHostTestInput>(
+            json!({ "fields": { "host": "h", "username": "u" }, "secrets": { "password": S } }),
         ),
     ];
     for text in &formats {

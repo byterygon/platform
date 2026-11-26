@@ -160,6 +160,12 @@ export async function importRecord(client: MightyClient, record: ProfileRecord, 
   });
   const status = await client.secrets.status({ owner: { kind: "profile", id: out.profile.id } });
   const set = new Set(status.secrets.filter((s) => s.set).map((s) => s.field));
+  // A Docker profile of version 1 leaves its login with the SSH host it now names (DOC-23 (z)).
+  const hostId = (out.profile.fields as Record<string, unknown> | null)?.["sshHostId"];
+  if (typeof hostId === "string" && hostId !== "") {
+    const host = await client.secrets.status({ owner: { kind: "sshHost", id: hostId } });
+    for (const s of host.secrets) if (s.set) set.add(s.field);
+  }
   const missing = Object.keys(secrets).filter((f) => !set.has(f));
   if (missing.length > 0) throw new Error(`${record.name}: the server does not have ${missing.join(", ")}`);
   return fromView(out.profile);

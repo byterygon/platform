@@ -240,10 +240,12 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
           onCancel={() => setTrusting(false)}
           onTrust={(key) => {
             setTrusting(false);
-            if (!tool.trustHostKey) return;
-            const trusted = tool.trustHostKey(build(), key);
-            setDraft((d) => ({ ...d, fields: trusted.fields }));
-            void runTest(trusted);
+            if (!tool.trustHostKey || !client) return;
+            const record = build();
+            void tool
+              .trustHostKey(client, record, key)
+              .then(() => runTest(record))
+              .catch((e: unknown) => setTest({ status: "failed", error: describeError(e) }));
           }}
         />
         <SheetFooter>

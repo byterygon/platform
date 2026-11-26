@@ -56,6 +56,9 @@ pub enum AppEvent {
     /// A stored profile was made, changed or deleted (DOC-25 §3.4.2): sent to the sessions that
     /// may see it, which read it again.
     ProfileChanged { id: String, tool: String },
+    /// A saved SSH host was made, changed or deleted (DOC-23 §4.3): sent to the sessions that may
+    /// see it, which read the hosts again.
+    SshHostChanged { id: String },
     /// A terminal ended; `term.*` calls on it answer `NotFound` from now on.
     TerminalExit {
         terminal_id: String,

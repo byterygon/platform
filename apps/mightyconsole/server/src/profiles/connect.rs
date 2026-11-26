@@ -336,7 +336,7 @@ fn temporal(v: &View<'_>) -> Value {
 
 const DOCKER_DEFAULT_PORT: u64 = 22;
 
-fn docker(v: &View<'_>) -> Value {
+pub(crate) fn docker(v: &View<'_>) -> Value {
     let auth = match text(v.field("auth")) {
         a @ ("password" | "agent") => a,
         _ => "privateKey",
@@ -417,6 +417,23 @@ fn tool_error(tool: &str, e: ProfileError) -> ToolError {
     }
 }
 
+/// A Docker profile over SSH names its SSH host (DOC-23 §6.4).
+fn needs_host(
+    tool: &str,
+    fields: &Value,
+    host: Option<&super::table::StoredProfile>,
+) -> Result<(), ProfileError> {
+    let ssh =
+        matches!(fields.get("transport"), None | Some(Value::Null)) || fields["transport"] == "ssh";
+    if tool == "docker" && ssh && host.is_none() {
+        return Err(ProfileError::Invalid {
+            field: format!("fields.{}", super::ssh_hosts::HOST_FIELD),
+            message: "choose the SSH host this profile connects to".into(),
+        });
+    }
+    Ok(())
+}
+
 impl ProfileService {
     /// Every stored secret of a profile, opened.
     fn open_secrets(&self, id: &str) -> Result<BTreeMap<String, Secret>, ProfileError> {
@@ -448,10 +465,15 @@ impl ProfileService {
             ));
         }
         let secrets = self.open_secrets(id)?;
+        // A Docker profile connects with its SSH host's login (DOC-23 §6.4), checked again
+        // here in case the profile changed owner since it was saved.
+        let host = self.check_link(&profile.owner, &profile.fields, None)?;
+        needs_host(tool, &profile.fields, host.as_ref())?;
+        let (fields, secrets) = self.with_host(host, &profile.fields, secrets)?;
         let view = View {
             id: Some(&profile.id),
             name: &profile.name,
-            fields: &profile.fields,
+            fields: &fields,
             extras: &profile.extras,
             secrets: &secrets,
         };
@@ -486,6 +508,7 @@ impl ProfileService {
             check_secrets(spec, draft.secrets)?.into_iter().collect();
         let mut target = crate::authz::targets::browser(tool);
         let mut id = None;
+        let mut host = None;
         if let Some(based_on) = based_on {
             let (stored, access) = self.get(p, based_on)?;
             if stored.tool != tool {
@@ -495,6 +518,16 @@ impl ProfileService {
                 });
             }
             target = target_of(based_on);
+            // Someone who only uses the profile tests it with the host it names, never another.
+            if !access.may_edit()
+                && super::ssh_hosts::host_id_of(&draft.fields)
+                    != super::ssh_hosts::host_id_of(&stored.fields)
+            {
+                return Err(ProfileError::Forbidden(
+                    "you may not change this profile's SSH host".into(),
+                ));
+            }
+            host = Some(self.check_link(&stored.owner, &draft.fields, None)?);
             if access.may_edit() {
                 let unbound = spec.secrets_to_unbind(&stored.fields, &draft.fields);
                 for (field, value) in self.open_secrets(based_on)? {
@@ -505,6 +538,12 @@ impl ProfileService {
             }
             id = Some(stored.id);
         }
+        let host = match host {
+            Some(host) => host,
+            None => self.check_draft_link(p, &draft.fields)?,
+        };
+        needs_host(tool, &draft.fields, host.as_ref())?;
+        let (fields, secrets) = self.with_host(host, &draft.fields, secrets)?;
         let name = draft.name.unwrap_or_default();
         let name = if name.trim().is_empty() {
             "draft"
@@ -514,7 +553,7 @@ impl ProfileService {
         let view = View {
             id: id.as_deref(),
             name,
-            fields: &draft.fields,
+            fields: &fields,
             extras: &extras,
             secrets: &secrets,
         };
