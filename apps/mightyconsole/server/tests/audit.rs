@@ -231,6 +231,8 @@ fn the_sensitive_reads_are_the_ones_the_spec_names() {
             "nats.connect",
             "nats.obj.get",
             "nats.test",
+            // The route editor's Test opens the hops' stored secrets (TSK-117).
+            "routes.test",
             // The SSH host form's Test, as Test connection (TSK-144).
             "sshHosts.test",
             "temporal.connect",
