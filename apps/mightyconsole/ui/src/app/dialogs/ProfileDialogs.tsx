@@ -5,8 +5,10 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import { ServicesContext } from "@/app/client";
 import { useSheetGuard } from "@/app/leave-guard";
 import { SecretsProvider, useSecretsState, useShownSecrets, whenText, whoText } from "@/app/secret-control";
+import { audienceText } from "@/app/sharing";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,12 +64,16 @@ export interface ProfileSheetProps {
   name?: string;
   /** The signed-in person's id, so "Set by you" can be said. */
   self?: string;
+  /** Whether the person may share a new profile (`profiles.manage`); the option is not shown otherwise. */
+  canShare?: boolean;
+  /** How many people a shared profile of this tool reaches today, when known. */
+  audience?: number | null;
 }
 
 /** The result of "Test connection". */
 type TestState = { status: "idle" } | { status: "running" } | { status: "ok" } | { status: "failed"; error: DescribedError };
 
-export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "", self }: ProfileSheetProps) {
+export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "", self, canShare = false, audience = null }: ProfileSheetProps) {
   const services = useContext(ServicesContext);
   // "Test connection" runs the tool's connect on the draft and disconnects.
   const client = services?.client;
@@ -171,11 +177,19 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
   const failedKey = test.status === "failed" ? test.error.hostKey : undefined;
 
   const title = mode === "add" ? `Add ${tool.label} connection` : mode === "duplicate" ? `Duplicate ${base?.name ?? ""}` : `Edit ${base?.name ?? ""}`;
+  const sharedProfile = mode === "edit" && base?.owner?.kind === "shared";
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="md">
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
+          <SheetTitle>
+            {title}
+            {sharedProfile ? (
+              <Badge variant="neutral" className="ms-inline-sm align-middle">
+                shared
+              </Badge>
+            ) : null}
+          </SheetTitle>
           <SheetDescription>Profiles are kept on the server. Secrets are write-only: the server stores them encrypted and never shows them again; type a new value to replace one.</SheetDescription>
         </SheetHeader>
         <SheetBody>
@@ -248,11 +262,32 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
                 </ul>
               </Field>
             ) : null}
-            {mode === "add" ? (
-              <Field orientation="horizontal">
-                <Checkbox checked={shared} onCheckedChange={(v) => setShared(v === true)} disabled={readOnly} />
-                <FieldLabel>Shared: everyone who may use {tool.label} connects with it, without seeing its secrets (needs profiles.manage)</FieldLabel>
-              </Field>
+            {mode === "add" && canShare ? (
+              <fieldset className="flex flex-col gap-stack-sm" data-testid="who-can-use">
+                <legend className="text-body-1-strong">Who can use it</legend>
+                <RadioGroup aria-label="Who can use it" value={shared ? "shared" : "personal"} onValueChange={(v) => setShared(v === "shared")} disabled={readOnly}>
+                  <label className="flex items-start gap-inline-sm">
+                    <RadioGroupItem value="personal" />
+                    <span className="flex flex-col">
+                      <span className="text-body-1">Only me (personal)</span>
+                      <span className="text-caption-1 text-fg-muted">Nobody else sees it or connects with it. Administrators see its name and where it connects.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-inline-sm">
+                    <RadioGroupItem value="shared" />
+                    <span className="flex flex-col">
+                      <span className="text-body-1">Everyone whose role covers it (shared)</span>
+                      <span className="text-caption-1 text-fg-muted" data-testid="audience">
+                        {audienceText(audience, draft.name)}
+                      </span>
+                    </span>
+                  </label>
+                </RadioGroup>
+                <Alert intent="info">
+                  <AlertTitle>Personal or shared is chosen once</AlertTitle>
+                  <AlertDescription>A personal profile cannot be turned into a shared one later; an administrator can hand a personal one to another person.</AlertDescription>
+                </Alert>
+              </fieldset>
             ) : null}
             {test.status === "ok" ? (
               <Alert intent="success">

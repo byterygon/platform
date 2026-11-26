@@ -5,6 +5,7 @@
 // query's Rename and Delete, TSK-95) and the "No profile" state.
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ServicesContext } from "@/app/client";
+import { pane } from "@/app/sharing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -14,7 +15,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tree, type TreeNode, type TreeSelectDetails } from "@/components/ui/tree";
-import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Warning } from "@/lib/icons";
+import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Person, Warning } from "@/lib/icons";
 import type { RecordState } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { toolIcon } from "@/tools/registry";
@@ -156,7 +157,7 @@ export function ConnectionList(props: ConnectionListProps) {
   }, [tool, profiles, conns, services]);
   const nodes = useMemo<TreeNode[]>(
     () =>
-      (profiles ?? []).map((p) => {
+      pane(profiles ?? []).map((p) => {
         const conn = conns[p.id] ?? { status: "disconnected" as const, connId: null };
         const state = props.recordStates[p.id];
         const node: TreeNode = {
@@ -167,6 +168,19 @@ export function ConnectionList(props: ConnectionListProps) {
             // The stored profile's id (the Temporal codec endpoint's path names it).
             <span className="flex items-center gap-inline-sm" data-profile-id={p.id}>
               <span className="sr-only">{conn.status}</span>
+              {p.owner?.kind === "shared" ? (
+                <Badge appearance="tint" variant="neutral" size="sm" title="Shared: everyone whose role covers it connects with it">
+                  Shared
+                </Badge>
+              ) : p.access === "owner" || p.access === undefined ? (
+                <span title="Your personal profile" data-owner="personal">
+                  <Icon icon={Person} label="Personal" className="text-fg-muted" />
+                </span>
+              ) : (
+                <Badge appearance="tint" variant="neutral" size="sm" title="Another person's personal profile: you see its name and where it connects">
+                  Personal
+                </Badge>
+              )}
               {conn.status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
               {(tool.profileBadges?.(p) ?? []).map((badge) => (
                 <Badge key={badge.label} appearance="tint" variant={badge.tone} size="sm" {...(badge.hint ? { title: badge.hint } : {})}>
@@ -302,7 +316,7 @@ export function ConnectionList(props: ConnectionListProps) {
         <EmptyStateTitle render={<p />} className="text-body-1-strong">
           No {tool.label} connections yet
         </EmptyStateTitle>
-        <EmptyStateDescription className="text-caption-1">Profiles stay in this browser; the server keeps nothing. {tool.description}</EmptyStateDescription>
+        <EmptyStateDescription className="text-caption-1">Connections are kept on the server; your own are only yours. {tool.description}</EmptyStateDescription>
         <EmptyStateActions>
           {/* No key hint drawn by the button (DOC-21 §3.4): the binding is in its tooltip and the palette. */}
           <Tooltip>
