@@ -30,8 +30,9 @@ import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } 
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { AccessPage, AccessProvider, type AccessValue, DeniedTab } from "./access-ui";
-import { type Refusal, refusalBefore, toolOpen, toolPerm } from "./access";
+import { type Refusal, holdsAnywhere, refusalBefore, toolOpen, toolPerm } from "./access";
 import { AccountMenu, SessionsDialog } from "./account-menu";
+import { AdminDialog } from "./admin/AdminDialog";
 import { MyAccessDialog } from "./my-access";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
@@ -285,6 +286,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   // for a session that ended while the app is open (the shell stays under it with its work).
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [myAccessOpen, setMyAccessOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const session = useSession(client, state.server);
   const { expiry, later: laterExpiry } = useExpiry(session.me, session.now);
   const signInAgain = useSignInAgain(routerConfig.basePath, state.server === "signedOut", () => supervisor.current?.retryNow());
@@ -1048,6 +1050,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     }
     for (const t of tools) connections.push({ id: `add:${t.id}`, label: `Add ${t.label} connection`, onSelect: () => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.id } }) });
     if (signedIn) {
+      if (session.me && holdsAnywhere(session.me, "admin.users.read")) app.push({ id: "account:admin", label: "Users and roles", keywords: ["administration", "people", "roles", "groups"], onSelect: () => setAdminOpen(true) });
       app.push({ id: "account:sessions", label: "Sessions", keywords: ["account", "sign out"], onSelect: () => setSessionsOpen(true) });
       app.push({ id: "account:signout", label: "Sign out", keywords: ["account", "log out"], onSelect: () => void signOut(routerConfig.basePath) });
     }
@@ -1289,7 +1292,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             <TooltipContent>Keyboard shortcuts ({bindingOf("shortcuts")})</TooltipContent>
           </Tooltip>
           {session.me ? (
-            <AccountMenu me={session.me} idpName={idpName} startedMs={session.startedMs} settingsBinding={bindingOf("settings")} onSessions={() => setSessionsOpen(true)} onMyAccess={() => setMyAccessOpen(true)} onSettings={() => perform("settings")} onSignOut={() => void signOut(routerConfig.basePath)} />
+            <AccountMenu me={session.me} idpName={idpName} startedMs={session.startedMs} settingsBinding={bindingOf("settings")} onSessions={() => setSessionsOpen(true)} onMyAccess={() => setMyAccessOpen(true)} {...(holdsAnywhere(session.me, "admin.users.read") ? { onAdmin: () => setAdminOpen(true) } : {})} onSettings={() => perform("settings")} onSignOut={() => void signOut(routerConfig.basePath)} />
           ) : null}
         </header>
         <div className="relative flex min-h-0 flex-1">
@@ -1565,6 +1568,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       />
       <AboutDialog open={dialog.kind === "about"} onOpenChange={(open) => !open && closeDialog()} info={state.info} diagnostics={state.diagnostics} />
       <ShortcutsDialog open={dialog.kind === "shortcuts"} onOpenChange={(open) => !open && closeDialog()} />
+      {session.me && holdsAnywhere(session.me, "admin.users.read") ? <AdminDialog open={adminOpen} onOpenChange={setAdminOpen} client={client} selfId={session.me.user} /> : null}
       {session.me ? <MyAccessDialog open={myAccessOpen} onOpenChange={setMyAccessOpen} me={session.me} /> : null}
       {session.me ? <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} client={client} currentId={session.me.session} /> : null}
       <SessionEndedDialog open={state.server === "signedOut"} me={session.me} replacedBy={session.replacedBy} waiting={signInAgain.waiting} onSignInAgain={signInAgain.open} />

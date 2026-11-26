@@ -34,6 +34,8 @@ export interface FakeServer {
   signedOut: boolean;
   /** What `app.me` answers; change it to test roles, limits and who is signed in. */
   me: api.Me;
+  /** The people, roles and group mappings `admin.*` answers (TSK-140 batch 3). */
+  admin: { users: api.UserSummary[]; roles: api.RoleInfo[]; mappings: api.MappingRow[]; pinned: api.MappingRow[]; etag: number; deleted: string[] };
   /** The person's own sessions (`app.sessions.list`). */
   sessions: api.SessionRow[];
   /** How many ticks a ticks stream sends before it waits to be cancelled. */
@@ -339,6 +341,27 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     handles: new Map(),
     down: false,
     signedOut: false,
+    admin: {
+      users: [
+        { id: "human:account:01ADMIN", kind: "account", username: "uy.son", displayName: "Uy Son", email: "uy.son@corp.example", groups: [], localGroups: [], roles: [{ role: "admin", scope: null, via: "pinned" }], disabled: false, locked: false, totp: false, defaultAdmin: true, createdMs: 1_700_000_000_000, lastSeenMs: Date.now(), sessions: 1 },
+        { id: "human:oidc:bao", kind: "oidc", username: null, displayName: "Bao Tran", email: "bao.tran@corp.example", groups: ["platform-oncall"], localGroups: [], roles: [{ role: "operator", scope: ["profile:PNATS"], via: "group:idp:platform-oncall" }, { role: "operator", scope: ["profile:PBUILD"], via: "direct" }], disabled: false, locked: false, totp: false, defaultAdmin: false, createdMs: 1_700_000_000_000, lastSeenMs: Date.now() - 86_400_000 * 3, sessions: 1 },
+        { id: "human:oidc:lan", kind: "oidc", username: null, displayName: "Lan Pham", email: "lan.pham@corp.example", groups: ["eng"], localGroups: [], roles: [{ role: "member", scope: null, via: "default" }], disabled: false, locked: false, totp: false, defaultAdmin: false, createdMs: 1_700_000_000_000, lastSeenMs: Date.now() - 3600_000, sessions: 0 },
+      ],
+      roles: [
+        ...["member", "viewer", "operator", "admin"].map((id) => ({
+          id,
+          name: id,
+          description: `The ${id} role.`,
+          builtIn: true,
+          permissions: id === "member" ? ["app.read", "messaging.read", "profiles.personal"] : id === "viewer" ? ["app.read", "messaging.read", "profiles.personal", "nats.read", "docker.read"] : id === "operator" ? ["app.read", "messaging.read", "profiles.personal", "nats.read", "nats.write", "docker.read", "docker.write", "docker.exec", "term.write"] : everyPermission().map((g) => g.perm),
+        })),
+        { id: "release-manager", name: "Release manager", description: "Ships.", builtIn: false, permissions: ["app.read", "temporal.read", "temporal.write"] },
+      ],
+      mappings: [{ group: "idp:platform-oncall", role: "operator", scope: ["profile:PNATS"] }],
+      pinned: [{ group: "idp:platform-admins", role: "admin", scope: null }],
+      etag: 1,
+      deleted: [],
+    },
     me: {
       user: "human:account:01ADMIN",
       session: "ls_current",
@@ -694,6 +717,107 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
 
   const client = {
     profiles: profilesApi,
+    admin: {
+      users: {
+        list: async (input: api.UsersListInput) => {
+          record("admin.users.list", input);
+          reachable();
+          const text = (input.text ?? "").toLowerCase();
+          const users = server.admin.users.filter((u) => (!text || `${u.displayName} ${u.email ?? ""} ${u.username ?? ""} ${u.id}`.toLowerCase().includes(text)) && (!input.role || u.roles.some((r) => r.role === input.role)) && (input.disabled === null || input.disabled === undefined || u.disabled === input.disabled));
+          return { users, total: users.length };
+        },
+        get: async (input: api.UserIdInput) => {
+          record("admin.users.get", input);
+          return server.admin.users.find((u) => u.id === input.userId)!;
+        },
+        setRoles: async (input: api.SetRolesInput) => {
+          record("admin.users.setRoles", input);
+          const u = server.admin.users.find((x) => x.id === input.userId)!;
+          if (u.defaultAdmin && !input.assignments.some((a) => a.role === "admin")) throw new RpcError("FailedPrecondition", "this would remove the last administrator", { details: { kind: "Conflict", system: "admin", message: "this would remove the last administrator", retryable: false } });
+          u.roles = [...u.roles.filter((r) => r.via !== "direct"), ...input.assignments.map((a) => ({ role: a.role, scope: a.scope ?? null, via: "direct" }))];
+          return {};
+        },
+        disable: async (input: api.UserIdInput) => {
+          record("admin.users.disable", input);
+          const u = server.admin.users.find((x) => x.id === input.userId)!;
+          u.disabled = true;
+          u.sessions = 0;
+          return {};
+        },
+        enable: async (input: api.UserIdInput) => {
+          record("admin.users.enable", input);
+          server.admin.users.find((x) => x.id === input.userId)!.disabled = false;
+          return {};
+        },
+        unlock: async (input: api.UserIdInput) => {
+          record("admin.users.unlock", input);
+          server.admin.users.find((x) => x.id === input.userId)!.locked = false;
+          return {};
+        },
+        resetPassword: async (input: api.ResetPasswordInput) => {
+          record("admin.users.resetPassword", input);
+          return { userId: input.userId, url: "https://mc.test/auth/setup/abc123", expiresMs: Date.now() + 3_600_000 };
+        },
+        create: async (input: api.CreateUserInput) => {
+          record("admin.users.create", input);
+          const id = `human:account:${input.username}`;
+          server.admin.users.push({ id, kind: "account", username: input.username, displayName: input.displayName ?? input.username, email: null, groups: [], localGroups: [], roles: (input.roles ?? []).map((a) => ({ role: a.role, scope: a.scope ?? null, via: "direct" })), disabled: false, locked: false, totp: false, defaultAdmin: false, createdMs: Date.now(), lastSeenMs: null, sessions: 0 });
+          return { userId: id, url: "https://mc.test/auth/setup/new456", expiresMs: Date.now() + 3_600_000 };
+        },
+        delete: async (input: api.DeleteUserInput) => {
+          record("admin.users.delete", input);
+          server.admin.deleted.push(input.userId);
+          server.admin.users = server.admin.users.filter((u) => u.id !== input.userId);
+          return {};
+        },
+      },
+      roles: {
+        list: async () => {
+          record("admin.roles.list", {});
+          return { roles: server.admin.roles, catalogue: everyPermission().map((g) => ({ perm: g.perm, targetKind: "profile" })) };
+        },
+        create: async (input: api.RoleInput) => {
+          record("admin.roles.create", input);
+          const role = { id: input.id, name: input.name, description: input.description ?? "", builtIn: false, permissions: input.permissions };
+          server.admin.roles.push(role);
+          return role;
+        },
+        update: async (input: api.RoleInput) => {
+          record("admin.roles.update", input);
+          const role = server.admin.roles.find((r) => r.id === input.id)!;
+          role.permissions = input.permissions;
+          return role;
+        },
+        delete: async (input: api.RoleIdInput) => {
+          record("admin.roles.delete", input);
+          server.admin.roles = server.admin.roles.filter((r) => r.id !== input.roleId);
+          return {};
+        },
+      },
+      groups: {
+        list: async () => {
+          record("admin.groups.list", {});
+          return { etag: server.admin.etag, mappings: server.admin.mappings, pinned: server.admin.pinned, localGroups: [] };
+        },
+        set: async (input: api.GroupsSetInput) => {
+          record("admin.groups.set", input);
+          if (input.etag !== server.admin.etag) throw new RpcError("FailedPrecondition", "the mappings changed since they were read", { details: { kind: "Conflict", system: "admin", message: "stale", retryable: false } });
+          server.admin.mappings = input.mappings;
+          server.admin.etag += 1;
+          return { etag: server.admin.etag, mappings: server.admin.mappings, pinned: server.admin.pinned, localGroups: [] };
+        },
+      },
+      sessions: {
+        list: async () => {
+          record("admin.sessions.list", {});
+          return { sessions: [{ id: "ls_bao", user: "human:oidc:bao", method: "oidc", createdMs: Date.now() - 7200_000, lastActivityMs: Date.now() - 60_000, idleExpiresMs: 0, absoluteExpiresMs: 0, client: "10.0.4.30", current: false }] };
+        },
+        revoke: async (input: api.SessionIdInput) => {
+          record("admin.sessions.revoke", input);
+          return { revoked: 1 };
+        },
+      },
+    },
     secrets: secretsApi,
     sshHosts: sshHostsApi,
     app: {
