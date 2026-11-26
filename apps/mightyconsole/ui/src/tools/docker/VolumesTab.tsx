@@ -23,6 +23,7 @@ import { cn } from "@/lib/cn";
 import type { LinkEvent, TabProps } from "../types";
 import { formatBytes } from "./format";
 import { type InspectTarget, InspectSheet, RowActions, UsedBy, namesText, removeOutcome, useDockerList } from "./resources";
+import { useGateFor } from "@/app/access-ui";
 
 type VolumeFilter = "all" | "unused";
 
@@ -38,6 +39,7 @@ export function volumeRefusal(row: VolumeRow): string | null {
 }
 
 export function VolumesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, active }: TabProps) {
+  const removeGate = useGateFor("docker.volumes.remove", "Removing a volume", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const list = useDockerList({ client, connId, note, active, kind: "volume", load: (id) => client.docker.volumes.list({ connId: id }), count: (out) => out.volumes.length });
@@ -146,6 +148,7 @@ export function VolumesTab({ profile, connId, client, useTabActions, note, openT
                   </TableCell>
                   <TableCell align="end">
                     <RowActions
+                      denied={removeGate}
                       name={row.name}
                       refusal={volumeRefusal(row)}
                       onInspect={() => setInspect({ what: "volume", name: row.name, load: () => client.docker.volumes.inspect({ connId, name: row.name }) })}

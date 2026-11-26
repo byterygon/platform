@@ -19,6 +19,8 @@ import type { DescribedError, LinkEvent } from "../types";
 import { type DockerEvent, changesRows } from "./format";
 import { type EventsState, useDockerEvents } from "./live";
 import { setTreeCount } from "./tree-data";
+import { Gated } from "@/app/access-ui";
+import type { Refusal } from "@/app/access";
 
 const TREE_COUNT = { image: "images", volume: "volumes", network: "networks" } as const;
 
@@ -192,7 +194,7 @@ export function removeOutcome(what: string, done: readonly string[], failed: rea
 }
 
 /** A row's Inspect and Remove as icon buttons with tooltips; Remove is off with the reason in its tooltip (and its name). */
-export function RowActions({ name, onInspect, onRemove, refusal }: { name: string; onInspect(): void; onRemove(): void; refusal: string | null }) {
+export function RowActions({ name, onInspect, onRemove, refusal, denied = null }: { name: string; onInspect(): void; onRemove(): void; refusal: string | null; denied?: Refusal | null }) {
   return (
     <span className="flex items-center justify-end gap-inline-xs">
       <Tooltip>
@@ -201,12 +203,18 @@ export function RowActions({ name, onInspect, onRemove, refusal }: { name: strin
         </TooltipTrigger>
         <TooltipContent>Inspect</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger render={refusal === null ? <IconButton size="small" appearance="subtle" onClick={onRemove} aria-label={`Remove ${name}`} /> : <IconButton size="small" appearance="subtle" disabled focusableWhenDisabled aria-label={`Remove ${name}: ${refusal}`} />}>
-          <Icon icon={Delete} />
-        </TooltipTrigger>
-        <TooltipContent>{refusal ?? "Remove…"}</TooltipContent>
-      </Tooltip>
+      {denied ? (
+        <Gated refusal={denied}>
+          <IconButton size="small" appearance="subtle" aria-label={`Remove ${name}`} />
+        </Gated>
+      ) : (
+              <Tooltip>
+          <TooltipTrigger render={refusal === null ? <IconButton size="small" appearance="subtle" onClick={onRemove} aria-label={`Remove ${name}`} /> : <IconButton size="small" appearance="subtle" disabled focusableWhenDisabled aria-label={`Remove ${name}: ${refusal}`} />}>
+            <Icon icon={Delete} />
+          </TooltipTrigger>
+          <TooltipContent>{refusal ?? "Remove…"}</TooltipContent>
+        </Tooltip>
+      )}
     </span>
   );
 }

@@ -28,6 +28,7 @@ import type { DescribedError, LinkEvent, TabProps } from "../types";
 import { type ContainerFilter, type StateFacts, agoText, changesRows, countWords, formatCreated, formatPorts, groupByProject, imageLabel, matchesFilter, matchesSearch, stateLabel, stateTone } from "./format";
 import { useDockerEvents } from "./live";
 import { setTreeContainers } from "./tree-data";
+import { Gated, useGateFor } from "@/app/access-ui";
 
 /** How long after an event the list is loaded again (a project's restart sends a burst). */
 const RELOAD_DEBOUNCE_MS = 300;
@@ -83,6 +84,7 @@ export interface ContainersTabProps extends TabProps {
 }
 
 export function ContainersTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, project, active }: ContainersTabProps) {
+  const removeGate = useGateFor("docker.containers.remove", "Removing a container", profile);
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const [rows, setRows] = useState<ContainerRow[] | null>(null);
@@ -238,17 +240,19 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
             <Button appearance="secondary" disabled={busy !== null} loading={busy === "restart"} onClick={() => void act("restart", selection)}>
               <Icon icon={ArrowClockwise} /> Restart
             </Button>
-            <Button
-              appearance="secondary"
-              disabled={busy !== null}
-              onClick={() => {
-                setForce(false);
-                setRemoveVolumes(true);
-                setConfirm({ kind: "remove", rows: selection });
-              }}
-            >
-              <Icon icon={Delete} /> Remove…
-            </Button>
+            <Gated refusal={removeGate}>
+              <Button
+                appearance="secondary"
+                disabled={busy !== null}
+                onClick={() => {
+                  setForce(false);
+                  setRemoveVolumes(true);
+                  setConfirm({ kind: "remove", rows: selection });
+                }}
+              >
+                <Icon icon={Delete} /> Remove…
+              </Button>
+            </Gated>
           </>
         ) : null}
       </PageBar>

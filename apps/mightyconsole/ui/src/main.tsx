@@ -75,7 +75,7 @@ async function boot(): Promise<void> {
       <ServicesContext.Provider value={services}>
         <StoreProvider persisted={persisted} storage={storage}>
           <App history={history} routerConfig={routerConfig} />
-          {services.confirmations ? <ConfirmationHost gate={services.confirmations} client={services.client} /> : null}
+          {services.confirmations ? <ConfirmationHost gate={services.confirmations} client={services.client} onSignInAgain={() => void signOut(routerConfig.basePath)} /> : null}
         </StoreProvider>
       </ServicesContext.Provider>
     </StrictMode>,

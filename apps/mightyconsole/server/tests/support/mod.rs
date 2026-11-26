@@ -718,6 +718,10 @@ impl Tab {
             .extra_call("app.confirmations.get", json!({ "approvalId": approval }))
             .await;
         assert_eq!(challenge["action"], procedure);
+        if procedure == "profiles.delete" {
+            // The dialog says which profile: its name, as the person sees it (TSK-140).
+            assert_eq!(challenge["profileName"], input["name"], "{challenge}");
+        }
         let phrase = challenge["phrase"].as_str().unwrap().to_owned();
         self.extra_call(
             "app.confirmations.confirm",

@@ -349,7 +349,7 @@ export type Confirmation = {
  */
 action: string, tool: string, 
 /**
- * The profile's name; absent for a profile the browser keeps (until TSK-139).
+ * The profile's name; absent for a draft, and for a profile the caller cannot see.
  */
 profileName: string | null, context: string | null, namespace: string | null, 
 /**

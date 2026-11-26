@@ -33,6 +33,7 @@ import { formatAgo, formatDuration, formatSize, formatUs } from "./format";
 import { MAX_OBJECT_BYTES, downloadObject, fileNameOf, saveBlob, uploadObject, type UploadProgress } from "./objects-io";
 import { Fact } from "./parts";
 import { reloadStreams } from "./tree-data";
+import { Gated, deniedItem, useGateFor } from "@/app/access-ui";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -193,6 +194,7 @@ function UploadSheet({ open, onOpenChange, bucket, profile, connId, client, exis
 }
 
 function ObjectPane({ bucket, object, profile, connId, client, note, onDeleted }: { bucket: string; object: api.NatsObjectInfo; profile: ProfileRecord; connId: string; client: MightyClient; note(e: unknown): DescribedError; onDeleted(): void }) {
+  const deleteObjectGate = useGateFor("nats.obj.delete", "Deleting an object", profile);
   const notify = useContext(NoticeContext);
   const [deleting, setDeleting] = useState(false);
   const [received, setReceived] = useState<number | null>(null);
@@ -236,9 +238,11 @@ function ObjectPane({ bucket, object, profile, connId, client, note, onDeleted }
             <Icon icon={Dismiss} /> Cancel download
           </Button>
         )}
-        <Button size="small" appearance="subtle" onClick={() => setDeleting(true)} disabled={received !== null}>
-          <Icon icon={Delete} /> Delete…
-        </Button>
+        <Gated refusal={deleteObjectGate}>
+          <Button size="small" appearance="subtle" onClick={() => setDeleting(true)} disabled={received !== null}>
+            <Icon icon={Delete} /> Delete…
+          </Button>
+        </Gated>
       </div>
       {received !== null ? <Progress label="Downloading" value={object.size > 0 ? (received / object.size) * 100 : null} showValue /> : null}
       {downloadError ? <ErrorState error={downloadError} onRetry={() => void download()} /> : null}
@@ -317,6 +321,7 @@ function ObjectPane({ bucket, object, profile, connId, client, note, onDeleted }
 }
 
 export function ObjectTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+  const deleteBucketGate = useGateFor("nats.obj.buckets.delete", "Deleting a bucket", profile);
   const bucket = text(tab.params["bucket"]);
   const notify = useContext(NoticeContext);
   const [info, setInfo] = useState<api.NatsObjBucketInfo | null>(null);
@@ -394,6 +399,7 @@ export function ObjectTab({ tab, profile, connId, client, useTabActions, note, o
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
+                  {...deniedItem(deleteBucketGate)}
                   onClick={() => {
                     setTyped("");
                     setDeleting(true);

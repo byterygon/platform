@@ -546,7 +546,7 @@ pub struct Confirmation {
     /// The procedure, e.g. `nats.kv.delete`.
     pub action: String,
     pub tool: String,
-    /// The profile's name; absent for a profile the browser keeps (until TSK-139).
+    /// The profile's name; absent for a draft, and for a profile the caller cannot see.
     pub profile_name: Option<String>,
     pub context: Option<String>,
     pub namespace: Option<String>,
@@ -611,10 +611,21 @@ impl ConfirmationsApi {
             .confirmations
             .get(login, &input.approval_id)
             .map_err(confirm_error)?;
+        // The name of the stored profile the call acts on, as the caller sees it (a profile
+        // they cannot see has no name here; a draft or a browser profile has none).
+        let profile_name = view
+            .target
+            .as_ref()
+            .and_then(security_types::ProfileTarget::of)
+            .and_then(|t| {
+                let profiles = self.0.profiles.as_ref()?;
+                let (profile, _) = profiles.get(ctx.principal(), t.profile).ok()?;
+                Some(profile.name)
+            });
         Ok(Confirmation {
             action: view.action,
             tool: view.tool,
-            profile_name: None,
+            profile_name,
             context: view.context,
             namespace: view.namespace,
             resource_kind: view.subject.kind,

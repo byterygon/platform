@@ -45,6 +45,7 @@ import { useWorkflow, type HistoryOrder } from "./useWorkflow";
 import { LIMITS, PayloadView, largeOf, largeStubs, type PayloadContext } from "./LargePayload";
 import { formatBytes } from "./NamespacesTab";
 import type { MightyClient } from "@/app/client";
+import { deniedItem, useGateFor } from "@/app/access-ui";
 
 const STATUS_VARIANT = STATUS_TONE;
 const NO_EVENTS: readonly HistoryEvent[] = [];
@@ -104,6 +105,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const namespace = text(tab.params["namespace"]) || "default";
+  const resetGate = useGateFor("temporal.workflows.reset", "Resetting a workflow", profile, { namespace });
+  const terminateGate = useGateFor("temporal.workflows.terminate", "Terminating a workflow", profile, { namespace });
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
   // Newest first by default (Uy Son, 2026-11-20); the choice is a setting, kept in the workspace (TSK-109).
@@ -203,10 +206,10 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
                   <Icon icon={Add} /> Start another like this
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={detail === null || store.size === 0} onClick={() => setDialog("reset")}>
+                <DropdownMenuItem onClick={() => setDialog("reset")} {...(resetGate ? deniedItem(resetGate) : { disabled: detail === null || store.size === 0 })}>
                   <Icon icon={ArrowCounterclockwise} /> Reset…
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled={!running} onClick={() => setDialog("terminate")}>
+                <DropdownMenuItem onClick={() => setDialog("terminate")} {...(terminateGate ? deniedItem(terminateGate) : { disabled: !running })}>
                   <Icon icon={Stop} /> Terminate…
                 </DropdownMenuItem>
               </DropdownMenuContent>

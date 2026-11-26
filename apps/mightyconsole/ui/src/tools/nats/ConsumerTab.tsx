@@ -20,6 +20,7 @@ import { consumerKind } from "./StreamTab";
 import { formatAgo, formatDuration, formatUs } from "./format";
 import { Fact } from "./parts";
 import { reloadStreams } from "./tree-data";
+import { Gated, useGateFor } from "@/app/access-ui";
 
 /** How often the screen reads the consumer again (§6.3). */
 export const CONSUMER_REFRESH_MS = 2000;
@@ -95,6 +96,7 @@ function Big({ term, value }: { term: string; value: number }) {
 }
 
 export function ConsumerTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
+  const deleteGate = useGateFor("nats.js.consumers.delete", "Deleting a consumer", profile);
   const stream = text(tab.params["stream"]);
   const name = text(tab.params["consumer"]);
   const notify = useContext(NoticeContext);
@@ -171,9 +173,11 @@ export function ConsumerTab({ tab, profile, connId, client, active, useTabAction
             <Button appearance="subtle" onClick={() => setPaused((p) => !p)} disabled={gone}>
               <Icon icon={paused ? Play : Pause} /> {paused ? "Resume refresh" : "Pause refresh"}
             </Button>
-            <Button onClick={() => setDeleting(true)} disabled={!info || gone}>
-              <Icon icon={Delete} /> Delete…
-            </Button>
+            <Gated refusal={deleteGate}>
+              <Button onClick={() => setDeleting(true)} disabled={!info || gone}>
+                <Icon icon={Delete} /> Delete…
+              </Button>
+            </Gated>
           </>
         }
       />

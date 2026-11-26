@@ -24,6 +24,7 @@ import { Add, ArrowClockwise, Code, Delete, Folder } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { sizeText } from "./cut-value";
 import { JsonField, parseJson, preview, seenKeysSchema, useLoad } from "./shared";
+import { Gated, useGateFor } from "@/app/access-ui";
 
 /** "a.b" ↔ ["a", "b"]: the LangGraph store's own way of writing a namespace. */
 export const splitNamespace = (s: string) => s.split(".").map((p) => p.trim()).filter(Boolean);
@@ -66,6 +67,7 @@ export function namespaceTree(namespaces: readonly (readonly string[])[], counts
 const itemSize = (item: api.StoreItem) => new TextEncoder().encode(JSON.stringify(item.value) ?? "").length;
 
 export function StoreTab({ profile, connId, client, useTabActions, note }: TabProps) {
+  const deleteGate = useGateFor("langgraph.store.delete", "Deleting a store item", profile);
   const toast = useToast();
   const namespaces = useLoad(connId ? () => client.langgraph.store.namespaces({ connId, prefix: null, maxDepth: null }) : null, [connId], note);
   // One page of every item, for the tree's counts.
@@ -278,9 +280,11 @@ export function StoreTab({ profile, connId, client, useTabActions, note }: TabPr
                   <Button size="small" onClick={() => setPutting({ namespace: joinNamespace(selected.namespace), key: selected.key, value: JSON.stringify(selected.value, null, 2) })}>
                     <Icon icon={Code} /> Edit
                   </Button>
-                  <Button size="small" appearance="subtle" className="text-danger-fg" onClick={() => setDeleting(selected)}>
-                    <Icon icon={Delete} /> Delete…
-                  </Button>
+                  <Gated refusal={deleteGate}>
+                    <Button size="small" appearance="subtle" className="text-danger-fg" onClick={() => setDeleting(selected)}>
+                      <Icon icon={Delete} /> Delete…
+                    </Button>
+                  </Gated>
                 </div>
               </section>
             ) : (
