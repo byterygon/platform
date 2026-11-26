@@ -419,6 +419,47 @@ fn logout_ends_the_session_everywhere_and_goes_to_the_idp() {
     });
 }
 
+/// A script that asks for JSON (the UI's sign-out) gets the place to go as a 200 it can read, since
+/// `fetch` cannot read a redirect to another origin; the session still ends and the cookie goes.
+#[test]
+fn logout_tells_a_script_where_to_go() {
+    run(true, async |s: &SignInServer| {
+        let mut browser = s.browser();
+        assert_eq!(browser.sign_in("/").await.status, 200);
+        let mut tab = browser.connect().await;
+        let csrf = browser.csrf().unwrap();
+        let answer = browser
+            .request(
+                "POST",
+                "/auth/logout",
+                &[
+                    ("origin", ORIGIN),
+                    (CSRF_HEADER, &csrf),
+                    ("accept", "application/json"),
+                ],
+            )
+            .await;
+        assert_eq!(answer.status, 200, "{answer:?}");
+        assert!(answer.location().is_none());
+        let body: serde_json::Value = serde_json::from_str(&answer.body).unwrap();
+        let location = Url::parse(body["location"].as_str().unwrap()).unwrap();
+        assert_eq!(location.path(), "/dex/logout");
+        assert!(browser.cookie(DEFAULT_SESSION_COOKIE).is_none());
+        assert_eq!(tab.expect_goaway().await.code, Code::Unauthenticated);
+        // Without a session the script is sent home.
+        let again = browser
+            .request(
+                "POST",
+                "/auth/logout",
+                &[("origin", ORIGIN), ("accept", "application/json")],
+            )
+            .await;
+        assert_eq!(again.status, 200);
+        let body: serde_json::Value = serde_json::from_str(&again.body).unwrap();
+        assert_eq!(body["location"], "/");
+    });
+}
+
 /// Revoking a session, or all of a user's, ends its streams at once.
 #[test]
 fn a_revoked_session_ends_its_connections() {

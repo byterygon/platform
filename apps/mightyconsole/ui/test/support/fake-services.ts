@@ -16,6 +16,12 @@ export interface FakeServer {
   /** Live handles by connId. */
   handles: Map<string, { greeting: string }>;
   down: boolean;
+  /** The session ended (DOC-25 §3.2.4): every call and the events subscription answer `Unauthenticated`. */
+  signedOut: boolean;
+  /** What `app.me` answers; change it to test roles, limits and who is signed in. */
+  me: api.Me;
+  /** The person's own sessions (`app.sessions.list`). */
+  sessions: api.SessionRow[];
   /** How many ticks a ticks stream sends before it waits to be cancelled. */
   ticks: number;
   /** The next echo.connect waits for this promise (to test the connecting state). */
@@ -316,6 +322,28 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     calls: [],
     handles: new Map(),
     down: false,
+    signedOut: false,
+    me: {
+      user: "human:account:01ADMIN",
+      session: "ls_current",
+      method: "password",
+      account: true,
+      username: "uy.son",
+      displayName: "Uy Son",
+      totp: false,
+      mustChangePassword: false,
+      mustEnrolTotp: false,
+      idleExpiresMs: Date.now() + 60 * 60_000,
+      absoluteExpiresMs: Date.now() + 12 * 60 * 60_000,
+      email: "uy.son@corp.example",
+      tenant: "default",
+      roles: [{ role: "admin", scope: null, via: "pinned" }],
+      permissions: [],
+    },
+    sessions: [
+      { id: "ls_current", user: "human:account:01ADMIN", method: "password", createdMs: Date.now() - 3600_000, lastActivityMs: Date.now(), idleExpiresMs: 0, absoluteExpiresMs: 0, client: "10.0.4.21", current: true },
+      { id: "ls_other", user: "human:account:01ADMIN", method: "password", createdMs: Date.now() - 7200_000, lastActivityMs: Date.now() - 600_000, idleExpiresMs: 0, absoluteExpiresMs: 0, client: "10.0.7.3", current: false },
+    ],
     ticks: 3,
     connectGate: null,
     messageChunks: [],
@@ -361,6 +389,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
   const record = (procedure: string, input: unknown) => server.calls.push({ procedure, input });
   const reachable = () => {
     if (server.down) throw unavailable();
+    if (server.signedOut) throw new RpcError("Unauthenticated", "sign in again", { correlation_id: "corr-auth" });
   };
 
   const info = (): api.AppInfo => ({
@@ -659,6 +688,25 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
       events: () => {
         record("app.events", {});
         return events();
+      },
+      me: async () => {
+        record("app.me", {});
+        reachable();
+        return { ...server.me };
+      },
+      sessions: {
+        list: async () => {
+          record("app.sessions.list", {});
+          reachable();
+          return { sessions: server.sessions.map((row) => ({ ...row, current: row.id === server.me.session })) };
+        },
+        revoke: async (input: api.SessionIdInput) => {
+          record("app.sessions.revoke", input);
+          reachable();
+          const before = server.sessions.length;
+          server.sessions = server.sessions.filter((row) => row.id !== input.sessionId);
+          return { revoked: before - server.sessions.length };
+        },
       },
     },
     echo: {
@@ -1094,6 +1142,18 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     },
     restore() {
       server.down = false;
+    },
+    /** The session ends (idle, revoked, restart): the subscription fails with Unauthenticated. */
+    endSession() {
+      server.signedOut = true;
+      server.handles.clear();
+      subscriber?.fail(new RpcError("Unauthenticated", "the session ended", { correlation_id: "corr-ended" }));
+      subscriber = null;
+    },
+    /** Someone signed in again (the person, or `as` another one) at the other tab. */
+    signInAgain(as?: Partial<api.Me>) {
+      server.signedOut = false;
+      server.me = { ...server.me, ...as };
     },
   };
 }

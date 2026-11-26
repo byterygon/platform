@@ -35,7 +35,7 @@ export default {
         cargo("a_lab_user_signs_in_through_dex_and_out_again", { features: ["lab-tests"], label: "through the lab's Dex" }),
         cargo("each_lab_user_gets_their_own_groups_and_session", { features: ["lab-tests"], label: "groups from Dex" }),
         cargo("a_person_signs_in_uses_the_console_and_signs_out", { label: "the server against the test IdP" }),
-        command("in Chrome through Dex: the Lax login cookie, the Strict session after the meta refresh, sign-out", ["node", "apps/mightyconsole/acceptance/sign-in-walk.mts", "{server}", "{evidence}"], { requires: ["node"] }),
+        command("in Chrome through Dex: the sign-in page waits for a click, the Lax login cookie, the Strict session after the meta refresh, the account menu and status bar, a session ended from elsewhere shows the dialog over the shell, sign-out from the menu (screenshots)", ["node", "apps/mightyconsole/acceptance/sign-in-walk.mts", "{server}", "{evidence}"], { requires: ["node"] }),
         conformance("PKCE, next, cookie attributes", "a_valid_sign_in_lands_on_next_with_a_strict_session"),
       ],
     },
