@@ -20,6 +20,10 @@
 //     logged;
 //   - jq on a message's value (TSK-113): a snippet's group by on a 2,000-order message, a program
 //     that never ends stopped at the time limit, and the Profile;
+//   - the network map (DOC-23 §10, TSK-145): proxies and a target added in Settings → Network map,
+//     links dragged with the mouse (and the refusal of one into the server, with its reason), Test
+//     route through them (the first hop fails: nothing listens), Save as route, and after a reload
+//     the server still has the links and refuses to remove one a route uses;
 //   - Monaco (TSK-93: every query, JSON and jq input) is in chunks of its own that the page loads
 //     on demand, and the report gives their size and the time to the first keystroke in the
 //     Messages tab's jq editor (median of three cold loads), as packages/ui's check does for
@@ -522,6 +526,77 @@ async function main(): Promise<number> {
     await until(page, selected("Messages · smoke"), "the Messages tab again");
     await sleep(600);
 
+
+    // 3e. The network map (DOC-23 §10, TSK-145) against the real server: two proxies and a target
+    // added in the map, three links dragged with the mouse (and a refusal that says why), Test route
+    // through them (nothing listens, so the first hop fails and the server's error is shown), Save as
+    // route, and after a reload the links are still there (the server keeps them) and a link a route
+    // uses cannot be removed.
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1500, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await page.navigate(`${origin}/`);
+    const mapStatus = () => page.evaluate<string>(`document.querySelector("[data-testid=network-map] [role=status]")?.textContent ?? ""`);
+    const openMap = async () => {
+      await until(page, `__mc.button("Settings")`, "the Settings button");
+      await run(page, `__mc.click(__mc.button("Settings"))`);
+      await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.trim() === "Network map")`, "Settings → Network map");
+      await run(page, `__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Network map"))`);
+      await until(page, `document.querySelector("[data-testid=network-map]")`, "the network map");
+    };
+    const typeIn = (placeholder: string, value: string) => run(page, `__mc.type([...document.querySelectorAll("[role=dialog]")].at(-1).querySelector('input[placeholder="${placeholder}"]'), ${JSON.stringify(value)})`);
+    const pressIn = (text: string) => run(page, `__mc.click([...document.querySelectorAll("[role=dialog] button")].find((b) => b.textContent.trim() === ${JSON.stringify(text)}))`);
+    const centre = (selector: string) => page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    const mouse = (type: string, x: number, y: number) => page.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+    const drag = async (from: string, to: string) => {
+      const a = await centre(`[data-n="${from}"] [data-hd]`);
+      const b = await centre(`[data-n="${to}"] rect`);
+      await mouse("mouseMoved", a.x, a.y);
+      await mouse("mousePressed", a.x, a.y);
+      for (let i = 1; i <= 6; i++) await mouse("mouseMoved", a.x + ((b.x - a.x) * i) / 6, a.y + ((b.y - a.y) * i) / 6);
+      await mouse("mouseReleased", b.x, b.y);
+      await sleep(500);
+    };
+    const nodeId = (name: string) => page.evaluate<string>(`document.querySelector('[data-n][aria-label^="${name},"]')?.getAttribute("data-n") ?? ""`);
+    await openMap();
+    for (const [name, host] of [["corp-a", "127.0.0.1"], ["corp-b", "127.0.0.2"]] as const) {
+      await run(page, `__mc.click([...document.querySelectorAll("[data-testid=network-map] button")].find((b) => b.textContent.trim() === "Proxy"))`);
+      await until(page, `document.querySelector("[role=dialog] fieldset")`, `the new proxy form (${name})`);
+      await typeIn("proxy-corp", name);
+      await typeIn("proxy.corp", host);
+      await typeIn("1080", "9");
+      await pressIn("Save proxy");
+      await until(page, `document.querySelector('[data-n][aria-label^="${name},"]')`, `${name} is a node`);
+    }
+    await run(page, `__mc.click([...document.querySelectorAll("[data-testid=network-map] button")].find((b) => b.textContent.trim() === "Target"))`);
+    await until(page, `document.querySelector('[role=dialog] input[placeholder="service.internal:443"]')`, "the new target form");
+    await typeIn("staging-nats", "svc");
+    await typeIn("service.internal:443", "127.0.0.1:9");
+    await pressIn("Add target");
+    await until(page, `document.querySelector('[data-n][aria-label^="svc,"]')`, "svc is a node");
+    const [fromServer, nodeA, nodeB, nodeSvc] = [await nodeId("This server"), await nodeId("corp-a"), await nodeId("corp-b"), await nodeId("svc")];
+    await drag(fromServer, nodeA);
+    check((await mapStatus()).includes("Linked This server to corp-a"), `a link dragged from the server to corp-a: "${await mapStatus()}"`);
+    await drag(nodeA, nodeB);
+    check((await mapStatus()).includes("Linked corp-a to corp-b"), `a link dragged from corp-a to corp-b: "${await mapStatus()}"`);
+    await drag(nodeB, nodeSvc);
+    check((await mapStatus()).includes("Linked corp-b to svc"), `a link dragged from corp-b to the target: "${await mapStatus()}"`);
+    await drag(nodeB, fromServer);
+    check((await mapStatus()).includes("Nothing connects into this server"), `a link into the server is refused with its reason: "${await mapStatus()}"`);
+    await run(page, `(() => { const g = document.querySelector('[data-n="${nodeSvc}"]'); g.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 })); g.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 })); return true; })()`);
+    await until(page, `document.querySelector("[data-testid=map-node-panel]")`, "the target's panel");
+    await run(page, `__mc.click([...document.querySelectorAll("[data-testid=map-node-panel] button")].find((x) => x.textContent.trim() === "Test route"))`);
+    await until(page, `/stopped at|reached the end/.test(document.querySelector("[data-testid=network-map] [role=status]").textContent)`, "Test route answers", 30_000);
+    check((await mapStatus()).includes("stopped at This server → corp-a"), `Test route stops at the first hop: "${await mapStatus()}"`);
+    await run(page, `__mc.click([...document.querySelectorAll("[data-testid=map-node-panel] button")].find((x) => x.textContent.trim() === "Save as route"))`);
+    await until(page, `/Saved as the route/.test(document.querySelector("[data-testid=network-map] [role=status]").textContent)`, "Save as route answers");
+    await page.navigate(`${origin}/`);
+    await openMap();
+    await sleep(600);
+    const mapText = await page.evaluate<string>(`document.querySelector("[data-testid=network-map]").textContent`);
+    check(/4 nodes · 3 links/.test(mapText), `after a reload the server still has the links: ${mapText.slice(0, 100)}`);
+    await run(page, `(() => { const g = document.querySelector('[data-e][aria-label^="Link corp-a to corp-b"]'); g.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 })); return true; })()`);
+    await until(page, `document.querySelector("[data-testid=map-link-panel]")`, "the link's panel");
+    check(await page.evaluate<boolean>(`[...document.querySelectorAll("[data-testid=map-link-panel] button")].find((x) => x.textContent.trim() === "Remove link")?.disabled ?? false`), "a link a route uses cannot be removed");
+    await page.send("Emulation.clearDeviceMetricsOverride", {});
 
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);

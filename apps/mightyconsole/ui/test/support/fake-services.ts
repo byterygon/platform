@@ -115,6 +115,8 @@ export interface FakeServer {
   /** Routes and proxies (TSK-117): the views the server answers. */
   routes: api.RouteView[];
   proxies: api.ProxyView[];
+  /** The links of the network map (TSK-145): the views the server answers. */
+  links: api.LinkView[];
   /** What the next `routes.test` answers; every hop and the target pass when `null`. */
   routeTest: api.RouteTestOutput | null;
   /** The Docker host's containers (TSK-81 batch 2b). */
@@ -465,6 +467,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     sshHosts: new Map(),
     routes: [],
     proxies: [],
+    links: [],
     routeTest: null,
     dockerContainers: fakeContainers(),
     dockerLogs: new Map(),
@@ -814,6 +817,79 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
       throw new Error("routes.import is not faked");
     },
   };
+  // ---- Links of the network map (TSK-145): the rules of the server in short.
+  const linkError = (kind: "InvalidArgument" | "FailedPrecondition" | "NotFound", message: string) => new RpcError(kind, message, { details: { kind: kind === "NotFound" ? "NotFound" : "Invalid", system: "routes", message, retryable: false, ...(kind === "NotFound" ? { resource: "link" } : { field: "to" }) } });
+  const nodeKey = (n: api.Node) => ("id" in n ? `${n.kind}:${n.id}` : n.kind);
+  const linkFits = (from: api.Node, method: api.Method) => (from.kind === "server" ? method === "tcp" || method === "command" : from.kind === "proxy" ? method === "connect" : from.kind === "sshHost" ? method === "ssh" || method === "sshCommand" : false);
+  const linkView = (input: api.LinkCreateInput, id: string): api.LinkView => {
+    const s = input.spec;
+    const command = s.method === "command" || s.method === "sshCommand";
+    return {
+      id,
+      from: input.from,
+      to: input.to,
+      method: s.method,
+      ...(s.method === "command" ? { program: s.program ?? "" } : {}),
+      args: s.method === "command" ? s.args : [],
+      env: s.method === "command" ? s.env.map((v) => ({ name: v.name, secret: v.secret, set: v.secret ? (v.value ?? "") !== "" : true, ...(v.secret ? {} : { value: v.value ?? "" }) })) : [],
+      ...(s.method === "sshCommand" ? { command: s.command ?? "" } : {}),
+      needsConfirmation: command,
+      owner: input.owner,
+      etag: "1",
+      createdAt: String(server.links.length + 1).padStart(4, "0"),
+      updatedAt: "",
+      createdBy: "human:account:test",
+      updatedBy: "human:account:test",
+      access: "owner",
+      usedBy: [],
+      usedByHidden: 0,
+    };
+  };
+  const linksApi = {
+    list: async () => {
+      record("links.list", {});
+      return { links: server.links };
+    },
+    get: async (input: { id: string }) => {
+      const l = server.links.find((x) => x.id === input.id);
+      if (!l) throw linkError("NotFound", "no such link");
+      return l;
+    },
+    create: async (input: api.LinkCreateInput) => {
+      record("links.create", input);
+      if (input.to.kind === "server") throw linkError("InvalidArgument", "nothing connects into this server");
+      if (!linkFits(input.from, input.spec.method)) throw linkError("InvalidArgument", "the method does not fit the source");
+      if (server.links.some((l) => nodeKey(l.from) === nodeKey(input.from) && nodeKey(l.to) === nodeKey(input.to))) throw linkError("FailedPrecondition", "already reaches");
+      const view = linkView(input, ulid());
+      server.links.push(view);
+      return view;
+    },
+    update: async (input: api.LinkUpdateInput) => {
+      record("links.update", input);
+      const i = server.links.findIndex((x) => x.id === input.id);
+      const current = server.links[i];
+      if (!current) throw linkError("NotFound", "no such link");
+      const next = linkView({ owner: current.owner, from: current.from, to: current.to, spec: input.spec }, current.id);
+      const same = current.method === next.method && current.program === next.program && current.command === next.command && JSON.stringify(current.args) === JSON.stringify(next.args);
+      server.links[i] = { ...next, createdAt: current.createdAt, etag: String(Number(current.etag) + 1), ...(same && current.confirmed ? { confirmed: current.confirmed } : {}) };
+      return server.links[i]!;
+    },
+    delete: async (input: { id: string }) => {
+      record("links.delete", input);
+      const l = server.links.find((x) => x.id === input.id);
+      if (l && l.usedBy.length > 0) throw linkError("FailedPrecondition", `this link is in use: ${l.usedBy.map((u) => u.name).join(", ")}`);
+      server.links = server.links.filter((x) => x.id !== input.id);
+      return {};
+    },
+    confirm: async (input: { id: string }) => {
+      record("links.confirm", input);
+      const i = server.links.findIndex((x) => x.id === input.id);
+      const current = server.links[i];
+      if (!current) throw linkError("NotFound", "no such link");
+      server.links[i] = { ...current, confirmed: { by: "human:account:test", at: "2026-11-27T00:00:00Z" } };
+      return server.links[i]!;
+    },
+  };
   const proxiesApi = {
     list: async () => {
       record("proxies.list", {});
@@ -1046,6 +1122,7 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     sshHosts: sshHostsApi,
     routes: routesApi,
     proxies: proxiesApi,
+    links: linksApi,
     app: {
       info: async () => {
         record("app.info", {});

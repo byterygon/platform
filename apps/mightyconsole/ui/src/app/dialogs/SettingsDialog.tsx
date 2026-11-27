@@ -1,5 +1,5 @@
 // Settings (Mightyconsole spec §3.6): Appearance, Live views, Profiles, Routes (DOC-23 §10, TSK-117),
-// SSH hosts (DOC-23 §10, TSK-144) and Advanced, one setting
+// Network map (DOC-23 §10, TSK-145), SSH hosts (DOC-23 §10, TSK-144) and Advanced, one setting
 // per row as in DBee's Settings (TSK-64). "Forget everything in this browser" deletes the IndexedDB
 // database after the user types FORGET.
 import { type ReactNode, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ArrowExport, ArrowImport, Delete, Filter, Flash, type IconDefinition, List, Server, Star, TextT, Window } from "@/lib/icons";
 import { PRESETS, PRESET_LABELS, type Preset } from "../presets";
 import type { MightyClient } from "../client";
+import { NetworkMap } from "../map/NetworkMap";
 import { RoutesSection } from "../routes/RoutesSection";
 import { HostsSection } from "../ssh-hosts/HostsSection";
 import type { Settings } from "../store";
@@ -33,6 +34,8 @@ export interface SettingsDialogProps {
   onForgetEverything: () => Promise<void>;
   /** The server, for Settings → SSH hosts. */
   client?: MightyClient;
+  /** The profiles, for the network map's targets and the routes they name. */
+  profiles?: readonly { id: string; tool: string; name: string; fields: Record<string, unknown> }[];
   /** Opens a profile that uses an SSH host. */
   onOpenProfile?: (profileId: string, tool: string) => void;
 }
@@ -55,6 +58,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [used, setUsed] = useState<number | null>(null);
   const [confirm, setConfirm] = useState("");
   const [forgetting, setForgetting] = useState(false);
+  // The map needs the room: its tab lets the dialog grow to the window.
+  const [tab, setTab] = useState("appearance");
   useEffect(() => {
     if (!open) return;
     setConfirm("");
@@ -63,18 +68,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="xl">
-      <DialogContent>
+      <DialogContent className={tab === "networkMap" ? "max-w-none" : ""}>
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Changes apply at once and are kept in this browser.</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <Tabs defaultValue="appearance" orientation="vertical" className="min-h-panel-xs">
+          <Tabs value={tab} onValueChange={(v) => setTab(String(v))} orientation="vertical" className="min-h-panel-xs">
             <TabsList aria-label="Settings sections">
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="live">Live views</TabsTrigger>
               <TabsTrigger value="profiles">Profiles</TabsTrigger>
               {props.client ? <TabsTrigger value="routes">Routes</TabsTrigger> : null}
+              {props.client ? <TabsTrigger value="networkMap">Network map</TabsTrigger> : null}
               {props.client ? <TabsTrigger value="sshHosts">SSH hosts</TabsTrigger> : null}
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
@@ -135,6 +141,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
             {props.client ? (
               <TabsContent value="routes" className="flex min-w-0 flex-col gap-stack-sm">
                 <RoutesSection client={props.client} {...(props.onOpenProfile ? { onOpenProfile: props.onOpenProfile } : {})} />
+              </TabsContent>
+            ) : null}
+            {props.client ? (
+              <TabsContent value="networkMap" className="flex min-w-0 flex-col gap-stack-sm">
+                <NetworkMap client={props.client} profiles={props.profiles ?? []} {...(props.onOpenProfile ? { onOpenProfile: props.onOpenProfile } : {})} />
               </TabsContent>
             ) : null}
             {props.client ? (
