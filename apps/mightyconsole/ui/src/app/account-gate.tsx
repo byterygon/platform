@@ -105,16 +105,16 @@ function ChangePassword({ api, done }: { api: GateApi; done(): void }) {
       <form onSubmit={submit} noValidate className="flex flex-col gap-stack-md" aria-label="Choose a new password">
         <Field>
           <FieldLabel>Current password</FieldLabel>
-          <PasswordInput name="current" autoComplete="current-password" required autoFocus value={current} onValueChange={setCurrent} />
+          <PasswordInput size="large" name="current" autoComplete="current-password" required autoFocus value={current} onValueChange={setCurrent} />
         </Field>
         <Field>
           <FieldLabel>New password</FieldLabel>
-          <PasswordInput name="new" autoComplete="new-password" required value={next} onValueChange={setNext} />
+          <PasswordInput size="large" name="new" autoComplete="new-password" required value={next} onValueChange={setNext} />
           <FieldDescription>At least 12 characters, not your user name, not a common password.</FieldDescription>
         </Field>
         <Field>
           <FieldLabel>New password again</FieldLabel>
-          <PasswordInput name="again" autoComplete="new-password" required value={again} onValueChange={setAgain} />
+          <PasswordInput size="large" name="again" autoComplete="new-password" required value={again} onValueChange={setAgain} />
         </Field>
         <Button type="submit" appearance="primary" size="large" loading={busy}>
           Change password
@@ -191,7 +191,7 @@ function EnrolTotp({ api, done }: { api: GateApi; done(): void }) {
           <form onSubmit={confirm} noValidate className="flex flex-col gap-stack-md" aria-label="Confirm the code">
             <Field>
               <FieldLabel>Code from the app</FieldLabel>
-              <Input name="code" autoComplete="one-time-code" inputMode="numeric" required autoFocus value={code} onValueChange={setCode} />
+              <Input size="large" name="code" autoComplete="one-time-code" inputMode="numeric" required autoFocus value={code} onValueChange={setCode} />
             </Field>
             <Button type="submit" appearance="primary" size="large" loading={busy}>
               Turn on

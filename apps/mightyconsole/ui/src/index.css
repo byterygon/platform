@@ -35,3 +35,125 @@ body {
 .mc-root {
   background: var(--by-gradient-backdrop);
 }
+
+/*
+ * The pages before the app (sign-in, password change, two-step setup; TSK-162). The backdrop
+ * moves: the theme's two glows drift slowly over a dot grid that fades out at the edges. The card
+ * is acrylic (Fluent 2's translucent layer with the acrylic blur), rises in, shows its rows one
+ * after another, and glows in the accent while one of its fields has focus. Token roles only;
+ * with reduced motion nothing moves.
+ */
+.mc-auth {
+  position: relative;
+  isolation: isolate;
+}
+
+.mc-auth::before,
+.mc-auth::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  width: 48vmax;
+  height: 48vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(var(--by-blur-acrylic));
+}
+
+.mc-auth::before {
+  top: -14vmax;
+  left: -12vmax;
+  background: radial-gradient(circle, var(--by-color-backdrop-glow-1) 0%, transparent 65%);
+  animation: mc-auth-drift-a 28s var(--by-motion-easing-standard) infinite alternate;
+}
+
+.mc-auth::after {
+  right: -14vmax;
+  bottom: -16vmax;
+  background: radial-gradient(circle, var(--by-color-backdrop-glow-2) 0%, transparent 65%);
+  animation: mc-auth-drift-b 34s var(--by-motion-easing-standard) infinite alternate;
+}
+
+.mc-auth-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--by-color-border-default) 1px, transparent 1.5px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 100%);
+  opacity: 0.6;
+}
+
+.mc-auth-card {
+  background: color-mix(in srgb, var(--by-color-bg-layer) 80%, transparent);
+  backdrop-filter: blur(var(--by-blur-acrylic)) saturate(140%);
+  transition: box-shadow var(--by-motion-duration-slower) var(--by-motion-easing-standard);
+  animation: mc-auth-rise var(--by-motion-duration-ultra-slow) var(--by-motion-easing-emphasized) both;
+}
+
+.mc-auth-card:focus-within {
+  box-shadow:
+    var(--by-shadow-4),
+    0 0 0 1px color-mix(in srgb, var(--by-color-accent-compound) 35%, transparent),
+    0 0 64px -12px color-mix(in srgb, var(--by-color-accent-compound) 55%, transparent);
+}
+
+.mc-auth-card > * {
+  animation: mc-auth-fade var(--by-motion-duration-ultra-slow) var(--by-motion-easing-emphasized) both;
+}
+
+.mc-auth-card > :nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.mc-auth-card > :nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.mc-auth-card > :nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.mc-auth-card > :nth-child(n + 5) {
+  animation-delay: 240ms;
+}
+
+.mc-auth-mark {
+  box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--by-color-accent-bg) 70%, transparent);
+}
+
+@keyframes mc-auth-drift-a {
+  to {
+    transform: translate(18vmax, 10vmax) scale(1.15);
+  }
+}
+
+@keyframes mc-auth-drift-b {
+  to {
+    transform: translate(-16vmax, -12vmax) scale(1.1);
+  }
+}
+
+@keyframes mc-auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+@keyframes mc-auth-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-auth::before,
+  .mc-auth::after,
+  .mc-auth-card,
+  .mc-auth-card > * {
+    animation: none;
+  }
+}

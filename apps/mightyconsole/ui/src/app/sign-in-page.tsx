@@ -261,9 +261,9 @@ function AccountForm({ step, state, post, go, onMessage, onStep }: FormProps) {
         <Field key={spec.name}>
           <FieldLabel>{spec.label}</FieldLabel>
           {spec.password ? (
-            <PasswordInput name={spec.name} autoComplete={spec.autoComplete} required value={values[spec.name] ?? ""} onValueChange={(value) => setValues((previous) => ({ ...previous, [spec.name]: value }))} {...(i === 0 ? { ref: first } : {})} />
+            <PasswordInput size="large" name={spec.name} autoComplete={spec.autoComplete} required value={values[spec.name] ?? ""} onValueChange={(value) => setValues((previous) => ({ ...previous, [spec.name]: value }))} {...(i === 0 ? { ref: first } : {})} />
           ) : (
-            <Input name={spec.name} autoComplete={spec.autoComplete} required={!spec.optional} spellCheck={false} value={values[spec.name] ?? ""} onValueChange={(value) => setValues((previous) => ({ ...previous, [spec.name]: value }))} {...(i === 0 ? { ref: first } : {})} />
+            <Input size="large" name={spec.name} autoComplete={spec.autoComplete} required={!spec.optional} spellCheck={false} value={values[spec.name] ?? ""} onValueChange={(value) => setValues((previous) => ({ ...previous, [spec.name]: value }))} {...(i === 0 ? { ref: first } : {})} />
           )}
           {spec.description ? <FieldDescription>{spec.description}</FieldDescription> : null}
         </Field>
