@@ -1,5 +1,9 @@
-## Docker over SSH (TSK-81)
+## Docker (TSK-81, TSK-116, TSK-144)
 
+- Reach a Docker host over a local socket (Unix socket, Windows named pipe) or TCP with or without
+  TLS, or through SSH. SSH logins are saved once in **Settings > SSH hosts** and named by the
+  profiles that use them; profiles of the earlier SSH form moved to hosts by themselves. A profile
+  can also connect through a route (Settings > Routes).
 - Reach a Docker host through SSH, with no agent installed on it: Mightyconsole opens an SSH
   session and forwards Docker's Unix socket (`/var/run/docker.sock` by default) over it. Log in with
   a private key in the profile (with its passphrase) or your ssh-agent (Linux and macOS). Nothing
