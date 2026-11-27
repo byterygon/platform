@@ -343,7 +343,7 @@ describe("adding nodes", () => {
 });
 
 describe("Settings → Network map", () => {
-  test("is a tab of Settings, and only that tab lets the dialog grow to the window", async () => {
+  test("is a tab of Settings, and the dialog keeps one size from tab to tab", async () => {
     const { fake } = await setup();
     render(
       <ServicesContext.Provider value={fake.services}>
@@ -366,12 +366,13 @@ describe("Settings → Network map", () => {
     );
     await settle();
     const popup = () => document.querySelector<HTMLElement>("[data-slot='dialog-popup']") ?? document.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(popup().className).not.toContain("max-w-none");
+    const size = () => ["h-full", "max-w-none"].map((c) => popup().className.includes(c));
+    expect(size()).toEqual([true, true]);
     await click(byRole("tab", "Network map"));
     await waitFor(() => document.querySelector("[data-testid='network-map']") !== null, "the map");
-    expect(popup().className).toContain("max-w-none");
+    expect(size()).toEqual([true, true]);
     expect(document.body.textContent).toContain("5 nodes · 4 links");
     await click(byRole("tab", "Routes"));
-    expect(popup().className).not.toContain("max-w-none");
+    expect(size()).toEqual([true, true]);
   });
 });

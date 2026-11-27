@@ -58,7 +58,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [used, setUsed] = useState<number | null>(null);
   const [confirm, setConfirm] = useState("");
   const [forgetting, setForgetting] = useState(false);
-  // The map needs the room: its tab lets the dialog grow to the window.
   const [tab, setTab] = useState("appearance");
   useEffect(() => {
     if (!open) return;
@@ -68,7 +67,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="xl">
-      <DialogContent className={tab === "networkMap" ? "max-w-none" : ""}>
+      {/* One size for every section, so the dialog does not grow and shrink as a person moves between them: the room the network map needs, the window's size at most, and each section scrolls inside. */}
+      <DialogContent className="h-full max-w-none">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Changes apply at once and are kept in this browser.</DialogDescription>
