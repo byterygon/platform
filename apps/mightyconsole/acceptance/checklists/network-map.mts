@@ -3,7 +3,8 @@
 // links between them; a link is dragged from a node's dot, a command link is read and confirmed, a
 // path is tested link by link and saved as a route. The server's checks: tests/routes.rs (links.*
 // over the wire). The UI's: test/network-map-model.test.ts (path, loops, way in, hops) and
-// test/network-map.test.tsx (jsdom). Run `pnpm --filter @byterygon/mightyconsole acceptance
+// test/network-map.test.tsx (jsdom); scripts/browser-check.ts walks it in Chrome against the real
+// server (links dragged, Test route, Save as route, a reload). Run `pnpm --filter @byterygon/mightyconsole acceptance
 // network-map --strict`.
 import { type Checklist, cargo, vitest } from "../checklist.mts";
 
@@ -24,7 +25,7 @@ export default {
       id: "draw",
       text: "(DOC-23 §10) Settings → Network map draws every node and link from the server's rows (inline SVG, no graph library), a profile's target from its route, and a node with two ways in has the one chosen, which lights the route to it.",
       lab: false,
-      checks: [vitest("test/network-map.test.tsx", "the map"), vitest("test/network-map-model.test.ts", "the graph"), vitest("test/network-map-model.test.ts", "ways in and paths")],
+      checks: [vitest("test/network-map.test.tsx", "the map"), vitest("test/network-map.test.tsx", "Settings → Network map"), vitest("test/network-map-model.test.ts", "the graph"), vitest("test/network-map-model.test.ts", "ways in and paths")],
     },
     {
       id: "link-two-nodes",

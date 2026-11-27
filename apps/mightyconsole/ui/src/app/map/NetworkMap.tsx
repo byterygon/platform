@@ -544,7 +544,7 @@ export function NetworkMap({ client, profiles, onOpenProfile }: NetworkMapProps)
   const onlyServer = graph.nodes.length === 1;
 
   return (
-    <div className="flex min-w-0 flex-col gap-stack-sm" data-testid="network-map">
+    <div className="@container flex min-w-0 flex-col gap-stack-sm" data-testid="network-map">
       <div className="flex flex-wrap items-center gap-inline-sm">
         <div className="min-w-0 flex-1 basis-panel-xs">
           <h3 className="text-subtitle-2">Network map</h3>
@@ -584,7 +584,7 @@ export function NetworkMap({ client, profiles, onOpenProfile }: NetworkMapProps)
         )}
       </div>
       {error ? <ErrorState error={error} /> : null}
-      <div className="flex min-w-0 flex-col gap-inline-md lg:flex-row">
+      <div className="flex min-w-0 flex-col gap-inline-md @5xl:flex-row">
         <div className="relative min-w-0 flex-1 overflow-x-auto rounded-md border border-border-subtle bg-layer-alt">
           <svg
             ref={svgRef}
@@ -605,7 +605,7 @@ export function NetworkMap({ client, profiles, onOpenProfile }: NetworkMapProps)
           </svg>
           {onlyServer ? <p className="absolute inset-x-inset-md top-1/2 -translate-y-1/2 text-center text-body-1 text-fg-muted">Nothing to connect yet. Add an SSH host, a proxy or a target above, then drag a link from this server to it.</p> : null}
         </div>
-        <aside aria-label="Details" className="min-w-0 rounded-md border border-border-subtle p-inset-md lg:w-panel-sm lg:shrink-0">
+        <aside aria-label="Details" className="min-w-0 rounded-md border border-border-subtle p-inset-md @5xl:w-panel-sm @5xl:shrink-0">
           {panel}
         </aside>
       </div>

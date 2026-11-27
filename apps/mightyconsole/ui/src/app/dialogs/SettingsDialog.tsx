@@ -58,6 +58,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [used, setUsed] = useState<number | null>(null);
   const [confirm, setConfirm] = useState("");
   const [forgetting, setForgetting] = useState(false);
+  // The map needs the room: its tab lets the dialog grow to the window.
+  const [tab, setTab] = useState("appearance");
   useEffect(() => {
     if (!open) return;
     setConfirm("");
@@ -66,13 +68,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="xl">
-      <DialogContent>
+      <DialogContent className={tab === "networkMap" ? "max-w-none" : ""}>
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Changes apply at once and are kept in this browser.</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <Tabs defaultValue="appearance" orientation="vertical" className="min-h-panel-xs">
+          <Tabs value={tab} onValueChange={(v) => setTab(String(v))} orientation="vertical" className="min-h-panel-xs">
             <TabsList aria-label="Settings sections">
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="live">Live views</TabsTrigger>

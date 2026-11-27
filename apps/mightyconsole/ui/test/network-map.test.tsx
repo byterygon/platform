@@ -6,7 +6,9 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ServicesContext } from "@/app/client";
+import { SettingsDialog } from "@/app/dialogs/SettingsDialog";
 import { NetworkMap } from "@/app/map/NetworkMap";
+import { DEFAULT_SETTINGS } from "@/app/store";
 import type { LinkView, Method, Node, ProxyView } from "@/gen/api";
 import { reloadLinks, resetLinks } from "@/profiles/links";
 import { reloadRoutes, resetRoutes } from "@/profiles/routes";
@@ -337,5 +339,39 @@ describe("adding nodes", () => {
     await click(byRole("button", "Remove staging"));
     await waitFor(() => document.querySelector("[data-n][aria-label^='staging,']") === null, "the node gone");
     expect(document.querySelector("[data-e][aria-label^='Link docker1 to staging']")).toBeNull();
+  });
+});
+
+describe("Settings → Network map", () => {
+  test("is a tab of Settings, and only that tab lets the dialog grow to the window", async () => {
+    const { fake } = await setup();
+    render(
+      <ServicesContext.Provider value={fake.services}>
+        <SettingsDialog
+          open
+          onOpenChange={() => undefined}
+          settings={DEFAULT_SETTINGS}
+          onChange={() => undefined}
+          serverAddress="https://localhost"
+          storageKind="indexeddb"
+          profileCount={0}
+          storageUsed={async () => 0}
+          onExportAll={() => undefined}
+          onImport={() => undefined}
+          onForgetEverything={async () => undefined}
+          client={fake.services.client}
+          profiles={[]}
+        />
+      </ServicesContext.Provider>,
+    );
+    await settle();
+    const popup = () => document.querySelector<HTMLElement>("[data-slot='dialog-popup']") ?? document.querySelector<HTMLElement>("[role='dialog']")!;
+    expect(popup().className).not.toContain("max-w-none");
+    await click(byRole("tab", "Network map"));
+    await waitFor(() => document.querySelector("[data-testid='network-map']") !== null, "the map");
+    expect(popup().className).toContain("max-w-none");
+    expect(document.body.textContent).toContain("5 nodes · 4 links");
+    await click(byRole("tab", "Routes"));
+    expect(popup().className).not.toContain("max-w-none");
   });
 });
