@@ -25,6 +25,9 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long opening one channel to the socket may take.
 pub const CHANNEL_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How long the host may take to answer a keepalive after a channel did not open in time.
+pub const ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// How long the check of a refused socket may take.
 pub const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -142,11 +145,14 @@ impl SshSession {
         }
         let open = self.inner.open_streamlocal(path);
         match tokio::time::timeout(CHANNEL_TIMEOUT, open).await {
+            // A session that stopped answering ends here, and the connection shows as failed
+            // (TSK-166); a host that still answers is only slow to open the socket.
+            Err(_) if !self.inner.check_alive(ALIVE_TIMEOUT).await => Err(self.lost_error()),
             Err(_) => Err(ToolError::new(
                 ToolErrorKind::Connect,
                 TOOL,
                 format!(
-                    "{} did not open {path} within {} s",
+                    "{} answers, but did not open {path} within {} s: is Docker's socket busy?",
                     self.target,
                     CHANNEL_TIMEOUT.as_secs()
                 ),

@@ -1136,3 +1136,272 @@ async fn lab_the_local_socket() {
     let names = container_names(&mut tab, 3, &conn_id).await;
     assert!(names.iter().any(|n| n == "stopped"), "{names:?}");
 }
+
+/// TSK-166, feedback 7 ("Docker over SSH loses the connection"): a stream nobody reads (a
+/// terminal printing without end while its view does not take the output; a paused log view of a
+/// chatty container) must not stall the SSH session. Before the fix every other request on the
+/// session, and every new channel, waited for that stream's reader: lists failed with
+/// "... did not open /var/run/docker.sock within 15 s".
+#[tokio::test]
+async fn lab_a_stream_nobody_reads_does_not_stall_the_ssh_session() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+    tab.call(
+        4,
+        "docker.containers.exec",
+        json!({ "connId": conn_id, "id": "shop-worker-1", "cmd": ["timeout", "20", "yes", "flood"], "cols": 80, "rows": 24, "terminalId": "flood" }),
+    )
+    .await;
+    // The output is not taken (no credit beyond the first chunks): it piles up on the channel.
+    tab.chunk(4).await;
+    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+    for id in 5..10 {
+        let started = std::time::Instant::now();
+        tab.call(id, "docker.containers.list", json!({ "connId": conn_id }))
+            .await;
+        let rows = tab.result(id).await;
+        assert!(rows.as_array().unwrap().len() >= 4, "{rows}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "a list took {:?} while another stream was not read",
+            started.elapsed()
+        );
+    }
+    // The flooding terminal ends by itself (its channel fell too far behind); the session stays.
+    let mut ended = false;
+    for _ in 0..10_000 {
+        let frame = tab.frame(4).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => tab.credit(4, 1).await,
+            _ => {
+                ended = true;
+                break;
+            }
+        }
+    }
+    assert!(ended, "the unread terminal should end once it fell behind");
+    tab.call(10, "docker.host.info", json!({ "connId": conn_id }))
+        .await;
+    tab.result(10).await;
+}
+
+/// A TCP relay to the lab's sshd that the test can cut (the host went away) or freeze (a dead
+/// NAT entry: the connection stays open and nothing passes).
+struct Relay {
+    port: u16,
+    frozen: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    cut: std::sync::Arc<tokio::sync::Notify>,
+}
+
+impl Relay {
+    async fn start(target: String) -> Relay {
+        use std::sync::atomic::Ordering;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let frozen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cut = std::sync::Arc::new(tokio::sync::Notify::new());
+        let (f, c) = (frozen.clone(), cut.clone());
+        tokio::spawn(async move {
+            while let Ok((client, _)) = listener.accept().await {
+                let Ok(upstream) = tokio::net::TcpStream::connect(&target).await else {
+                    continue;
+                };
+                let (f, c) = (f.clone(), c.clone());
+                tokio::spawn(async move {
+                    async fn pass(
+                        mut from: tokio::net::tcp::OwnedReadHalf,
+                        mut to: tokio::net::tcp::OwnedWriteHalf,
+                        frozen: std::sync::Arc<std::sync::atomic::AtomicBool>,
+                    ) {
+                        let mut buf = vec![0u8; 16 * 1024];
+                        while let Ok(n @ 1..) = from.read(&mut buf).await {
+                            if frozen.load(Ordering::SeqCst) {
+                                std::future::pending::<()>().await;
+                            }
+                            if to.write_all(&buf[..n]).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                    let (cr, cw) = client.into_split();
+                    let (ur, uw) = upstream.into_split();
+                    tokio::select! {
+                        () = pass(cr, uw, f.clone()) => {}
+                        () = pass(ur, cw, f) => {}
+                        () = c.notified() => {}
+                    }
+                });
+            }
+        });
+        Relay { port, frozen, cut }
+    }
+}
+
+/// TSK-166: the SSH transport killed in the middle of a log stream, then frozen: each time the
+/// stream ends, the connection turns `failed` with the reason (the tab shows it with Retry), and
+/// connecting again works.
+#[tokio::test]
+async fn lab_a_cut_or_frozen_ssh_transport_fails_the_connection_and_connect_again_works() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    let lab = lab();
+    let target = format!("{}:{}", lab["host"].as_str().unwrap(), lab["port"]);
+    let mut id = 10;
+    for freeze in [false, true] {
+        let relay = Relay::start(target.clone()).await;
+        let through = profile(json!({
+            "name": if freeze { "frozen" } else { "cut" },
+            "host": "127.0.0.1",
+            "port": relay.port,
+            "hostKey": trusted,
+            "keepaliveSec": 1,
+        }));
+        tab.call(id, "docker.connect", json!({ "profile": through }))
+            .await;
+        let conn_id = tab.result(id).await["connId"].as_str().unwrap().to_owned();
+        tab.call(
+            id + 1,
+            "docker.containers.logs",
+            json!({ "connId": conn_id, "id": "shop-worker-1", "follow": true, "tail": 2, "streamId": format!("cut-{id}") }),
+        )
+        .await;
+        tab.chunk(id + 1).await;
+        tab.credit(id + 1, 1).await;
+        if freeze {
+            relay
+                .frozen
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        } else {
+            relay.cut.notify_waiters();
+        }
+        let event = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            tab.event(1, |e| e["status"] == "failed" && e["connId"] == conn_id),
+        )
+        .await
+        .expect("the connection turns failed");
+        let message = event["message"].as_str().unwrap_or_default().to_owned();
+        assert!(!message.is_empty(), "{event}");
+        // The log stream ends too, it does not hang.
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            loop {
+                let frame = tab.frame(id + 1).await;
+                if frame.kind != ambidex::Kind::Chunk {
+                    return frame;
+                }
+                tab.credit(id + 1, 1).await;
+            }
+        })
+        .await
+        .expect("the log stream ends");
+        assert_ne!(frame.kind, ambidex::Kind::Chunk);
+        tab.call(id + 2, "docker.host.info", json!({ "connId": conn_id }))
+            .await;
+        let err = tab.error(id + 2, Code::Unavailable).await;
+        assert!(err.message.contains("connect again"), "{}", err.message);
+        id += 10;
+    }
+    // Retry: a new connection to the host works.
+    tab.call(
+        id,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(id).await["connId"].as_str().unwrap().to_owned();
+    tab.call(id + 1, "docker.host.info", json!({ "connId": conn_id }))
+        .await;
+    tab.result(id + 1).await;
+}
+
+/// TSK-166 on the TCP transports (TLS and plain): every request has a TCP connection of its own,
+/// so a terminal nobody reads holds back only its own connection (TCP's window): the lists go
+/// on, and the terminal keeps its output until it is read.
+#[tokio::test]
+async fn lab_tcp_a_stream_nobody_reads_holds_back_only_itself() {
+    let (_t, mut tab) = setup().await;
+    let tcp = tcp();
+    let tls = json!({
+        "enabled": true,
+        "caPem": read(tcp["caFile"].as_str().unwrap()),
+        "clientCertPem": read(tcp["clientCertFile"].as_str().unwrap()),
+        "clientKeyPem": read(tcp["clientKeyFile"].as_str().unwrap()),
+    });
+    let profiles = [
+        tcp_profile(tcp["tls"].as_str().unwrap(), json!({ "tls": tls })),
+        tcp_profile(
+            tcp["plain"].as_str().unwrap(),
+            json!({ "unencrypted": { "accepted": true } }),
+        ),
+    ];
+    let mut id = 10;
+    for profile in profiles {
+        tab.call(id, "docker.connect", json!({ "profile": profile }))
+            .await;
+        let conn_id = tab.result(id).await["connId"].as_str().unwrap().to_owned();
+        tab.call(
+            id + 1,
+            "docker.containers.exec",
+            json!({ "connId": conn_id, "id": "shop-worker-1", "cmd": ["timeout", "20", "yes", "flood"], "cols": 80, "rows": 24, "terminalId": format!("flood-{id}") }),
+        )
+        .await;
+        tab.chunk(id + 1).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        for n in 2..5 {
+            let names = container_names(&mut tab, id + n, &conn_id).await;
+            assert!(names.iter().any(|n| n == "tty"), "{names:?}");
+        }
+        // Still flowing once it is read again.
+        tab.credit(id + 1, 1).await;
+        let chunk = tab.chunk(id + 1).await;
+        assert!(String::from_utf8_lossy(&chunk).contains("flood"));
+        tab.cancel(id + 1).await;
+        id += 10;
+    }
+}
+
+/// TSK-166 on plain TCP: a connection cut in the middle of a log stream ends the stream, and the
+/// next request opens a connection of its own. (TCP holds no session, so nothing turns failed.)
+#[tokio::test]
+async fn lab_tcp_a_cut_connection_ends_its_stream_only() {
+    let (_t, mut tab) = setup().await;
+    let relay = Relay::start(tcp()["plain"].as_str().unwrap().to_owned()).await;
+    let profile = tcp_profile(
+        &format!("127.0.0.1:{}", relay.port),
+        json!({ "unencrypted": { "accepted": true } }),
+    );
+    tab.call(2, "docker.connect", json!({ "profile": profile }))
+        .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+    tab.call(
+        3,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "shop-worker-1", "follow": true, "tail": 2, "streamId": "tcp-cut" }),
+    )
+    .await;
+    tab.chunk(3).await;
+    tab.credit(3, 1).await;
+    relay.cut.notify_waiters();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            let frame = tab.frame(3).await;
+            if frame.kind != ambidex::Kind::Chunk {
+                return frame;
+            }
+            tab.credit(3, 1).await;
+        }
+    })
+    .await
+    .expect("the log stream ends");
+    assert_ne!(frame.kind, ambidex::Kind::Chunk);
+    let names = container_names(&mut tab, 4, &conn_id).await;
+    assert!(names.iter().any(|n| n == "tty"), "{names:?}");
+}

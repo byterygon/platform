@@ -378,3 +378,125 @@ async fn a_tools_own_session_opens_channels_through_the_dialer() {
         }
     );
 }
+
+/// TSK-166: a stream nobody reads (a paused log view, a slow browser) holds only itself back:
+/// the session still opens channels, the other streams still flow, and keepalives still go out.
+#[tokio::test]
+async fn a_stream_nobody_reads_does_not_stall_the_session() {
+    let client = ClientKey::new();
+    let echo = echo_target("other").await;
+    let flood = support::flood_target().await;
+    let jump = sshd::start(
+        &client,
+        [("echo".to_owned(), echo), ("flood".to_owned(), flood)].into(),
+    )
+    .await;
+    let session = std::sync::Arc::new(
+        SshSession::connect(&Dialer::direct(), &local("bastion", &jump, &client))
+            .await
+            .unwrap(),
+    );
+    let mut busy = BufReader::new(session.open_direct_tcpip("flood", 1).await.unwrap());
+    let mut first = String::new();
+    // Read a little, then stop reading it.
+    let _ = tokio::time::timeout(Duration::from_millis(200), busy.read_line(&mut first)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let other = tokio::time::timeout(Duration::from_secs(5), async {
+        talk(session.open_direct_tcpip("echo", 1).await.unwrap()).await
+    })
+    .await
+    .expect("a new channel opens while another stream is not read");
+    assert_eq!(other, "HELLO other");
+    assert!(!session.is_lost());
+    // The stream that fell behind ends with its own error once its backlog is read; the session
+    // goes on.
+    let mut sink = Vec::new();
+    let err = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::io::AsyncReadExt::read_to_end(&mut busy, &mut sink),
+    )
+    .await
+    .expect("the stream ends")
+    .unwrap_err();
+    assert!(err.to_string().contains("not read for too long"), "{err}");
+    assert!(sink.len() <= net_route::CHANNEL_BACKLOG + 64 * 1024);
+    talk(session.open_direct_tcpip("echo", 1).await.unwrap()).await;
+    assert!(!session.is_lost());
+}
+
+/// TSK-166: a host that stops answering (frozen network, suspended host) is found by the
+/// liveness check, and the session counts as lost with the reason.
+#[tokio::test]
+async fn a_host_that_stops_answering_fails_the_liveness_check() {
+    let client = ClientKey::new();
+    let jump = sshd::start(&client, support::Hosts::new()).await;
+    let relay = support::Relay::start(jump.addr).await;
+    let hop = ssh(
+        "bastion",
+        "127.0.0.1",
+        relay.addr.port(),
+        &client,
+        Some(&jump.host_key),
+    );
+    let session = SshSession::connect(&Dialer::direct(), &hop).await.unwrap();
+    assert!(session.check_alive(Duration::from_secs(5)).await);
+    relay.freeze();
+    assert!(!session.check_alive(Duration::from_secs(1)).await);
+    assert!(session.is_lost());
+    assert!(session.lost().is_cancelled());
+    assert!(
+        session.lost_reason().contains("stopped answering"),
+        "{}",
+        session.lost_reason()
+    );
+}
+
+/// TSK-166: the transport cut in the middle of a stream ends the stream and the session at once,
+/// and keepalives find a frozen one on their own.
+#[tokio::test]
+async fn a_cut_or_frozen_transport_ends_the_stream_and_the_session() {
+    let client = ClientKey::new();
+    let echo = echo_target("mid").await;
+    let jump = sshd::start(&client, [("echo".to_owned(), echo)].into()).await;
+
+    let relay = support::Relay::start(jump.addr).await;
+    let hop = ssh(
+        "b",
+        "127.0.0.1",
+        relay.addr.port(),
+        &client,
+        Some(&jump.host_key),
+    );
+    let session = std::sync::Arc::new(SshSession::connect(&Dialer::direct(), &hop).await.unwrap());
+    let mut stream = BufReader::new(session.open_direct_tcpip("echo", 1).await.unwrap());
+    let mut banner = String::new();
+    stream.read_line(&mut banner).await.unwrap();
+    relay.cut();
+    let mut rest = Vec::new();
+    let _ = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::io::AsyncReadExt::read_to_end(&mut stream, &mut rest),
+    )
+    .await
+    .expect("the stream ends when the transport is cut");
+    tokio::time::timeout(Duration::from_secs(5), session.lost().cancelled())
+        .await
+        .expect("the session is lost");
+
+    let relay = support::Relay::start(jump.addr).await;
+    let mut hop = ssh(
+        "b",
+        "127.0.0.1",
+        relay.addr.port(),
+        &client,
+        Some(&jump.host_key),
+    );
+    hop.keepalive = Some(Duration::from_millis(300));
+    let session = std::sync::Arc::new(SshSession::connect(&Dialer::direct(), &hop).await.unwrap());
+    let _stream = session.open_direct_tcpip("echo", 1).await.unwrap();
+    relay.freeze();
+    tokio::time::timeout(Duration::from_secs(10), session.lost().cancelled())
+        .await
+        .expect("unanswered keepalives end the session");
+    assert!(session.is_lost());
+}

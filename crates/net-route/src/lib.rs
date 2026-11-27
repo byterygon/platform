@@ -55,8 +55,8 @@ pub use route::{
     BasicAuth, Hop, HttpConnectHop, MAX_HOPS, ProxyScheme, Route, Secret, Socks5Auth, Socks5Hop,
 };
 pub use ssh::{
-    HostKeyCheck, HostKeyQuery, OpenError, SSH_LOGIN_CAP, SshAuth, SshCommandHop, SshHop,
-    SshSession, TrustedKey, fingerprint,
+    CHANNEL_BACKLOG, HostKeyCheck, HostKeyQuery, OpenError, SSH_LOGIN_CAP, SshAuth, SshCommandHop,
+    SshHop, SshSession, TrustedKey, fingerprint,
 };
 pub use system::EnvLookup;
 
