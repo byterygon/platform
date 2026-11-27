@@ -40,8 +40,12 @@ export function useAudience(client: MightyClient, enabled: boolean, tool: string
   return enabled ? count : null;
 }
 
-/** Shared profiles first, then personal ones, each by name (the pane's order). */
+/**
+ * Shared profiles first, then the person's own, each by name (the pane's order). Another person's
+ * personal profile reaches an administrator as metadata only (for Users and roles and Move); it
+ * is not a connection the person can open, so the pane leaves it out.
+ */
 export function pane(profiles: readonly ProfileRecord[]): ProfileRecord[] {
   const rank = (p: ProfileRecord) => (p.owner?.kind === "shared" ? 0 : 1);
-  return [...profiles].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return profiles.filter((p) => p.access !== "metadata").sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }

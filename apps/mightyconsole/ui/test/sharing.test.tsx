@@ -44,6 +44,10 @@ describe("who a shared profile reaches", () => {
     const list = [record({ id: "1", name: "b" }), record({ id: "2", name: "z", owner: { kind: "shared" } }), record({ id: "3", name: "a" }), record({ id: "4", name: "m", owner: { kind: "shared" } })];
     expect(pane(list).map((p) => p.name)).toEqual(["m", "z", "a", "b"]);
   });
+  test("another person's personal profile (metadata only) is not in the pane", () => {
+    const list = [record({ id: "1", name: "mine", access: "owner" }), record({ id: "2", name: "theirs", access: "metadata", owner: { kind: "personal", user: "human:oidc:bao" } })];
+    expect(pane(list).map((p) => p.name)).toEqual(["mine"]);
+  });
 });
 
 describe("the sheet's choice", () => {
@@ -118,20 +122,19 @@ describe("the pane", () => {
       />,
     );
 
-  test("shared profiles come first and are marked; a personal one has the person icon; another person's is named as theirs", async () => {
+  test("shared profiles come first and are marked; a personal one has the person icon; another person's is not listed", async () => {
     list([
       record({ id: "1", name: "my-echo", access: "owner", owner: { kind: "personal" } }),
       record({ id: "2", name: "team-echo", access: "use", owner: { kind: "shared" } }),
       record({ id: "3", name: "bao-echo", access: "metadata", owner: { kind: "personal", user: "human:oidc:bao" } }),
     ]);
-    await waitFor(() => document.querySelectorAll("[data-profile-id]").length === 3, "the rows");
+    await waitFor(() => document.querySelectorAll("[data-profile-id]").length === 2, "the rows");
     const ids = [...document.querySelectorAll<HTMLElement>("[data-profile-id]")].map((n) => n.dataset["profileId"]);
-    expect(ids).toEqual(["2", "3", "1"]);
+    expect(ids).toEqual(["2", "1"]);
     const row = (id: string) => document.querySelector<HTMLElement>(`[data-profile-id="${id}"]`)!;
     expect(row("2").textContent).toContain("Shared");
     expect(row("1").querySelector('[data-owner="personal"]')).not.toBeNull();
-    expect(row("3").textContent).toContain("Personal");
-    expect(row("3").querySelector('[data-owner="personal"]')).toBeNull();
+    expect(document.querySelector('[data-profile-id="3"]')).toBeNull();
   });
 
   test("the empty state no longer says the browser keeps profiles", async () => {

@@ -172,14 +172,10 @@ export function ConnectionList(props: ConnectionListProps) {
                 <Badge appearance="tint" variant="neutral" size="sm" title="Shared: everyone whose role covers it connects with it">
                   Shared
                 </Badge>
-              ) : p.access === "owner" || p.access === undefined ? (
+              ) : (
                 <span title="Your personal profile" data-owner="personal">
                   <Icon icon={Person} label="Personal" className="text-fg-muted" />
                 </span>
-              ) : (
-                <Badge appearance="tint" variant="neutral" size="sm" title="Another person's personal profile: you see its name and where it connects">
-                  Personal
-                </Badge>
               )}
               {conn.status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
               {(tool.profileBadges?.(p) ?? []).map((badge) => (
