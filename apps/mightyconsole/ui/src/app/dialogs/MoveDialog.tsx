@@ -203,7 +203,7 @@ export function MoveDialog({ open, onOpenChange, records, existing, toolLabel, t
                         <TableCell>
                           {on ? (
                             canShare ? (
-                              <Select aria-label={`Move ${r.name} as`} value={shared.has(r.id) ? "shared" : "personal"} onValueChange={(v) => setShared((s) => (v === "shared" ? new Set([...s, r.id]) : new Set([...s].filter((x) => x !== r.id))))} className="w-panel-xxs">
+                              <Select aria-label={`Move ${r.name} as`} value={shared.has(r.id) ? "shared" : "personal"} onValueChange={(v) => setShared((s) => (v === "shared" ? new Set([...s, r.id]) : new Set([...s].filter((x) => x !== r.id))))} items={{ personal: "Personal", shared: "Shared" }} className="w-auto shrink-0">
                                 <SelectItem value="personal">Personal</SelectItem>
                                 <SelectItem value="shared">Shared</SelectItem>
                               </Select>

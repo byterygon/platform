@@ -5,7 +5,8 @@
 // administrator (TSK-142), Authorization and Destroy (TSK-138), and from TSK-139 the keys of the
 // secret store (the Start item about them, rotation), and TSK-141's: the rest of Start, redaction,
 // the abuse limits, the outbound policy, the browser rules, every destroy per role and the codec
-// endpoint. The parts other tasks own are `manual` checks naming them. Until TSK-139 moves profiles to the server, every connection is the caller's
+// endpoint, and TSK-158's walk of the security screens as people of three roles (`security-ui`).
+// The parts other tasks own are `manual` checks naming them. Until TSK-139 moves profiles to the server, every connection is the caller's
 // own (DOC-25 Open question 22): what roles do on shared profiles is proved by the server's tests,
 // and on the lab once shared profiles exist.
 import { cargo, command, manual, vitest } from "../checklist.mts";
@@ -328,6 +329,17 @@ export default {
       id: "destroy-every-procedure",
       text: "(TSK-141) Every Destructive procedure of every tool refuses a viewer and an operator, asks an administrator to confirm, and lets the confirmed call through once for that person and input.",
       checks: [cargo("every_destructive_procedure_is_guarded_for_every_role")],
+    },
+    {
+      id: "security-ui",
+      text: "(TSK-158, the screens of TSK-140) In Chrome through the lab's Dex, as an administrator, a viewer and a person with no role: the no-role page; Users and roles (the people with their roles and sessions, the role matrix, a new role given to a person whose page then opens with the other tools locked and the reason, the role taken away and an account turned off, each ending that person's session); a shared profile with who it reaches and a write-only secret (Set, by whom and when; Replace; Remove) that decodes the lab's encrypted payloads; a viewer's Terminate off with its reason, and on his own profile a destroy that asks for the name; the Audit log filtered, an entry with digests only, Verify chain, the CSV export; a profile kept in the browser moved to the server with its secret. No page shows a secret (screenshots).",
+      lab: true,
+      checks: [
+        command("in three Chromes through Dex: the security screens as admin, viewer and no role (screenshots admin-*)", ["node", "apps/mightyconsole/acceptance/admin-walk.mts", "{server}", "{evidence}"], { requires: ["node"] }),
+        vitest("test/admin.test.tsx"),
+        vitest("test/audit.test.tsx"),
+        vitest("test/move-dialog.test.tsx"),
+      ],
     },
     {
       id: "codec",
