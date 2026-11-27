@@ -360,3 +360,21 @@ pub fn tls_for_localhost() -> (String, Arc<rustls::ServerConfig>) {
     .unwrap();
     (ca.pem(), Arc::new(config))
 }
+
+/// A target that writes without end as soon as it is connected (a `docker logs -f` of a chatty
+/// container), whether or not anyone reads.
+pub async fn flood_target() -> SocketAddr {
+    let (listener, addr) = listen().await;
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut tcp, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                let chunk = vec![b'x'; 32 * 1024];
+                while tcp.write_all(&chunk).await.is_ok() {}
+            });
+        }
+    });
+    addr
+}

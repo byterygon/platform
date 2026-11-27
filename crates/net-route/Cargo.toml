@@ -17,6 +17,8 @@ workspace = true
 lab-tests = []
 
 [dependencies]
+# The data an SSH channel holds for its reader (TSK-166).
+bytes = "1.12.1"
 # Proxy-Authorization: Basic.
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 # TLS to an https:// proxy only (the tool's own TLS to the target runs over the stream): ring, as

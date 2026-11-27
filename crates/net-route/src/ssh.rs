@@ -10,18 +10,23 @@
 //! "connect once anyway".
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
+use bytes::Bytes;
 use russh::client::{self, AuthResult, DisconnectReason, Handle};
 use russh::keys::{
     Algorithm, HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate,
     decode_secret_key,
 };
-use russh::{ChannelMsg, ChannelOpenFailure, ChannelStream, Disconnect, MethodKind};
+use russh::{
+    Channel, ChannelMsg, ChannelOpenFailure, ChannelReadHalf, ChannelWriteHalf, Disconnect,
+    MethodKind,
+};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_util::sync::CancellationToken;
 
@@ -444,10 +449,7 @@ impl SshSession {
             .channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0)
             .await;
         let channel = self.opened(opened)?;
-        Ok(Box::new(SessionStream {
-            inner: channel.into_stream(),
-            _session: Arc::clone(self),
-        }))
+        Ok(Box::new(SessionStream::new(channel, self)))
     }
 
     /// A `direct-streamlocal@openssh.com` channel to the Unix socket `path` on the host
@@ -455,10 +457,7 @@ impl SshSession {
     pub async fn open_streamlocal(self: &Arc<Self>, path: &str) -> Result<BoxStream, OpenError> {
         let opened = self.handle.channel_open_direct_streamlocal(path).await;
         let channel = self.opened(opened)?;
-        Ok(Box::new(SessionStream {
-            inner: channel.into_stream(),
-            _session: Arc::clone(self),
-        }))
+        Ok(Box::new(SessionStream::new(channel, self)))
     }
 
     /// Runs `command` in an exec channel; its stdin and stdout are the stream (the `sshCommand`
@@ -547,10 +546,7 @@ impl SshSession {
                 }
             }
         }
-        let stream: BoxStream = Box::new(SessionStream {
-            inner: channel.into_stream(),
-            _session: Arc::clone(self),
-        });
+        let stream: BoxStream = Box::new(SessionStream::new(channel, self));
         Ok(crate::stream::Prefixed::boxed(early, stream))
     }
 
@@ -622,19 +618,126 @@ impl SshSession {
     }
 }
 
-/// A channel stream that keeps its session alive.
+/// How far a channel's reader may fall behind what the host sent before the channel is closed
+/// (TSK-166). russh gives the host more window as soon as data arrives, not when it is read, and
+/// it hands a channel's data to a short queue that, once full, stops the whole session: every
+/// other channel, new channels and keepalives. So each channel's data is moved off russh's queue
+/// at once into the stream's own buffer, and a reader this far behind (a paused log view of a
+/// chatty container, a browser slower than the host) loses its own channel, never the session.
+pub const CHANNEL_BACKLOG: usize = 16 * 1024 * 1024;
+
+/// Why a channel's stream has nothing more to read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum End {
+    /// The host ended the channel.
+    Eof,
+    /// The reader fell [`CHANNEL_BACKLOG`] behind; the channel was closed.
+    Behind,
+}
+
+/// What the host sent on a channel and the stream has not read yet.
+#[derive(Default)]
+struct Inbox {
+    chunks: VecDeque<Bytes>,
+    len: usize,
+    end: Option<End>,
+    waker: Option<Waker>,
+}
+
+/// A channel stream that keeps its session alive. Its data is drained from russh by a task of
+/// its own (see [`CHANNEL_BACKLOG`]); writes go to the channel as they did.
 struct SessionStream {
-    inner: ChannelStream<client::Msg>,
+    tx: Pin<Box<dyn AsyncWrite + Send + Sync>>,
+    inbox: Arc<Mutex<Inbox>>,
+    write: Arc<ChannelWriteHalf<client::Msg>>,
+    drain: tokio::task::JoinHandle<()>,
     _session: Arc<SshSession>,
+}
+
+impl SessionStream {
+    fn new(channel: Channel<client::Msg>, session: &Arc<SshSession>) -> SessionStream {
+        let (read, write) = channel.split();
+        let write = Arc::new(write);
+        let inbox = Arc::new(Mutex::new(Inbox::default()));
+        let drain = tokio::spawn(drain(read, Arc::clone(&inbox), Arc::clone(&write)));
+        SessionStream {
+            tx: Box::pin(write.make_writer()),
+            inbox,
+            write,
+            drain,
+            _session: Arc::clone(session),
+        }
+    }
+}
+
+/// Moves a channel's data from russh's queue into `inbox` as it arrives, so the session never
+/// waits for this channel's reader.
+async fn drain(
+    mut read: ChannelReadHalf,
+    inbox: Arc<Mutex<Inbox>>,
+    write: Arc<ChannelWriteHalf<client::Msg>>,
+) {
+    let end = loop {
+        match read.wait().await {
+            Some(ChannelMsg::Data { data }) => {
+                let mut held = lock(&inbox);
+                if held.len + data.len() > CHANNEL_BACKLOG {
+                    break End::Behind;
+                }
+                held.len += data.len();
+                held.chunks.push_back(data);
+                if let Some(waker) = held.waker.take() {
+                    waker.wake();
+                }
+            }
+            Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break End::Eof,
+            Some(_) => {}
+        }
+    };
+    let waker = {
+        let mut held = lock(&inbox);
+        held.end = Some(end);
+        held.waker.take()
+    };
+    if let Some(waker) = waker {
+        waker.wake();
+    }
+    if end == End::Behind {
+        drop(read);
+        let _ = write.close().await;
+    }
 }
 
 impl AsyncRead for SessionStream {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+        let mut inbox = lock(&self.inbox);
+        if let Some(front) = inbox.chunks.front_mut() {
+            let n = front.len().min(buf.remaining());
+            buf.put_slice(&front[..n]);
+            if n == front.len() {
+                inbox.chunks.pop_front();
+            } else {
+                *front = front.slice(n..);
+            }
+            inbox.len -= n;
+            return Poll::Ready(Ok(()));
+        }
+        match inbox.end {
+            Some(End::Eof) => Poll::Ready(Ok(())),
+            Some(End::Behind) => Poll::Ready(Err(std::io::Error::other(format!(
+                "this stream was not read for too long (more than {} MiB waiting), so its SSH \
+                 channel was closed; the session's other channels go on",
+                CHANNEL_BACKLOG / (1024 * 1024)
+            )))),
+            None => {
+                inbox.waker = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        }
     }
 }
 
@@ -644,15 +747,28 @@ impl AsyncWrite for SessionStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        self.tx.as_mut().poll_write(cx, buf)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
+        self.tx.as_mut().poll_flush(cx)
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
+        self.tx.as_mut().poll_shutdown(cx)
+    }
+}
+
+impl Drop for SessionStream {
+    fn drop(&mut self) {
+        self.drain.abort();
+        // Closes the channel, as russh's own stream does when it is dropped.
+        let write = Arc::clone(&self.write);
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                let _ = write.close().await;
+            });
+        }
     }
 }
 

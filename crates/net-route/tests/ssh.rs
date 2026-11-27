@@ -378,3 +378,48 @@ async fn a_tools_own_session_opens_channels_through_the_dialer() {
         }
     );
 }
+
+/// TSK-166: a stream nobody reads (a paused log view, a slow browser) holds only itself back:
+/// the session still opens channels, the other streams still flow, and keepalives still go out.
+#[tokio::test]
+async fn a_stream_nobody_reads_does_not_stall_the_session() {
+    let client = ClientKey::new();
+    let echo = echo_target("other").await;
+    let flood = support::flood_target().await;
+    let jump = sshd::start(
+        &client,
+        [("echo".to_owned(), echo), ("flood".to_owned(), flood)].into(),
+    )
+    .await;
+    let session = std::sync::Arc::new(
+        SshSession::connect(&Dialer::direct(), &local("bastion", &jump, &client))
+            .await
+            .unwrap(),
+    );
+    let mut busy = BufReader::new(session.open_direct_tcpip("flood", 1).await.unwrap());
+    let mut first = String::new();
+    // Read a little, then stop reading it.
+    let _ = tokio::time::timeout(Duration::from_millis(200), busy.read_line(&mut first)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let other = tokio::time::timeout(Duration::from_secs(5), async {
+        talk(session.open_direct_tcpip("echo", 1).await.unwrap()).await
+    })
+    .await
+    .expect("a new channel opens while another stream is not read");
+    assert_eq!(other, "HELLO other");
+    assert!(!session.is_lost());
+    // The stream that fell behind ends with its own error once its backlog is read; the session
+    // goes on.
+    let mut sink = Vec::new();
+    let err = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::io::AsyncReadExt::read_to_end(&mut busy, &mut sink),
+    )
+    .await
+    .expect("the stream ends")
+    .unwrap_err();
+    assert!(err.to_string().contains("not read for too long"), "{err}");
+    assert!(sink.len() <= net_route::CHANNEL_BACKLOG + 64 * 1024);
+    talk(session.open_direct_tcpip("echo", 1).await.unwrap()).await;
+    assert!(!session.is_lost());
+}
