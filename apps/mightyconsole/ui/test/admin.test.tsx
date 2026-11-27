@@ -108,6 +108,9 @@ describe("Users", () => {
     expect(table.textContent).toContain("platform-oncall, direct");
     expect(table.textContent).toContain("No role");
     expect(document.querySelector('[data-testid="admin-users-count"]')?.textContent).toBe("3 people · 1 waiting for a role");
+    // The filters show their labels before their lists have opened (the lab walk saw raw values).
+    expect(byRole("combobox", "Role")!.textContent).toBe("Role: any");
+    expect(byRole("combobox", "Status")!.textContent).toBe("Status: on");
     expect(await axeViolations()).toEqual([]);
   });
 
@@ -137,6 +140,7 @@ describe("Users", () => {
     expect((byRole("button", "Add role", dialog) as HTMLButtonElement).disabled).toBe(true);
     await click(byRole("combobox", "Role", dialog));
     await click(byRole("option", "viewer"));
+    expect(byRole("combobox", "Role", dialog)!.textContent).toBe("viewer");
     await click(byRole("button", "Add role", dialog));
     await waitFor(() => calls(fake, "admin.users.setRoles").length === 1, "the call");
     expect(calls(fake, "admin.users.setRoles")[0]!.input).toEqual({ userId: "human:oidc:lan", assignments: [{ role: "viewer", scope: null }] });

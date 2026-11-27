@@ -43,6 +43,11 @@ export interface AuditDialogProps {
 
 const PAGE = 100;
 
+/** What each filter shows, chosen or in its list (the trigger shows these before the list opens). */
+const RISK_LABELS = { any: "Risk: any", Read: "Risk: read", Write: "Risk: write", Destructive: "Risk: destroy" };
+const OUTCOME_LABELS = { any: "Outcome: any", allowed: "Outcome: allowed", refused: "Outcome: refused", failed: "Outcome: failed" };
+const PERIOD_LABELS = Object.fromEntries(PERIODS.map((p) => [p.id, p.label]));
+
 function outcomeBadge(row: Pick<AuditRow, "outcome" | "errorCode">) {
   const text = outcomeText(row.outcome);
   if (row.outcome === "refused") return <Badge variant="warning">{text}</Badge>;
@@ -160,7 +165,7 @@ function AuditLog({ client, save }: { client: MightyClient; save: (name: string,
     <div className="flex min-h-0 flex-1 flex-col gap-stack-md" data-testid="audit-log">
       <div className="flex flex-wrap items-center gap-inline-md">
         <SearchInput aria-label="Who" placeholder="Who (name or id)" value={who} onValueChange={setWho} className="w-panel-xs" />
-        <Select aria-label="Tool" value={filters.tool} onValueChange={(v) => set("tool", v ?? "any")} className="w-panel-xxs">
+        <Select aria-label="Tool" items={{ any: "Tool: any", ...Object.fromEntries(tools.map((t) => [t, `Tool: ${t}`])) }} value={filters.tool} onValueChange={(v) => set("tool", v ?? "any")} className="w-auto shrink-0">
           <SelectItem value="any">Tool: any</SelectItem>
           {tools.map((t) => (
             <SelectItem key={t} value={t}>
@@ -168,19 +173,21 @@ function AuditLog({ client, save }: { client: MightyClient; save: (name: string,
             </SelectItem>
           ))}
         </Select>
-        <Select aria-label="Risk" value={filters.risk} onValueChange={(v) => set("risk", (v as Filters["risk"]) ?? "any")} className="w-panel-xxs">
-          <SelectItem value="any">Risk: any</SelectItem>
-          <SelectItem value="Read">Risk: read</SelectItem>
-          <SelectItem value="Write">Risk: write</SelectItem>
-          <SelectItem value="Destructive">Risk: destroy</SelectItem>
+        <Select aria-label="Risk" items={RISK_LABELS} value={filters.risk} onValueChange={(v) => set("risk", (v as Filters["risk"]) ?? "any")} className="w-auto shrink-0">
+          {Object.entries(RISK_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </Select>
-        <Select aria-label="Outcome" value={filters.outcome} onValueChange={(v) => set("outcome", (v as Filters["outcome"]) ?? "any")} className="w-panel-xxs">
-          <SelectItem value="any">Outcome: any</SelectItem>
-          <SelectItem value="allowed">Outcome: allowed</SelectItem>
-          <SelectItem value="refused">Outcome: refused</SelectItem>
-          <SelectItem value="failed">Outcome: failed</SelectItem>
+        <Select aria-label="Outcome" items={OUTCOME_LABELS} value={filters.outcome} onValueChange={(v) => set("outcome", (v as Filters["outcome"]) ?? "any")} className="w-auto shrink-0">
+          {Object.entries(OUTCOME_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </Select>
-        <Select aria-label="Period" value={filters.period} onValueChange={(v) => set("period", (v as Filters["period"]) ?? "week")} className="w-panel-xxs">
+        <Select aria-label="Period" items={PERIOD_LABELS} value={filters.period} onValueChange={(v) => set("period", (v as Filters["period"]) ?? "week")} className="w-auto shrink-0">
           {PERIODS.map((p) => (
             <SelectItem key={p.id} value={p.id}>
               {p.label}
@@ -267,7 +274,7 @@ function AuditLog({ client, save }: { client: MightyClient; save: (name: string,
                         {timeText(r.timeMs)}
                       </button>
                     </TableCell>
-                    <TableCell className="max-w-panel-xxs truncate">{r.user}</TableCell>
+                    <TableCell className="max-w-panel-xs truncate">{r.user}</TableCell>
                     <TableCell>
                       <span className="flex items-center gap-inline-xs">
                         <span className="font-mono text-caption-1">{r.action}</span>

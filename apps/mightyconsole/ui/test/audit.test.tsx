@@ -89,6 +89,8 @@ describe("the list", () => {
     expect(table.querySelector('[data-seq="2"] [role="img"]')).toBeNull();
     expect(document.querySelector('[data-testid="audit-count"]')?.textContent).toBe("7 entries shown: the oldest is reached");
     expect(calls(fake, "audit.list")[0]!.input).toMatchObject({ cursor: null, limit: 100, filter: { principal: null, action: null } });
+    // The filters show their labels before their lists have opened (the lab walk saw raw values).
+    expect(["Tool", "Risk", "Outcome", "Period"].map((f) => byRole("combobox", f)!.textContent)).toEqual(["Tool: any", "Risk: any", "Outcome: any", "Last 7 days"]);
     expect(await axeViolations()).toEqual([]);
   });
 

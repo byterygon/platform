@@ -33,6 +33,9 @@ const initials = (name: string) =>
     .map((w) => w[0]!.toUpperCase())
     .join("") || "?";
 
+/** What the Status filter shows, chosen or in its list. */
+const STATUS_LABELS = { on: "Status: on", off: "Status: off", any: "Status: any" };
+
 function nameOf(u: UserSummary): string {
   return u.displayName || u.username || u.email || u.id;
 }
@@ -105,7 +108,7 @@ export function UsersPane({ client, profiles, selfId }: UsersPaneProps) {
     <div className="flex min-h-0 flex-1 flex-col gap-stack-md" data-testid="admin-users">
       <div className="flex flex-wrap items-center gap-inline-md">
         <SearchInput aria-label="Find a person or email" placeholder="Find a person or email" value={text} onValueChange={setText} className="w-panel-xs" />
-        <Select aria-label="Role" value={role} onValueChange={(v) => setRole(v ?? "any")} className="w-panel-xxs">
+        <Select aria-label="Role" items={{ any: "Role: any", ...Object.fromEntries((roles.data?.roles ?? []).map((r) => [r.id, `Role: ${r.name}`])) }} value={role} onValueChange={(v) => setRole(v ?? "any")} className="w-auto shrink-0">
           <SelectItem value="any">Role: any</SelectItem>
           {(roles.data?.roles ?? []).map((r) => (
             <SelectItem key={r.id} value={r.id}>
@@ -113,10 +116,12 @@ export function UsersPane({ client, profiles, selfId }: UsersPaneProps) {
             </SelectItem>
           ))}
         </Select>
-        <Select aria-label="Status" value={status} onValueChange={(v) => setStatus((v as "on" | "off" | "any") ?? "on")} className="w-panel-xxs">
-          <SelectItem value="on">Status: on</SelectItem>
-          <SelectItem value="off">Status: off</SelectItem>
-          <SelectItem value="any">Status: any</SelectItem>
+        <Select aria-label="Status" items={STATUS_LABELS} value={status} onValueChange={(v) => setStatus((v as "on" | "off" | "any") ?? "on")} className="w-auto shrink-0">
+          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </Select>
         <span className="flex-1" />
         <span className="text-caption-1 text-fg-muted">People appear after their first sign-in.</span>
@@ -396,7 +401,7 @@ function AddRoleDialog({ open, onOpenChange, roles, profiles, person, onAdd }: {
         <DialogBody className="flex flex-col gap-stack-lg">
           <Field>
             <FieldLabel>Role</FieldLabel>
-            <Select aria-label="Role" value={role || null} onValueChange={(v) => setRole(v ?? "")} placeholder="Pick a role">
+            <Select aria-label="Role" items={Object.fromEntries(grantable.map((r) => [r.id, r.name]))} value={role || null} onValueChange={(v) => setRole(v ?? "")} placeholder="Pick a role">
               {grantable.map((r) => (
                 <SelectItem key={r.id} value={r.id}>
                   {r.name}
@@ -433,6 +438,7 @@ function NewAccountDialog({ open, onOpenChange, roles, onCreate }: { open: boole
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
+  const grantable = roles.filter((r) => r.id !== "member");
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setUsername(""); setDisplayName(""); setRole(""); } }} size="md">
       <DialogContent data-testid="new-account">
@@ -451,8 +457,8 @@ function NewAccountDialog({ open, onOpenChange, roles, onCreate }: { open: boole
           </Field>
           <Field>
             <FieldLabel>Role (optional, everywhere)</FieldLabel>
-            <Select aria-label="Role" value={role || null} onValueChange={(v) => setRole(v ?? "")} placeholder="No role yet">
-              {roles.filter((r) => r.id !== "member").map((r) => (
+            <Select aria-label="Role" items={Object.fromEntries(grantable.map((r) => [r.id, r.name]))} value={role || null} onValueChange={(v) => setRole(v ?? "")} placeholder="No role yet">
+              {grantable.map((r) => (
                 <SelectItem key={r.id} value={r.id}>
                   {r.name}
                 </SelectItem>

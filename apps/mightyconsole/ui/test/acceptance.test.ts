@@ -56,7 +56,7 @@ describe("acceptance checklists", () => {
       // secrets-rotation, secrets-shared and secrets-target. TSK-141 the rest of Start, redaction,
       // TSK-139's import and backup, the limits, outbound, the browser rules, every destroy and the
       // codec endpoint.
-      ["security", "TSK-141", 33],
+      ["security", "TSK-141", 34],
     ]);
   });
 
