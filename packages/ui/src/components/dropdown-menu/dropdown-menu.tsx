@@ -23,7 +23,7 @@ export const menuClasses = {
   popup: ["flex min-w-panel-xs flex-col overflow-y-auto overflow-x-hidden overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
   item: [
     flyoutItem,
-    "gap-inline-md [overflow-wrap:anywhere] data-popup-open:bg-hover",
+    "gap-inline-md wrap-anywhere data-popup-open:bg-hover",
     "data-highlighted:[&_svg]:text-accent-subtle-fg",
     "data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle data-danger:data-highlighted:[&_svg]:text-danger-fg",
   ],
