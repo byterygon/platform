@@ -21,6 +21,8 @@
 pub mod api;
 pub mod connect;
 pub mod docker;
+pub mod links;
+pub mod links_api;
 pub mod routes;
 pub mod routes_api;
 pub mod spec;

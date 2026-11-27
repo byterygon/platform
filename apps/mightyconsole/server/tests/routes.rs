@@ -423,3 +423,234 @@ async fn temporal_s_error_names_the_hop_through_tonic() {
         err.message
     );
 }
+
+#[tokio::test]
+async fn the_map_s_links_are_saved_by_themselves_and_keep_to_the_rules_of_the_map() {
+    let t = start().await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let mut mia = member(&t, &mut a, 1, "human:oidc:mia").await;
+    let personal = json!({ "kind": "personal" });
+
+    mia.call(
+        1,
+        "proxies.create",
+        json!({ "name": "corp", "owner": personal,
+                "fields": { "kind": "socks5", "host": "proxy.corp", "port": 1080, "tls": false } }),
+    )
+    .await;
+    let proxy_id = mia.result(1).await["id"].as_str().unwrap().to_owned();
+    mia.call(
+        2,
+        "sshHosts.create",
+        json!({ "name": "bastion", "owner": personal,
+                "fields": { "host": "bastion.prod", "username": "deploy", "auth": "agent" } }),
+    )
+    .await;
+    let host_id = mia.result(2).await["id"].as_str().unwrap().to_owned();
+    let server = json!({ "kind": "server" });
+    let proxy = json!({ "kind": "proxy", "id": proxy_id });
+    let host = json!({ "kind": "sshHost", "id": host_id });
+    let plain = |method: &str| json!({ "method": method, "args": [], "env": [] });
+
+    // Two links nobody's route uses yet are saved, and listed.
+    mia.call(
+        3,
+        "links.create",
+        json!({ "owner": personal, "from": server, "to": proxy, "spec": plain("tcp") }),
+    )
+    .await;
+    let first = mia.result(3).await;
+    assert_eq!(first["method"], "tcp");
+    assert_eq!(first["usedBy"], json!([]));
+    mia.call(
+        4,
+        "links.create",
+        json!({ "owner": personal, "from": proxy, "to": host, "spec": plain("connect") }),
+    )
+    .await;
+    let second = mia.result(4).await;
+    mia.call(5, "links.list", json!({})).await;
+    assert_eq!(mia.result(5).await["links"].as_array().unwrap().len(), 2);
+
+    // The rules the map shows: one link a pair, no loop, nothing into this server, nothing out
+    // of the target, and a method the source allows.
+    for (id, from, to, method, code) in [
+        (6, &server, &proxy, "tcp", Code::FailedPrecondition),
+        (7, &host, &proxy, "ssh", Code::InvalidArgument),
+        (8, &host, &server, "ssh", Code::InvalidArgument),
+        (9, &proxy, &host, "connect", Code::FailedPrecondition),
+        (21, &proxy, &host, "ssh", Code::InvalidArgument),
+        (10, &server, &host, "connect", Code::InvalidArgument),
+        (
+            11,
+            &json!({ "kind": "target" }),
+            &host,
+            "tcp",
+            Code::InvalidArgument,
+        ),
+        (
+            12,
+            &host,
+            &json!({ "kind": "target" }),
+            "ssh",
+            Code::InvalidArgument,
+        ),
+    ] {
+        mia.call(
+            id,
+            "links.create",
+            json!({ "owner": personal, "from": from, "to": to, "spec": plain(method) }),
+        )
+        .await;
+        mia.error(id, code).await;
+    }
+
+    // A route over the saved links reuses them; they cannot be deleted while it does.
+    mia.call(
+        13,
+        "routes.create",
+        json!({ "name": "prod", "owner": personal,
+                "hops": [{ "kind": "proxy", "proxyId": proxy_id }, { "kind": "ssh", "sshHostId": host_id }] }),
+    )
+    .await;
+    let route = mia.result(13).await;
+    assert_eq!(route["hops"][0]["linkId"], second["id"]);
+    mia.call(14, "links.list", json!({})).await;
+    let links = mia.result(14).await;
+    assert_eq!(links["links"].as_array().unwrap().len(), 3);
+    let used = links["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["id"] == first["id"])
+        .unwrap();
+    assert_eq!(used["usedBy"][0]["name"], "prod");
+    mia.call(15, "links.delete", json!({ "id": first["id"] }))
+        .await;
+    let err = mia.error(15, Code::FailedPrecondition).await;
+    assert!(err.message.contains("prod (route)"), "{}", err.message);
+
+    // Deleting the route takes the link into the target, not the ones between nodes.
+    mia.confirmed(
+        16,
+        "routes.delete",
+        json!({ "id": route["id"], "name": "prod" }),
+    )
+    .await;
+    mia.result(16).await;
+    mia.call(17, "links.list", json!({})).await;
+    assert_eq!(mia.result(17).await["links"].as_array().unwrap().len(), 2);
+    mia.call(18, "links.delete", json!({ "id": first["id"] }))
+        .await;
+    mia.result(18).await;
+
+    // A node's deletion takes the links drawn to and from it.
+    mia.confirmed(
+        19,
+        "sshHosts.delete",
+        json!({ "id": host_id, "name": "bastion" }),
+    )
+    .await;
+    mia.result(19).await;
+    mia.call(20, "links.list", json!({})).await;
+    assert_eq!(mia.result(20).await["links"], json!([]));
+}
+
+#[tokio::test]
+async fn a_command_link_needs_host_access_and_a_confirmation_and_a_change_asks_again() {
+    let t = start().await;
+    let admin = t.browser_as(&admin_id(&t), &[]).await;
+    let mut a = t.tab(&admin).await;
+    let mut mia = member(&t, &mut a, 1, "human:oidc:mia").await;
+    let personal = json!({ "kind": "personal" });
+    let server = json!({ "kind": "server" });
+    let command = |args: Value| {
+        json!({ "method": "command", "program": "/usr/bin/tsh", "args": args,
+                "env": [{ "name": "TOKEN", "secret": true, "value": "tok-do-not-leak" }] })
+    };
+    for (tab, id) in [(&mut mia, 1), (&mut a, 2)] {
+        tab.call(
+            id,
+            "sshHosts.create",
+            json!({ "name": "lab", "owner": personal,
+                    "fields": { "host": "lab-gw.internal", "username": "ops", "auth": "agent" } }),
+        )
+        .await;
+    }
+    let mia_host = mia.result(1).await["id"].as_str().unwrap().to_owned();
+    let host_id = a.result(2).await["id"].as_str().unwrap().to_owned();
+    let to_mia = json!({ "kind": "sshHost", "id": mia_host });
+    let to = json!({ "kind": "sshHost", "id": host_id });
+
+    // Running a program on the server's machine needs profiles.hostAccess.
+    mia.call(
+        3,
+        "links.create",
+        json!({ "owner": personal, "from": server, "to": to_mia, "spec": command(json!(["proxy", "ssh"])) }),
+    )
+    .await;
+    mia.error(3, Code::PermissionDenied).await;
+
+    a.call(
+        4,
+        "links.create",
+        json!({ "owner": personal, "from": server, "to": to, "spec": command(json!(["proxy", "ssh", "{host}:{port}"])) }),
+    )
+    .await;
+    let link = a.result(4).await;
+    no_secret(&link);
+    assert_eq!(link["needsConfirmation"], true);
+    assert!(link["confirmed"].is_null());
+    assert_eq!(
+        link["env"][0],
+        json!({ "name": "TOKEN", "secret": true, "set": true })
+    );
+
+    a.call(5, "links.confirm", json!({ "id": link["id"] }))
+        .await;
+    let confirmed = a.result(5).await;
+    assert_eq!(confirmed["confirmed"]["by"], admin_id(&t));
+
+    // Another argument is another command: not confirmed, the secret kept.
+    a.call(
+        6,
+        "links.update",
+        json!({ "id": link["id"], "etag": confirmed["etag"],
+                "spec": { "method": "command", "program": "/usr/bin/tsh", "args": ["-v", "proxy", "ssh"],
+                          "env": [{ "name": "TOKEN", "secret": true }] } }),
+    )
+    .await;
+    let changed = a.result(6).await;
+    no_secret(&changed);
+    assert!(changed["confirmed"].is_null());
+    assert_eq!(changed["env"][0]["set"], true);
+    assert_eq!(changed["id"], link["id"]);
+
+    // A secret variable that holds no value yet is asked for, and a plain link confirms nothing.
+    a.call(
+        7,
+        "links.update",
+        json!({ "id": link["id"], "etag": changed["etag"],
+                "spec": { "method": "command", "program": "/usr/bin/tsh", "args": ["x"],
+                          "env": [{ "name": "OTHER", "secret": true }] } }),
+    )
+    .await;
+    a.error(7, Code::InvalidArgument).await;
+    a.call(
+        8,
+        "links.update",
+        json!({ "id": link["id"], "etag": changed["etag"], "spec": { "method": "tcp", "args": [], "env": [] } }),
+    )
+    .await;
+    let tcp = a.result(8).await;
+    assert_eq!(tcp["method"], "tcp");
+    assert_eq!(tcp["env"], json!([]));
+    a.call(9, "links.confirm", json!({ "id": link["id"] }))
+        .await;
+    a.error(9, Code::InvalidArgument).await;
+
+    // Not someone else's.
+    mia.call(10, "links.get", json!({ "id": link["id"] })).await;
+    mia.error(10, Code::NotFound).await;
+}

@@ -751,6 +751,49 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         // The messaging core, spec §5.8.
+        // Links of the network map (DOC-23 (aa), TSK-145).
+        (
+            "links.confirm",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "links.create",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "links.delete",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "links.get",
+            Query,
+            "profiles.personal",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "links.list",
+            Query,
+            "profiles.personal",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "links.update",
+            Mutation,
+            "profiles.personal",
+            Risk::Write,
+            defaults,
+        ),
         (
             "messaging.codecs.list",
             Query,

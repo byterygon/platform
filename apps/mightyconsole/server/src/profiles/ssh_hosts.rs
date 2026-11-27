@@ -597,6 +597,8 @@ impl ProfileService {
                     in_use = Some(users);
                     return Err(WriteError::Stale);
                 }
+                // No route passes it: the links drawn to and from it go with it.
+                graph.delete_links_at(write, &node)?;
                 Ok(())
             })
             .map_err(|e| match in_use.take() {

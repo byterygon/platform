@@ -20,24 +20,26 @@ use super::{Access, ProfileError, ProfileService};
 use crate::core::route::RouteTestLine;
 use crate::core::{Empty, ToolError, ToolErrorKind, ToolResult};
 
-const SYSTEM: &str = "routes";
+pub(super) const SYSTEM: &str = "routes";
 
-fn tool_error(e: ProfileError) -> ToolError {
+pub(super) fn tool_error(e: ProfileError) -> ToolError {
     match e {
         ProfileError::Invalid { field, message } => ToolError::invalid(SYSTEM, &field, message),
-        ProfileError::NotFound => ToolError::not_found(SYSTEM, "route", "no such route or proxy"),
+        ProfileError::NotFound => {
+            ToolError::not_found(SYSTEM, "route", "no such route, proxy or link")
+        }
         ProfileError::Forbidden(m) => ToolError::new(ToolErrorKind::Forbidden, SYSTEM, m),
         ProfileError::Conflict(m) => ToolError::new(ToolErrorKind::Conflict, SYSTEM, m),
         ProfileError::Store(m) => ToolError::new(ToolErrorKind::Remote, SYSTEM, m),
     }
 }
 
-fn service(s: &Option<Arc<ProfileService>>) -> Result<Arc<ProfileService>, ToolError> {
+pub(super) fn service(s: &Option<Arc<ProfileService>>) -> Result<Arc<ProfileService>, ToolError> {
     s.clone()
         .ok_or_else(|| ToolError::new(ToolErrorKind::Remote, SYSTEM, "no profile store"))
 }
 
-async fn blocking<T: Send + 'static>(
+pub(super) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, ProfileError> + Send + 'static,
 ) -> Result<T, ToolError> {
     tokio::task::spawn_blocking(work)
@@ -46,16 +48,16 @@ async fn blocking<T: Send + 'static>(
         .map_err(tool_error)
 }
 
-fn etag_of(text: &str) -> Result<u64, ToolError> {
+pub(super) fn etag_of(text: &str) -> Result<u64, ToolError> {
     text.parse()
         .map_err(|_| ToolError::invalid(SYSTEM, "etag", "the etag a read answered"))
 }
 
-fn now() -> u64 {
+pub(super) fn now() -> u64 {
     security_types::unix_now_ms()
 }
 
-fn owner_wire(owner: &Ownership) -> OwnerWire {
+pub(super) fn owner_wire(owner: &Ownership) -> OwnerWire {
     match owner {
         Ownership::Personal { user } => OwnerWire::Personal {
             user: Some(user.clone()),
@@ -64,7 +66,7 @@ fn owner_wire(owner: &Ownership) -> OwnerWire {
     }
 }
 
-fn users_view(users: Vec<User>) -> (Vec<SshHostUser>, u32) {
+pub(super) fn users_view(users: Vec<User>) -> (Vec<SshHostUser>, u32) {
     let hidden = users.iter().filter(|u| !u.visible).count();
     (
         users
