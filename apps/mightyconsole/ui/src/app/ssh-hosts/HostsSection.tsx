@@ -26,10 +26,13 @@ export interface HostsSectionProps {
   onOpenProfile?: (profileId: string, tool: string) => void;
 }
 
+/** "Docker", "Route", or the tool's id. */
+export const toolLabel = (tool: string): string => (tool === "docker" ? "Docker" : tool === "route" ? "Route" : tool);
+
 const shortKey = (fingerprint: string) => (fingerprint.length > 22 ? `${fingerprint.slice(0, 13)}…${fingerprint.slice(-5)}` : fingerprint);
 
 function usedBy(host: SshHostView): string {
-  const names = host.usedBy.map((u) => `${u.tool === "docker" ? "Docker" : u.tool} ${u.name}`);
+  const names = host.usedBy.map((u) => `${toolLabel(u.tool)} ${u.name}`);
   if (host.usedByHidden > 0) names.push(`${host.usedByHidden} you do not see`);
   return names.join(", ");
 }
@@ -147,16 +150,16 @@ export function HostsSection({ client, onOpenProfile }: HostsSectionProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{inUse?.name} is in use</AlertDialogTitle>
-            <AlertDialogDescription>It cannot be deleted while a Docker host uses it, because they would lose their login. Choose another host in each of them first.</AlertDialogDescription>
+            <AlertDialogDescription>It cannot be deleted while a Docker host or a route uses it, because they would lose their login. Choose another host in each of them first (a route in Settings → Routes).</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogBody>
             <ul className="flex flex-col gap-stack-xs" aria-label="Used by">
               {inUse?.usedBy.map((u) => (
                 <li key={u.id} className="flex items-center gap-inline-sm text-body-1">
                   <span>
-                    {u.tool === "docker" ? "Docker" : u.tool} <b>{u.name}</b>
+                    {toolLabel(u.tool)} <b>{u.name}</b>
                   </span>
-                  {onOpenProfile ? (
+                  {onOpenProfile && u.tool !== "route" ? (
                     <Button
                       size="small"
                       appearance="subtle"

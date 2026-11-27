@@ -244,9 +244,9 @@ export function HostEditor({ open, onOpenChange, client, host, sharedByDefault =
                   {host.usedBy.map((u) => (
                     <li key={u.id} className="flex items-center gap-inline-sm text-body-1">
                       <span>
-                        {u.tool === "docker" ? "Docker" : u.tool} <b>{u.name}</b>
+                        {u.tool === "docker" ? "Docker" : u.tool === "route" ? "Route" : u.tool} <b>{u.name}</b>
                       </span>
-                      {onOpenUser ? (
+                      {onOpenUser && u.tool !== "route" ? (
                         <Button size="small" appearance="subtle" className="ms-auto" onClick={() => onOpenUser(u.id)}>
                           Open
                         </Button>

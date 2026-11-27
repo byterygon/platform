@@ -112,6 +112,11 @@ export interface FakeServer {
   dockerProfiles: Map<string, FakeDockerProfile>;
   /** Saved SSH hosts (TSK-144), with their secrets by field. */
   sshHosts: Map<string, { view: api.SshHostView; secrets: Record<string, string> }>;
+  /** Routes and proxies (TSK-117): the views the server answers. */
+  routes: api.RouteView[];
+  proxies: api.ProxyView[];
+  /** What the next `routes.test` answers; every hop and the target pass when `null`. */
+  routeTest: api.RouteTestOutput | null;
   /** The Docker host's containers (TSK-81 batch 2b). */
   dockerContainers: api.ContainerRow[];
   /** Each container's log lines, by name. */
@@ -458,6 +463,9 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     produced: [],
     dockerProfiles: new Map(),
     sshHosts: new Map(),
+    routes: [],
+    proxies: [],
+    routeTest: null,
     dockerContainers: fakeContainers(),
     dockerLogs: new Map(),
     dockerFollow: new Set(),
@@ -724,6 +732,118 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     }
   };
 
+  // ---- Routes and proxies (TSK-117): views kept in `server.routes` and `server.proxies`.
+  const hopView = (h: api.HopInput, i: number): api.HopView => {
+    const base = { linkId: `L${i}-${JSON.stringify(h).length}`, needsConfirmation: false, args: [] as string[], env: [] as api.EnvView[] };
+    switch (h.kind) {
+      case "proxy": {
+        const p = server.proxies.find((x) => x.id === h.proxyId);
+        return { ...base, kind: p?.fields.kind ?? "httpConnect", label: p ? `${p.fields.host}:${p.fields.port}` : "?", proxyId: h.proxyId, ...(p ? { nodeName: p.name } : {}) };
+      }
+      case "ssh":
+      case "sshCommand": {
+        const s = server.sshHosts.get(h.sshHostId)?.view;
+        return { ...base, kind: h.kind, label: s ? `${s.fields.host}:${s.fields.port ?? 22}` : "?", sshHostId: h.sshHostId, ...(s ? { nodeName: s.name } : {}), ...(h.kind === "sshCommand" ? { command: h.command, needsConfirmation: true } : {}) };
+      }
+      default:
+        return { ...base, kind: "command", label: h.program.split("/").pop() ?? h.program, program: h.program, args: h.args, env: h.env.map((v) => ({ name: v.name, secret: v.secret, set: v.secret ? (v.value ?? "") !== "" : true, ...(v.secret ? {} : { value: v.value ?? "" }) })), needsConfirmation: true };
+    }
+  };
+  const routeView = (id: string, name: string, kind: api.RouteKind, hops: api.HopInput[], owner: api.OwnerWire): api.RouteView => {
+    const views = hops.map(hopView);
+    return { id, name, kind, hops: views, confirmed: views.every((h) => !h.needsConfirmation), owner, etag: "1", createdAt: "", updatedAt: "", createdBy: "human:account:test", updatedBy: "human:account:test", access: "owner", usedBy: [], usedByHidden: 0 };
+  };
+  const routeGone = () => new RpcError("NotFound", "no such route", { details: { kind: "NotFound", system: "routes", message: "no such route", retryable: false, resource: "route" } });
+  const routesApi = {
+    list: async () => {
+      record("routes.list", {});
+      return { routes: server.routes };
+    },
+    get: async (input: { id: string }) => {
+      record("routes.get", input);
+      const r = server.routes.find((x) => x.id === input.id);
+      if (!r) throw routeGone();
+      return r;
+    },
+    create: async (input: api.RouteCreateInput) => {
+      record("routes.create", input);
+      const view = routeView(ulid(), input.name, input.kind ?? "path", input.hops, input.owner);
+      server.routes.push(view);
+      return view;
+    },
+    update: async (input: api.RouteUpdateInput) => {
+      record("routes.update", input);
+      const i = server.routes.findIndex((x) => x.id === input.id);
+      const current = server.routes[i];
+      if (!current) throw routeGone();
+      const view = input.hops ? routeView(current.id, input.name ?? current.name, current.kind, input.hops, current.owner) : { ...current, name: input.name ?? current.name };
+      server.routes[i] = { ...view, etag: String(Number(current.etag) + 1) };
+      return server.routes[i];
+    },
+    duplicate: async (input: { id: string; name: string }) => {
+      record("routes.duplicate", input);
+      const r = server.routes.find((x) => x.id === input.id);
+      if (!r) throw routeGone();
+      const copy = { ...r, id: ulid(), name: input.name, usedBy: [], usedByHidden: 0 };
+      server.routes.push(copy);
+      return copy;
+    },
+    delete: async (input: { id: string; name: string }) => {
+      record("routes.delete", input);
+      server.routes = server.routes.filter((x) => x.id !== input.id);
+      return {};
+    },
+    confirm: async (input: api.RouteConfirmInput) => {
+      record("routes.confirm", input);
+      const i = server.routes.findIndex((x) => x.id === input.id);
+      const r = server.routes[i];
+      if (!r) throw routeGone();
+      const hops = r.hops.map((h) => (input.links.includes(h.linkId) ? { ...h, confirmed: { by: "human:account:test", at: "now" } } : h));
+      server.routes[i] = { ...r, hops, confirmed: hops.every((h) => !h.needsConfirmation || h.confirmed) };
+      return server.routes[i];
+    },
+    test: async (input: api.RouteTestInput) => {
+      record("routes.test", input);
+      if (server.routeTest) return server.routeTest;
+      const hops = input.hops ?? server.routes.find((x) => x.id === input.routeId)?.hops.map((h) => ({ kind: "ssh", sshHostId: h.sshHostId ?? "" }) as api.HopInput) ?? [];
+      const lines: api.RouteTestLine[] = hops.map((h, i) => ({ hop: { index: i, kind: h.kind === "proxy" ? "httpConnect" : h.kind, label: "hop" }, ok: true, ms: 3 }));
+      lines.push({ hop: { index: hops.length, kind: "target", label: `${input.target.host}:${input.target.port}` }, ok: true, ms: 2 });
+      return { lines, hops: hops.length, ms: 5 * lines.length };
+    },
+    import: async () => {
+      throw new Error("routes.import is not faked");
+    },
+  };
+  const proxiesApi = {
+    list: async () => {
+      record("proxies.list", {});
+      return { proxies: server.proxies };
+    },
+    get: async (input: { id: string }) => server.proxies.find((p) => p.id === input.id)!,
+    create: async (input: api.ProxyCreateInput) => {
+      record("proxies.create", { ...input, password: input.password ? "<typed>" : null });
+      const scheme = input.fields.kind === "socks5" ? "socks5" : input.fields.tls ? "https" : "http";
+      const view: api.ProxyView = { id: ulid(), name: input.name, fields: input.fields, url: `${scheme}://${input.fields.host}:${input.fields.port}`, owner: input.owner, etag: "1", createdAt: "", updatedAt: "", createdBy: "human:account:test", updatedBy: "human:account:test", access: "owner", secrets: input.password ? [{ field: "password", set: true, version: 1, setBy: "human:account:test", setAt: 0 }] : [], usedBy: [], usedByHidden: 0 };
+      server.proxies.push(view);
+      return view;
+    },
+    update: async (input: api.ProxyUpdateInput) => {
+      record("proxies.update", { ...input, password: input.password ? "<typed>" : null });
+      const i = server.proxies.findIndex((p) => p.id === input.id);
+      const p = server.proxies[i]!;
+      server.proxies[i] = { ...p, name: input.name ?? p.name, fields: input.fields ?? p.fields };
+      return { proxy: server.proxies[i]!, removedSecrets: [] };
+    },
+    delete: async (input: { id: string; name: string }) => {
+      record("proxies.delete", input);
+      server.proxies = server.proxies.filter((p) => p.id !== input.id);
+      return {};
+    },
+    import: async () => {
+      throw new Error("proxies.import is not faked");
+    },
+  };
+
   // ---- SSH hosts (TSK-144): kept in `server.sshHosts`; secrets write-only.
   const hostGone = () => new RpcError("NotFound", "no such SSH host", { details: { kind: "NotFound", system: "profiles", message: "no such SSH host", retryable: false, resource: "sshHost" } });
   const hostView = (h: { view: api.SshHostView; secrets: Record<string, string> }): api.SshHostView => {
@@ -924,6 +1044,8 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage(), op
     },
     secrets: secretsApi,
     sshHosts: sshHostsApi,
+    routes: routesApi,
+    proxies: proxiesApi,
     app: {
       info: async () => {
         record("app.info", {});

@@ -1,6 +1,8 @@
 // Profile dialogs (Mightyconsole spec §4): add, edit and duplicate in a Sheet with the tool's
 // connection form; delete; export with "Include secrets" off by default; import with a choice per
 // conflicting profile (Replace, Keep both, Skip); the confirmation for closing a busy tab.
+import { ConnectThrough } from "../routes/ConnectThrough";
+import { addressOf, sshHostById } from "@/profiles/ssh-hosts";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { ServicesContext } from "@/app/client";
 import { useSheetGuard } from "@/app/leave-guard";
@@ -237,6 +239,24 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />
             </SecretsProvider>
+            {services?.client ? (
+              <ConnectThrough
+                client={services.client}
+                tool={tool.id}
+                fields={draft.fields}
+                shared={mode === "add" ? shared : base?.owner?.kind === "shared"}
+                disabled={readOnly}
+                target={sshTargetOf(draft.fields)}
+                onChange={(routeId) =>
+                  setDraft((d) => {
+                    const fields = { ...d.fields };
+                    if (routeId) fields["routeId"] = routeId;
+                    else delete fields["routeId"];
+                    return { ...d, fields };
+                  })
+                }
+              />
+            ) : null}
             {lost.size > 0 ? (
               <Alert intent="warning" data-testid="secrets-lost">
                 <AlertTitle>Saving removes the stored {[...lost].join(", ")}</AlertTitle>
@@ -541,4 +561,11 @@ export function ImportDialog({ open, onOpenChange, plan: makePlan, onImport, too
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Docker over SSH: the SSH host's address is what a route reaches. */
+function sshTargetOf(fields: Record<string, unknown>): string | undefined {
+  if (fields["transport"] === "socket" || fields["transport"] === "tcp") return undefined;
+  const host = typeof fields["sshHostId"] === "string" ? sshHostById(fields["sshHostId"]) : undefined;
+  return host ? addressOf(host.fields) : undefined;
 }

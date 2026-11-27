@@ -1,5 +1,5 @@
-// Settings (Mightyconsole spec §3.6): Appearance, Live views, Profiles, SSH hosts (DOC-23 §10,
-// TSK-144) and Advanced, one setting
+// Settings (Mightyconsole spec §3.6): Appearance, Live views, Profiles, Routes (DOC-23 §10, TSK-117),
+// SSH hosts (DOC-23 §10, TSK-144) and Advanced, one setting
 // per row as in DBee's Settings (TSK-64). "Forget everything in this browser" deletes the IndexedDB
 // database after the user types FORGET.
 import { type ReactNode, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ArrowExport, ArrowImport, Delete, Filter, Flash, type IconDefinition, List, Server, Star, TextT, Window } from "@/lib/icons";
 import { PRESETS, PRESET_LABELS, type Preset } from "../presets";
 import type { MightyClient } from "../client";
+import { RoutesSection } from "../routes/RoutesSection";
 import { HostsSection } from "../ssh-hosts/HostsSection";
 import type { Settings } from "../store";
 
@@ -73,6 +74,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="live">Live views</TabsTrigger>
               <TabsTrigger value="profiles">Profiles</TabsTrigger>
+              {props.client ? <TabsTrigger value="routes">Routes</TabsTrigger> : null}
               {props.client ? <TabsTrigger value="sshHosts">SSH hosts</TabsTrigger> : null}
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
@@ -130,6 +132,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 <Button onClick={props.onImport}>Import…</Button>
               </SettingRow>
             </TabsContent>
+            {props.client ? (
+              <TabsContent value="routes" className="flex min-w-0 flex-col gap-stack-sm">
+                <RoutesSection client={props.client} {...(props.onOpenProfile ? { onOpenProfile: props.onOpenProfile } : {})} />
+              </TabsContent>
+            ) : null}
             {props.client ? (
               <TabsContent value="sshHosts" className="flex min-w-0 flex-col gap-stack-sm">
                 <HostsSection client={props.client} {...(props.onOpenProfile ? { onOpenProfile: props.onOpenProfile } : {})} />

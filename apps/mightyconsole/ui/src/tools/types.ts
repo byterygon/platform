@@ -6,7 +6,7 @@ import type { ComponentType, ReactNode } from "react";
 import type { IconDefinition } from "@/lib/icons";
 import type { MightyClient } from "@/app/client";
 import type { ProfileRecord } from "@/profiles/record";
-import type { HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
+import type { ErrorHop, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 
 /** Field errors by field name, as TanStack Form or a plain form shows them. */
 export type FieldErrors = Record<string, string>;
@@ -154,6 +154,8 @@ export interface DescribedError {
   remoteCode?: string;
   /** For `HostKey`: the key the host presented (spec §10.2), for the trust dialog. */
   hostKey?: HostKeyDetails;
+  /** Through a route: the hop (or the target) that failed (DOC-23 §9). */
+  hop?: ErrorHop;
   /** The target's error name, when the tool gives one (`StandaloneActivitiesUnsupported`). */
   remoteName?: string;
   /** For `PermissionDenied`: the permission, the target and the kind of reason the server named (DOC-25 §3.3.4). */

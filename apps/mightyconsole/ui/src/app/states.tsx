@@ -1,5 +1,7 @@
 // The states every screen implements (Mightyconsole spec §3.5): Disconnected, Loading, Empty,
 // Error and Live, as shared components the shell and the tools use.
+import { PathFigure, type PathNode, resultsOfError } from "./routes/PathFigure";
+import { hopTitle } from "@/profiles/routes";
 import type { ReactNode } from "react";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +55,22 @@ export function EmptyLine({ children, action }: { children: ReactNode; action?: 
 }
 
 /** The ToolError in place of the content, with its remote code, Details and remedy (spec §2.6). */
-export function ErrorState({ error, onRetry, onEditProfile, onRefresh, onTrust }: { error: DescribedError; onRetry?: () => void; onEditProfile?: () => void; onRefresh?: () => void; onTrust?: () => void }) {
+export function ErrorState({
+  error,
+  onRetry,
+  onEditProfile,
+  onRefresh,
+  onTrust,
+  route,
+}: {
+  error: DescribedError;
+  onRetry?: () => void;
+  onEditProfile?: () => void;
+  onRefresh?: () => void;
+  onTrust?: () => void;
+  /** The profile's route (DOC-23 §10, routes-error-hop): its path, with the failing hop red. */
+  route?: { name: string; hops: readonly PathNode[]; target: string | null } | undefined;
+}) {
   const remedy = remedyOf(error);
   const refuse = useRefusals();
   const refusal = error.denied ? refuse(error.denied) : null;
@@ -63,6 +80,14 @@ export function ErrorState({ error, onRetry, onEditProfile, onRefresh, onTrust }
       <AlertTitle>{error.title}</AlertTitle>
       <AlertDescription>
         {error.description ? <span>{error.description} </span> : null}
+        {route && error.hop ? (
+          <span className="my-stack-xs block overflow-x-auto" data-testid="error-path">
+            <span className="block text-caption-1">
+              Through route <b>{route.name}</b>: {hopTitle(error.hop)} failed.
+            </span>
+            <PathFigure size="small" hops={route.hops} target={route.target} results={resultsOfError(error.hop.index, route.hops.length)} />
+          </span>
+        ) : null}
         {error.remoteCode ? (
           <span>
             Code <Code>{error.remoteCode}</Code>.{" "}
