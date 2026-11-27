@@ -57,7 +57,7 @@ set -- --annotation "index:org.opencontainers.image.source=$source_url" \
   --annotation "index:org.opencontainers.image.title=Mightyconsole" \
   --annotation "index:org.opencontainers.image.version=$version" \
   --annotation "index:org.opencontainers.image.revision=$revision" \
-  --annotation "index:org.opencontainers.image.description=Offline web console for NATS, Kafka, Kubernetes, Temporal, Docker over SSH and LangGraph. Everyone signs in; the default administrator's password is in /data/admin-password."
+  --annotation "index:org.opencontainers.image.description=Offline web console for NATS, Kafka, Kubernetes, Temporal, Docker and LangGraph. Everyone signs in; the default administrator's password is in /data/admin-password."
 for tag in $tags; do set -- "$@" -t "$repo:$tag"; done
 docker buildx imagetools create "$@" "$repo:$version-amd64" "$repo:$version-arm64"
 

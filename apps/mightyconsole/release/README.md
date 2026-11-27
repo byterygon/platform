@@ -1,15 +1,17 @@
 # Mightyconsole
 
-One offline web console for NATS, Kafka with Schema Registry, Kubernetes, Temporal, Docker over
-SSH and LangGraph. `RELEASE-NOTES.md` says which tools this build has. Licence: AGPL-3.0-only
+One offline web console for NATS, Kafka with Schema Registry, Kubernetes, Temporal, Docker
+and LangGraph. `RELEASE-NOTES.md` says which tools this build has. Licence: AGPL-3.0-only
 (`LICENSE`); the parts it contains are listed in `THIRD-PARTY-NOTICES.txt`. Source:
 https://github.com/byterygon/platform (`apps/mightyconsole`).
 
 > **Everyone signs in.** The server has built-in accounts (anyone who reaches the sign-in page can
 > make one unless `[auth] signup = "off"`) and, when configured, sign-in through your identity
-> provider (OIDC). Roles are not in this version yet: **every signed-in person may do
-> everything**. Keep it on `127.0.0.1` (the default) unless you trust everyone who can reach the
-> port, and give it a real certificate (`--tls-cert`, `--tls-key`) before you expose it.
+> provider (OIDC). What a person may do depends on their **roles** (per tool and risk: read, write,
+> destroy and the tool's own extras such as exec); a new account is a `member` with personal
+> profiles only, and an administrator gives more. Keep it on `127.0.0.1` (the default) unless you
+> trust everyone who can reach the port, and give it a real certificate (`--tls-cert`,
+> `--tls-key`) before you expose it.
 
 ## Verify the download
 

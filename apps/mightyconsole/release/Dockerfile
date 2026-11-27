@@ -10,7 +10,7 @@ LABEL org.opencontainers.image.title="Mightyconsole" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/byterygon/platform" \
-      org.opencontainers.image.description="Offline web console for NATS, Kafka, Kubernetes, Temporal, Docker over SSH and LangGraph. Everyone signs in; the default administrator's password is in /data/admin-password."
+      org.opencontainers.image.description="Offline web console for NATS, Kafka, Kubernetes, Temporal, Docker and LangGraph. Everyone signs in; the default administrator's password is in /data/admin-password."
 COPY mightyconsole-server /mightyconsole-server
 COPY LICENSE README.md THIRD-PARTY-NOTICES.txt /usr/share/doc/mightyconsole/
 COPY --chown=65532:65532 data/ /data/

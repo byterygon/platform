@@ -42,7 +42,7 @@ export const TOOLS = [
   { id: "kafka", name: "Kafka and Schema Registry", task: "TSK-86" },
   { id: "k8s", name: "Kubernetes", task: "TSK-82" },
   { id: "temporal", name: "Temporal", task: "TSK-83" },
-  { id: "docker", name: "Docker over SSH", task: "TSK-81" },
+  { id: "docker", name: "Docker", task: "TSK-81" },
   { id: "langgraph", name: "LangGraph", task: "TSK-84" },
 ] as const;
 
@@ -139,7 +139,7 @@ export function releaseNotes(notes: readonly Note[], fix = readFix(notes.length 
   lines.push(
     "## Known limits",
     "",
-    "- Everyone signs in: built-in accounts (sign-up open by default) and OIDC; the default administrator's password is in DATA/admin-password (README.md). Roles are not in this version: every signed-in person may do everything.",
+    "- Everyone signs in: built-in accounts (sign-up open by default) and OIDC; the default administrator's password is in DATA/admin-password (README.md). Roles are per tool and risk; a new account is a member with personal profiles only (README.md).",
     "- Not code-signed; no updater (install a new release by replacing the file or loading the new image).",
     "",
   );

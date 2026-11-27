@@ -97,12 +97,12 @@ describe("release", () => {
     const at = (needle: string) => text.indexOf(needle);
     expect(at("## New in this release: Kubernetes")).toBeGreaterThan(0);
     expect(at("## Earlier in 0.1")).toBeGreaterThan(at("- pods and logs"));
-    expect(at("### Docker over SSH (alpha 1)")).toBeGreaterThan(at("## Earlier in 0.1"));
+    expect(at("### Docker (alpha 1)")).toBeGreaterThan(at("## Earlier in 0.1"));
     // The tool's own heading moves under the release's.
     expect(text).toContain("#### Docker\n");
     expect(at("## The base")).toBeGreaterThan(at("- containers"));
     expect(text).toContain("## Not in this release yet\n\n- NATS (TSK-85)");
-    expect(text).not.toContain("- Docker over SSH (TSK-81)");
+    expect(text).not.toContain("- Docker (TSK-81)");
   });
 
   test("the shipped README covers start, open, the certificate, sign-in, profiles and exposure", () => {
