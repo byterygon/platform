@@ -557,6 +557,19 @@ async function main(): Promise<number> {
     };
     const nodeId = (name: string) => page.evaluate<string>(`document.querySelector('[data-n][aria-label^="${name},"]')?.getAttribute("data-n") ?? ""`);
     await openMap();
+    // The dialog keeps one size from section to section (TSK-170), at the window's size here.
+    const dialogBox = () => page.evaluate<string>(`(() => { const r = [...document.querySelectorAll("[role=dialog]")].at(-1).getBoundingClientRect(); return Math.round(r.width) + "x" + Math.round(r.height); })()`);
+    await sleep(600); // the popup's open animation scales it for a moment
+    const mapBox = await dialogBox();
+    for (const tab of ["Appearance", "Routes", "SSH hosts", "Advanced"]) {
+      await run(page, `__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === ${JSON.stringify(tab)}))`);
+      await sleep(300);
+      const box = await dialogBox();
+      if (box !== mapBox) throw new Error(`Settings changed size on the ${tab} tab: ${mapBox} on the map, ${box} here`);
+    }
+    if (process.env["MIGHTYCONSOLE_SHOTS"]) await page.screenshot(join(process.env["MIGHTYCONSOLE_SHOTS"], "settings-advanced.png"));
+    await run(page, `__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Network map"))`);
+    await until(page, `document.querySelector("[data-testid=network-map]")`, "the network map again");
     for (const [name, host] of [["corp-a", "127.0.0.1"], ["corp-b", "127.0.0.2"]] as const) {
       await run(page, `__mc.click([...document.querySelectorAll("[data-testid=network-map] button")].find((b) => b.textContent.trim() === "Proxy"))`);
       await until(page, `document.querySelector("[role=dialog] fieldset")`, `the new proxy form (${name})`);
