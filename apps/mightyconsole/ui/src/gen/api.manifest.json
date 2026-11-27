@@ -593,6 +593,23 @@
           "type": "object"
         },
         {
+          "description": "A link of the network map was made, changed, confirmed or deleted (DOC-23 (aa), (bl)).",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "LinkChanged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
           "description": "A saved proxy was made, changed or deleted (DOC-23 (ac)).",
           "properties": {
             "id": {
@@ -5436,6 +5453,231 @@
       ],
       "type": "object"
     },
+    "LinkCreateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Node"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire"
+        },
+        "spec": {
+          "$ref": "#/$defs/LinkSpecInput"
+        },
+        "to": {
+          "$ref": "#/$defs/Node"
+        }
+      },
+      "required": [
+        "owner",
+        "from",
+        "to",
+        "spec"
+      ],
+      "type": "object"
+    },
+    "LinkSpecInput": {
+      "additionalProperties": false,
+      "description": "What a link does, as `links.create` and `links.update` take it.",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "default": null,
+          "description": "`sshCommand`: the line run on the host (`{host}` and `{port}` are the next address).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "items": {
+            "$ref": "#/$defs/EnvInput"
+          },
+          "type": "array"
+        },
+        "method": {
+          "$ref": "#/$defs/Method"
+        },
+        "program": {
+          "default": null,
+          "description": "`command`: the program (no shell), its arguments one by one, its variables and its\nworking directory. Secret variables' values are redacted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "method",
+        "args",
+        "env"
+      ],
+      "type": "object"
+    },
+    "LinkUpdateInput": {
+      "additionalProperties": false,
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "spec": {
+          "$ref": "#/$defs/LinkSpecInput"
+        }
+      },
+      "required": [
+        "id",
+        "etag",
+        "spec"
+      ],
+      "type": "object"
+    },
+    "LinkView": {
+      "description": "A link as the caller may see it.",
+      "properties": {
+        "access": {
+          "description": "`owner`, `edit`, `use` or `metadata`.",
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "description": "`sshCommand`: the line run on the host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirmed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LinkConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "items": {
+            "$ref": "#/$defs/EnvView"
+          },
+          "type": "array"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "from": {
+          "$ref": "#/$defs/Node"
+        },
+        "id": {
+          "type": "string"
+        },
+        "method": {
+          "$ref": "#/$defs/Method"
+        },
+        "needsConfirmation": {
+          "description": "A command (local or on the host) a person must confirm before it runs.",
+          "type": "boolean"
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerWire.Output"
+        },
+        "program": {
+          "description": "`command`: the program, its arguments, variables and working directory (not for a\ncaller who sees the link's metadata only).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "$ref": "#/$defs/Node",
+          "description": "The target for the last link of a route (the profile's own address); the map draws it\nfrom the profiles that name the route."
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "updatedBy": {
+          "type": "string"
+        },
+        "usedBy": {
+          "description": "The routes that name it and the caller sees.",
+          "items": {
+            "$ref": "#/$defs/SshHostUser"
+          },
+          "type": "array"
+        },
+        "usedByHidden": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "from",
+        "to",
+        "method",
+        "args",
+        "env",
+        "needsConfirmation",
+        "owner",
+        "etag",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "access",
+        "usedBy",
+        "usedByHidden"
+      ],
+      "type": "object"
+    },
+    "LinksOutput": {
+      "properties": {
+        "links": {
+          "items": {
+            "$ref": "#/$defs/LinkView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "type": "object"
+    },
     "LocalGroup": {
       "properties": {
         "members": {
@@ -6039,6 +6281,36 @@
         "payloadCodec"
       ],
       "type": "object"
+    },
+    "Method": {
+      "description": "How a link's source reaches its destination.",
+      "oneOf": [
+        {
+          "const": "tcp",
+          "description": "From this server: a TCP connection.",
+          "type": "string"
+        },
+        {
+          "const": "command",
+          "description": "From this server: a local program whose stdio is the stream (DOC-23 4.4).",
+          "type": "string"
+        },
+        {
+          "const": "connect",
+          "description": "From a proxy: its CONNECT (HTTP) or CONNECT command (SOCKS5).",
+          "type": "string"
+        },
+        {
+          "const": "ssh",
+          "description": "From an SSH host: a `direct-tcpip` channel (DOC-23 4.3).",
+          "type": "string"
+        },
+        {
+          "const": "sshCommand",
+          "description": "From an SSH host: a command run there, its stdio the stream (DOC-23 4.3b).",
+          "type": "string"
+        }
+      ]
     },
     "NamedIdInput": {
       "additionalProperties": false,
@@ -9271,6 +9543,69 @@
         "ids"
       ],
       "type": "object"
+    },
+    "Node": {
+      "description": "A node of the network map (DOC-23 (aa)).",
+      "oneOf": [
+        {
+          "description": "The machine running this server.",
+          "properties": {
+            "kind": {
+              "const": "server",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "sshHost",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "proxy",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The profile's own address.",
+          "properties": {
+            "kind": {
+              "const": "target",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "NodeStat": {
       "description": "One node of the graph over the runs counted.",
@@ -19236,6 +19571,136 @@
     {
       "agent": "hidden",
       "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/IdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "links.confirm",
+      "output": {
+        "$ref": "#/$defs/LinkView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/LinkCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "links.create",
+      "output": {
+        "$ref": "#/$defs/LinkView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "spec.env.value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/IdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "links.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/IdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "links.get",
+      "output": {
+        "$ref": "#/$defs/LinkView"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "links.list",
+      "output": {
+        "$ref": "#/$defs/LinksOutput"
+      },
+      "perm": "profiles.personal",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/LinkUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "links.update",
+      "output": {
+        "$ref": "#/$defs/LinkView"
+      },
+      "perm": "profiles.personal",
+      "redact": [
+        "spec.env.value"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
       "error": false,
       "input": {
         "$ref": "#/$defs/Empty"
@@ -22199,5 +22664,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:de1ed66f7c1f76a95788978bc892f47587b9889d444a2a1c430d9c04fd9c0304"
+  "schema_hash": "sha256:9df9c7c45844d035f294a170067dceb632f9e0774ec29dfa9279b66e8f5b777b"
 }

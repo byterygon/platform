@@ -62,6 +62,8 @@ pub enum AppEvent {
     /// A route was made, changed, confirmed or deleted (DOC-23 §8.1): sent to the sessions that
     /// may see it, which read the routes again.
     RouteChanged { id: String },
+    /// A link of the network map was made, changed, confirmed or deleted (DOC-23 (aa), (bl)).
+    LinkChanged { id: String },
     /// A saved proxy was made, changed or deleted (DOC-23 (ac)).
     ProxyChanged { id: String },
     /// A terminal ended; `term.*` calls on it answer `NotFound` from now on.

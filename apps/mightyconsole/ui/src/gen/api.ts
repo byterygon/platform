@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:de1ed66f7c1f76a95788978bc892f47587b9889d444a2a1c430d9c04fd9c0304";
+export const SCHEMA_HASH = "sha256:9df9c7c45844d035f294a170067dceb632f9e0774ec29dfa9279b66e8f5b777b";
 
 // ---- Types
 
@@ -147,7 +147,7 @@ bytesPerSec: number,
 /**
  * `true` on the last event of the stream.
  */
-done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "SshHostChanged", id: string, } | { "kind": "RouteChanged", id: string, } | { "kind": "ProxyChanged", id: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
+done: boolean, } | { "kind": "ProfileChanged", id: string, tool: string, } | { "kind": "SshHostChanged", id: string, } | { "kind": "RouteChanged", id: string, } | { "kind": "LinkChanged", id: string, } | { "kind": "ProxyChanged", id: string, } | { "kind": "TerminalExit", terminalId: string, exitCode?: number, reason: string, };
 
 /**
  * Output of `app.info`.
@@ -1639,6 +1639,57 @@ export type LinkConfirmation = { by: string,
  */
 at: string, };
 
+export type LinkCreateInput = { owner: OwnerWire, from: Node, to: Node, spec: LinkSpecInput, };
+
+/**
+ * What a link does, as `links.create` and `links.update` take it.
+ */
+export type LinkSpecInput = { method: Method, 
+/**
+ * `command`: the program (no shell), its arguments one by one, its variables and its
+ * working directory. Secret variables' values are redacted.
+ */
+program?: string | null, args: Array<string>, env: Array<EnvInput>, cwd?: string | null, 
+/**
+ * `sshCommand`: the line run on the host (`{host}` and `{port}` are the next address).
+ */
+command?: string | null, };
+
+export type LinkUpdateInput = { id: string, etag: string, spec: LinkSpecInput, };
+
+/**
+ * A link as the caller may see it.
+ */
+export type LinkView = { id: string, from: Node, 
+/**
+ * The target for the last link of a route (the profile's own address); the map draws it
+ * from the profiles that name the route.
+ */
+to: Node, method: Method, 
+/**
+ * `command`: the program, its arguments, variables and working directory (not for a
+ * caller who sees the link's metadata only).
+ */
+program?: string, args: Array<string>, env: Array<EnvView>, cwd?: string, 
+/**
+ * `sshCommand`: the line run on the host.
+ */
+command?: string, 
+/**
+ * A command (local or on the host) a person must confirm before it runs.
+ */
+needsConfirmation: boolean, confirmed?: LinkConfirmation, owner: OwnerWire, etag: string, createdAt: string, updatedAt: string, createdBy: string, updatedBy: string, 
+/**
+ * `owner`, `edit`, `use` or `metadata`.
+ */
+access: string, 
+/**
+ * The routes that name it and the caller sees.
+ */
+usedBy: Array<SshHostUser>, usedByHidden: number, };
+
+export type LinksOutput = { links: Array<LinkView>, };
+
 export type LocalGroup = { name: string, members: Array<string>, };
 
 /**
@@ -1830,6 +1881,11 @@ payloadRaw: string, payloadSize: number, payloadTruncated: boolean,
  * The decoded value: canonical JSON text, or text.
  */
 payloadText?: string, payloadCodec: CodecId, schemaRef?: string, decodeError?: string, };
+
+/**
+ * How a link's source reaches its destination.
+ */
+export type Method = "tcp" | "command" | "connect" | "ssh" | "sshCommand";
 
 export type NamedIdInput = { id: string, 
 /**
@@ -2548,6 +2604,11 @@ subnet: string, gateway?: string, };
 export type NetworksListInput = { connId: string, };
 
 export type NetworksRemoveInput = { connId: string, ids: Array<string>, };
+
+/**
+ * A node of the network map (DOC-23 (aa)).
+ */
+export type Node = { "kind": "server" } | { "kind": "sshHost", id: string, } | { "kind": "proxy", id: string, } | { "kind": "target" };
 
 /**
  * One node of the graph over the runs counted.
@@ -5043,6 +5104,12 @@ export interface Procedures {
   readonly "langgraph.values.node": ProcedureDef<"query", PayloadNodeInput, PayloadNode, ToolError>;
   readonly "langgraph.values.open": ProcedureDef<"query", ReadValueInput, ValueStub, ToolError>;
   readonly "langgraph.values.query": ProcedureDef<"query", PayloadQueryInput, PayloadQueryOutput, ToolError>;
+  readonly "links.confirm": ProcedureDef<"mutation", IdInput, LinkView, ToolError>;
+  readonly "links.create": ProcedureDef<"mutation", LinkCreateInput, LinkView, ToolError>;
+  readonly "links.delete": ProcedureDef<"mutation", IdInput, Empty, ToolError>;
+  readonly "links.get": ProcedureDef<"query", IdInput, LinkView, ToolError>;
+  readonly "links.list": ProcedureDef<"query", Empty, LinksOutput, ToolError>;
+  readonly "links.update": ProcedureDef<"mutation", LinkUpdateInput, LinkView, ToolError>;
   readonly "messaging.codecs.list": ProcedureDef<"query", Empty, Array<CodecInfo>, never>;
   readonly "messaging.decode": ProcedureDef<"query", DecodeInput, DecodeOutput, ToolError>;
   readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
@@ -5354,6 +5421,14 @@ export interface Api {
       readonly open: Procedures["langgraph.values.open"];
       readonly query: Procedures["langgraph.values.query"];
     };
+  };
+  readonly links: {
+    readonly confirm: Procedures["links.confirm"];
+    readonly create: Procedures["links.create"];
+    readonly delete: Procedures["links.delete"];
+    readonly get: Procedures["links.get"];
+    readonly list: Procedures["links.list"];
+    readonly update: Procedures["links.update"];
   };
   readonly messaging: {
     readonly codecs: {
@@ -6726,6 +6801,68 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+  },
+  links: {
+    confirm: {
+      name: "links.confirm",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    create: {
+      name: "links.create",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    delete: {
+      name: "links.delete",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    get: {
+      name: "links.get",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    list: {
+      name: "links.list",
+      kind: "query",
+      perm: "profiles.personal",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    update: {
+      name: "links.update",
+      kind: "mutation",
+      perm: "profiles.personal",
+      risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
   },
   messaging: {

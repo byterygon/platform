@@ -15,8 +15,8 @@
 //! - **Links are shared.** Saving a route reuses a link of the same owner with the same source,
 //!   destination, method and settings, so a command confirmed once is confirmed for every route
 //!   that runs it, and a route's duplicate names the same links (its secrets come with it,
-//!   DOC-23 (w)). A link no route uses any more is deleted with its secrets, until the network
-//!   map (TSK-145) shows links of their own.
+//!   DOC-23 (w)). A link into the target that no route uses any more is deleted with its
+//!   secrets; a link between two nodes stays, for the network map to show ([`super::links`]).
 //! - **LinkConfirmation** (DOC-23 11.3, (j), (s)). A `command` or `sshCommand` link starts not
 //!   confirmed, and changing its program, an argument, an environment name or the command makes
 //!   a new link, not confirmed. A route with such a link cannot be tested, chosen or connected
@@ -145,7 +145,7 @@ pub struct LinkFields {
 }
 
 impl LinkFields {
-    fn new(from: Node, to: Node, method: Method) -> LinkFields {
+    pub(super) fn new(from: Node, to: Node, method: Method) -> LinkFields {
         LinkFields {
             from,
             to,
@@ -160,7 +160,7 @@ impl LinkFields {
     }
 
     /// Whether two links do the same thing (everything but the confirmation).
-    fn same_as(&self, other: &LinkFields) -> bool {
+    pub(super) fn same_as(&self, other: &LinkFields) -> bool {
         LinkFields {
             confirmed: None,
             ..self.clone()
@@ -179,7 +179,7 @@ impl LinkFields {
         !self.needs_confirmation() || self.confirmed.is_some()
     }
 
-    fn of(row: &StoredProfile) -> Result<LinkFields, ProfileError> {
+    pub(super) fn of(row: &StoredProfile) -> Result<LinkFields, ProfileError> {
         serde_json::from_value(row.fields.clone())
             .map_err(|_| ProfileError::Store(format!("link {} does not read", row.id)))
     }
@@ -402,6 +402,107 @@ pub type PlannedLink = (LinkFields, Vec<(String, String)>);
 /// A row as a list shows it: with the caller's access and who uses it.
 pub type Listed = (StoredProfile, Access, Vec<User>);
 
+/// The link a local command hop is, with the values of its secret variables (by `env.<NAME>`).
+/// `index` names the hop in an error. Shared by routes and the map's links (TSK-145).
+pub(crate) fn command_link(
+    index: usize,
+    program: &str,
+    args: &[String],
+    env: &[EnvInput],
+    cwd: Option<&String>,
+) -> Result<PlannedLink, ProfileError> {
+    check_text(index, "program", program, "program to run")?;
+    if args.len() > MAX_ITEMS || env.len() > MAX_ITEMS {
+        return Err(invalid(
+            &hop_field(index, "args"),
+            format!("at most {MAX_ITEMS} arguments and {MAX_ITEMS} variables"),
+        ));
+    }
+    for arg in args {
+        if arg.len() > MAX_TEXT || arg.contains('\0') {
+            return Err(invalid(
+                &hop_field(index, "args"),
+                format!("an argument is up to {MAX_TEXT} bytes, without NUL"),
+            ));
+        }
+    }
+    let mut secrets: Vec<(String, String)> = Vec::new();
+    let mut names = BTreeSet::new();
+    let mut vars = Vec::new();
+    for var in env {
+        if !valid_env_name(&var.name) {
+            return Err(invalid(
+                &hop_field(index, "env"),
+                format!("{:?} is not a variable name (letters, digits, _)", var.name),
+            ));
+        }
+        if !names.insert(var.name.clone()) {
+            return Err(invalid(
+                &hop_field(index, "env"),
+                format!("{} is set twice", var.name),
+            ));
+        }
+        let value = var.value.clone().unwrap_or_default();
+        if value.len() > MAX_TEXT || value.contains('\0') {
+            return Err(invalid(
+                &hop_field(index, "env"),
+                format!("the value of {} is up to {MAX_TEXT} bytes", var.name),
+            ));
+        }
+        if var.secret {
+            if !value.is_empty() {
+                secrets.push((format!("env.{}", var.name), value));
+            }
+            vars.push(EnvVar {
+                name: var.name.clone(),
+                secret: true,
+                value: None,
+            });
+        } else {
+            vars.push(EnvVar {
+                name: var.name.clone(),
+                secret: false,
+                value: Some(value),
+            });
+        }
+    }
+    let cwd = cwd.cloned().filter(|c| !c.trim().is_empty());
+    if let Some(cwd) = &cwd {
+        check_text(index, "cwd", cwd, "working directory")?;
+    }
+    let link = LinkFields {
+        program: Some(program.trim().to_owned()),
+        args: args.to_vec(),
+        env: vars,
+        cwd,
+        ..LinkFields::new(Node::Server, Node::Target, Method::Command)
+    };
+    // The program checks itself the way net-route will run it.
+    let check = net_route::Route::new(
+        "check",
+        vec![Hop::Command(command_hop(&link, &BTreeMap::new()))],
+    );
+    if let Err(e) = check.validate() {
+        return Err(invalid(
+            &hop_field(index, e.field.unwrap_or("program")),
+            e.message,
+        ));
+    }
+    Ok((link, secrets))
+}
+
+/// The line an SSH command hop runs on its host, checked.
+pub(crate) fn ssh_command_line(index: usize, command: &str) -> Result<String, ProfileError> {
+    check_text(index, "command", command, "command to run on the host")?;
+    if command.chars().any(char::is_control) {
+        return Err(invalid(
+            &hop_field(index, "command"),
+            "one line, without control characters",
+        ));
+    }
+    Ok(command.trim().to_owned())
+}
+
 /// The links of the path the editor's `hops` describe, from this server to the target, with
 /// the secret values of each new link's variables by link position. Checks each hop's own
 /// fields; the nodes' existence and owners are checked by the caller.
@@ -429,82 +530,7 @@ pub fn links_of(hops: &[HopInput]) -> Result<Vec<PlannedLink>, ProfileError> {
                          reaches the next address itself (DOC-23 4.4)",
                     ));
                 }
-                check_text(index, "program", program, "program to run")?;
-                if args.len() > MAX_ITEMS || env.len() > MAX_ITEMS {
-                    return Err(invalid(
-                        &hop_field(index, "args"),
-                        format!("at most {MAX_ITEMS} arguments and {MAX_ITEMS} variables"),
-                    ));
-                }
-                for arg in args {
-                    if arg.len() > MAX_TEXT || arg.contains('\0') {
-                        return Err(invalid(
-                            &hop_field(index, "args"),
-                            format!("an argument is up to {MAX_TEXT} bytes, without NUL"),
-                        ));
-                    }
-                }
-                let mut names = BTreeSet::new();
-                let mut vars = Vec::new();
-                for var in env {
-                    if !valid_env_name(&var.name) {
-                        return Err(invalid(
-                            &hop_field(index, "env"),
-                            format!("{:?} is not a variable name (letters, digits, _)", var.name),
-                        ));
-                    }
-                    if !names.insert(var.name.clone()) {
-                        return Err(invalid(
-                            &hop_field(index, "env"),
-                            format!("{} is set twice", var.name),
-                        ));
-                    }
-                    let value = var.value.clone().unwrap_or_default();
-                    if value.len() > MAX_TEXT || value.contains('\0') {
-                        return Err(invalid(
-                            &hop_field(index, "env"),
-                            format!("the value of {} is up to {MAX_TEXT} bytes", var.name),
-                        ));
-                    }
-                    if var.secret {
-                        if !value.is_empty() {
-                            pending_secrets.push((format!("env.{}", var.name), value));
-                        }
-                        vars.push(EnvVar {
-                            name: var.name.clone(),
-                            secret: true,
-                            value: None,
-                        });
-                    } else {
-                        vars.push(EnvVar {
-                            name: var.name.clone(),
-                            secret: false,
-                            value: Some(value),
-                        });
-                    }
-                }
-                let cwd = cwd.clone().filter(|c| !c.trim().is_empty());
-                if let Some(cwd) = &cwd {
-                    check_text(index, "cwd", cwd, "working directory")?;
-                }
-                pending = LinkFields {
-                    program: Some(program.trim().to_owned()),
-                    args: args.clone(),
-                    env: vars,
-                    cwd,
-                    ..LinkFields::new(Node::Server, Node::Target, Method::Command)
-                };
-                // The program checks itself the way net-route will run it.
-                let check = net_route::Route::new(
-                    "check",
-                    vec![Hop::Command(command_hop(&pending, &BTreeMap::new()))],
-                );
-                if let Err(e) = check.validate() {
-                    return Err(invalid(
-                        &hop_field(index, e.field.unwrap_or("program")),
-                        e.message,
-                    ));
-                }
+                (pending, pending_secrets) = command_link(index, program, args, env, cwd.as_ref())?;
                 continue;
             }
             HopInput::Proxy { proxy_id } => Node::Proxy {
@@ -529,19 +555,10 @@ pub fn links_of(hops: &[HopInput]) -> Result<Vec<PlannedLink>, ProfileError> {
         pending = match hop {
             HopInput::Proxy { .. } => LinkFields::new(node, Node::Target, Method::Connect),
             HopInput::Ssh { .. } => LinkFields::new(node, Node::Target, Method::Ssh),
-            HopInput::SshCommand { command, .. } => {
-                check_text(index, "command", command, "command to run on the host")?;
-                if command.chars().any(char::is_control) {
-                    return Err(invalid(
-                        &hop_field(index, "command"),
-                        "one line, without control characters",
-                    ));
-                }
-                LinkFields {
-                    command: Some(command.trim().to_owned()),
-                    ..LinkFields::new(node, Node::Target, Method::SshCommand)
-                }
-            }
+            HopInput::SshCommand { command, .. } => LinkFields {
+                command: Some(ssh_command_line(index, command)?),
+                ..LinkFields::new(node, Node::Target, Method::SshCommand)
+            },
             HopInput::Command { .. } => unreachable!("handled above"),
         };
     }
@@ -800,7 +817,7 @@ impl Graph {
             .collect()
     }
 
-    /// The ids of links no route names.
+    /// The ids of the links into the target that no route names any more.
     fn orphan_links(&self) -> Vec<String> {
         let used: BTreeSet<String> = self
             .routes
@@ -808,10 +825,14 @@ impl Graph {
             .filter_map(|r| RouteFields::of(r).ok())
             .flat_map(|f| f.links)
             .collect();
+        // A link between two nodes stays until a person deletes it (TSK-145); one into the
+        // target means something only inside a route.
         self.links
-            .keys()
-            .filter(|id| !used.contains(*id))
-            .cloned()
+            .iter()
+            .filter(|(id, row)| {
+                !used.contains(*id) && LinkFields::of(row).is_ok_and(|l| l.to == Node::Target)
+            })
+            .map(|(id, _)| id.clone())
             .collect()
     }
 }
@@ -843,7 +864,7 @@ impl ProfileService {
         })
     }
 
-    fn owned_access(
+    pub(super) fn owned_access(
         &self,
         p: &Principal,
         owner: &Ownership,
@@ -926,7 +947,7 @@ impl ProfileService {
             .collect()
     }
 
-    fn route_changed(&self, route: &StoredProfile) {
+    pub(super) fn route_changed(&self, route: &StoredProfile) {
         let event = AppEvent::RouteChanged {
             id: route.id.clone(),
         };
@@ -951,7 +972,7 @@ impl ProfileService {
         });
     }
 
-    fn may_reach_host(&self, p: &Principal) -> Result<(), ProfileError> {
+    pub(super) fn may_reach_host(&self, p: &Principal) -> Result<(), ProfileError> {
         if self.authorizer.permits(p, "profiles.hostAccess", None) {
             Ok(())
         } else {
@@ -963,7 +984,7 @@ impl ProfileService {
         }
     }
 
-    fn new_row(
+    pub(super) fn new_row(
         &self,
         by: &str,
         tool: &str,
@@ -1158,6 +1179,8 @@ impl ProfileService {
                     in_use = Some(users);
                     return Err(WriteError::Stale);
                 }
+                // No route passes it: the links drawn to and from it go with it.
+                graph.delete_links_at(write, &node)?;
                 Ok(())
             })
             .map_err(|e| match in_use.take() {

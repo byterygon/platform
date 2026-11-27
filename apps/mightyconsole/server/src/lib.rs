@@ -165,6 +165,9 @@ fn mount(router: &Router, state: &Arc<AppState>) {
         .mount(profiles::routes_api::ProxiesApi(state.profiles.clone()))
         .expect("proxies API registers");
     router
+        .mount(profiles::links_api::LinksApi(state.profiles.clone()))
+        .expect("links API registers");
+    router
         .mount(profiles::routes_api::RoutesApi(
             state.profiles.clone(),
             Some(state.hub.clone()),
