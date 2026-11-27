@@ -381,6 +381,9 @@ async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // Before "listening on": a signal sent as soon as that line is out must find its handler, or
+    // it would take its default action and end the process (TSK-155).
+    let signals = Signals::listen();
     let tls = server.tls();
     if tls.generated_now {
         eprintln!(
@@ -428,7 +431,7 @@ async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
     }
     eprintln!("mightyconsole-server: open {origin}/");
 
-    run_until_stopped(&server, &args).await;
+    run_until_stopped(&server, &args, signals).await;
     eprintln!("mightyconsole-server: stopping");
     match server.shutdown().await {
         Ok(()) => ExitCode::SUCCESS,
@@ -439,32 +442,70 @@ async fn serve(config: ServeConfig, args: Vec<String>) -> ExitCode {
     }
 }
 
+/// The signals `serve` stops (SIGTERM, SIGINT) or reloads (SIGHUP) on, listened for from
+/// [`Signals::listen`] on: one that comes before [`run_until_stopped`] waits is kept for it.
+#[cfg(unix)]
+struct Signals {
+    term: Option<tokio::signal::unix::Signal>,
+    int: Option<tokio::signal::unix::Signal>,
+    hup: Option<tokio::signal::unix::Signal>,
+}
+
+#[cfg(unix)]
+impl Signals {
+    fn listen() -> Self {
+        use tokio::signal::unix::{SignalKind, signal};
+        let listen = |kind: SignalKind, what: &str| {
+            signal(kind)
+                .map_err(|e| eprintln!("mightyconsole-server: cannot listen for {what}: {e}"))
+                .ok()
+        };
+        Self {
+            term: listen(SignalKind::terminate(), "SIGTERM"),
+            int: listen(SignalKind::interrupt(), "SIGINT"),
+            hup: listen(SignalKind::hangup(), "SIGHUP (key reload)"),
+        }
+    }
+}
+
+/// The next of these signals; never, once it cannot come.
+#[cfg(unix)]
+async fn next(signal: &mut Option<tokio::signal::unix::Signal>) {
+    if let Some(s) = signal {
+        if s.recv().await.is_some() {
+            return;
+        }
+        *signal = None;
+    }
+    std::future::pending().await
+}
+
 /// Waits for SIGINT or SIGTERM; on Unix, SIGHUP reloads the secret store's keys meanwhile
 /// (DOC-25 §3.4.5): the configuration is read again, `[secrets]` only is applied.
 #[cfg(unix)]
-async fn run_until_stopped(server: &Server, args: &[String]) {
-    use tokio::signal::unix::{SignalKind, signal};
-    let mut hup = match signal(SignalKind::hangup()) {
-        Ok(hup) => hup,
-        Err(e) => {
-            eprintln!("mightyconsole-server: cannot listen for SIGHUP (key reload): {e}");
-            wait_for_signal().await;
-            return;
-        }
-    };
-    let stop = wait_for_signal();
-    tokio::pin!(stop);
+async fn run_until_stopped(server: &Server, args: &[String], mut signals: Signals) {
     loop {
         tokio::select! {
-            () = &mut stop => return,
-            _ = hup.recv() => reload_secrets(server, args).await,
+            () = next(&mut signals.term) => return,
+            () = next(&mut signals.int) => return,
+            () = next(&mut signals.hup) => reload_secrets(server, args).await,
         }
     }
 }
 
 #[cfg(not(unix))]
-async fn run_until_stopped(_server: &Server, _args: &[String]) {
-    wait_for_signal().await;
+struct Signals;
+
+#[cfg(not(unix))]
+impl Signals {
+    fn listen() -> Self {
+        Self
+    }
+}
+
+#[cfg(not(unix))]
+async fn run_until_stopped(_server: &Server, _args: &[String], _signals: Signals) {
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// SIGHUP: the keys of `[secrets]` from the configuration as it is now.
@@ -497,28 +538,6 @@ async fn reload_secrets(server: &Server, args: &[String]) {
              force stay): {e}"
         ),
     }
-}
-
-#[cfg(unix)]
-async fn wait_for_signal() {
-    use tokio::signal::unix::{SignalKind, signal};
-    let mut term = match signal(SignalKind::terminate()) {
-        Ok(term) => term,
-        Err(e) => {
-            eprintln!("mightyconsole-server: cannot listen for SIGTERM: {e}");
-            let _ = tokio::signal::ctrl_c().await;
-            return;
-        }
-    };
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = term.recv() => {}
-    }
-}
-
-#[cfg(not(unix))]
-async fn wait_for_signal() {
-    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// `reset-admin [--print]` (DOC-25 §3.2.7): with the server stopped, the store is opened here and

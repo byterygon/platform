@@ -4,10 +4,8 @@
 //! session cookie's attributes; and the WebSocket upgrade refused for another Host, another Origin
 //! or no session.
 
-mod support;
-
+use crate::support::*;
 use serde_json::json;
-use support::*;
 
 /// The baseline every answer carries.
 fn baseline(what: &str, answer: &HttpResponse) {

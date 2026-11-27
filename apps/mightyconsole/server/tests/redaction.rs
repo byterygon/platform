@@ -10,15 +10,13 @@
 //!
 //! One test in this file: the panic hook it installs is the process's.
 
-mod support;
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::support::*;
 use mightyconsole_server::StartOptions;
 use mightyconsole_server::audit::LineWriter;
 use serde_json::{Value, json};
-use support::*;
 
 /// Every line the server logs.
 #[derive(Default)]

@@ -3,17 +3,15 @@
 //! and a Write fail closed when the log cannot be written while an ordinary read does not, that
 //! a tampered log refuses the start, and that the sensitive reads are the ones the spec names.
 
-mod support;
-
 use std::sync::Arc;
 
+use crate::support::{config, start_durable_configured, start_with_durable_audit};
 use ambidex::Code;
 use audit_jsonl::{UnavailableAuditSink, read_records, verify};
 use mightyconsole_server::audit::{audit_dir, log_path};
 use mightyconsole_server::{Server, StartError, StartOptions, codegen_router};
 use security_types::{AuditDecision, AuditRecord, AuditSink, Outcome, Risk};
 use serde_json::json;
-use support::{config, start_durable_configured, start_with_durable_audit};
 
 const SECRET: &str = "hunter2-do-not-log";
 const PAYLOAD: &str = "a message body that must stay out of the log";

@@ -2,13 +2,11 @@
 //! credentials has a budget per person, calls without a secret are never counted, and a person's
 //! personal profiles have a quota in number and in bytes, so open sign-up cannot fill the disk.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::authz::limits::TEST_PER_MINUTE;
 use mightyconsole_server::profiles::{MAX_PERSONAL_BYTES, MAX_PERSONAL_PROFILES, MAX_RECORD_BYTES};
 use serde_json::json;
-use support::*;
 
 const SECRET: &str = "pw-limits-do-not-leak-5e1a";
 

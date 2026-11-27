@@ -1,15 +1,13 @@
 //! The `langgraph` tool against the test lab's LangGraph server (`langgraph dev` with the sample
 //! graph `agent`, Mightyconsole spec §14 and §18, TSK-84). Needs
 //! `pnpm --filter @byterygon/mightyconsole lab up langgraph`; run with
-//! `cargo test -p mightyconsole-server --features lab-tests --test langgraph_lab`. The address is
-//! `http://127.0.0.1:2024` unless `MIGHTYCONSOLE_LAB_LANGGRAPH` says otherwise.
+//! `cargo test -p mightyconsole-server --features lab-tests --test integration langgraph_lab::`.
+//! The address is `http://127.0.0.1:2024` unless `MIGHTYCONSOLE_LAB_LANGGRAPH` says otherwise.
 #![cfg(feature = "lab-tests")]
 
-mod support;
-
+use crate::support::*;
 use ambidex::{Code, Kind};
 use serde_json::{Value, json};
-use support::*;
 
 fn url() -> String {
     std::env::var("MIGHTYCONSOLE_LAB_LANGGRAPH").unwrap_or_else(|_| "http://127.0.0.1:2024".into())

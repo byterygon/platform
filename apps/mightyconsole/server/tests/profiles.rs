@@ -3,12 +3,10 @@
 //! edited with `profiles.manage` and used with `<tool>.read`; no answer ever holds a secret value;
 //! a changed target removes the secrets of its group; names, etags, imports and transfers.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::StartOptions;
 use serde_json::{Value, json};
-use support::*;
 
 /// A value no answer may contain.
 const SECRET: &str = "pw-do-not-leak-91c3";

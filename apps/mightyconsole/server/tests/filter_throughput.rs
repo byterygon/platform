@@ -3,18 +3,17 @@
 //! server and WebSocket. Ignored by default (it measures, it does not check); run it with
 //!
 //! ```sh
-//! cargo test -p mightyconsole-server --release --test filter_throughput -- --ignored --nocapture
+//! cargo test -p mightyconsole-server --release --test integration \
+//!   -- --ignored --nocapture filter_throughput::
 //! ```
 //!
 //! The numbers before and after the filter's jq moved into a worker are on the TSK-143 page.
 
-mod support;
-
 use std::time::{Duration, Instant};
 
+use crate::support::*;
 use ambidex::Kind;
 use serde_json::{Value, json};
-use support::*;
 
 const MESSAGES: usize = 20_000;
 const RUNS: usize = 3;

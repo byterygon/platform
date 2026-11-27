@@ -119,6 +119,17 @@ async fn first_start_then_reset_admin_running_and_stopped() {
         "--print prints it"
     );
     assert!(!data.join("reset-admin.request").exists());
+    // The server queues `auth.admin.reset` (EventLog::record) and then deletes the request, so the
+    // command can return before the entry is written: wait for it, or the kill below can lose it
+    // on a busy machine (TSK-155).
+    let started = std::time::Instant::now();
+    while !audit_text(data).contains("\"request\"") {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no auth.admin.reset via request in the audit log"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     server.kill().await.unwrap();
     server.wait().await.unwrap();

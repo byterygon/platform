@@ -4,11 +4,9 @@
 //! and a confirmation before anything may use it; a deleted route leaves "Route missing", never
 //! Direct; `routes.test` reports each hop and the target, and names the hop that failed.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use serde_json::{Value, json};
-use support::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 

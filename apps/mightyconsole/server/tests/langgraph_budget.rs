@@ -5,17 +5,15 @@
 //! with `ResourceExhausted` ("result exceeds the frame size limit") or "length limit exceeded".
 //! Loopback only, so it runs in CI's network namespace.
 
-mod support;
-
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use crate::support::*;
 use ambidex::{Code, Kind};
 use axum::extract::Request;
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
-use support::*;
 
 const THREAD: &str = "11111111-1111-1111-1111-111111111111";
 const KIB: usize = 1024;

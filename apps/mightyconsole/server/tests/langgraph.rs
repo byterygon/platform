@@ -3,19 +3,17 @@
 //! and run streams (credits, resumable runs, join with `Last-Event-ID`). The real server is
 //! `tests/langgraph_lab.rs` (feature `lab-tests`). Runs in CI's network namespace: loopback only.
 
-mod support;
-
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::support::*;
 use ambidex::{Code, ErrorPayload};
 use axum::body::{Body, Bytes};
 use axum::extract::Request;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
-use support::*;
 
 /// A request the stand-in server received.
 #[derive(Debug, Clone)]
@@ -1108,10 +1106,12 @@ async fn a_value_is_kept_and_read_node_by_node_with_jq_and_downloaded() {
     assert_eq!(root["kind"], "object");
     assert_eq!(root["children"][1]["key"], "steps");
     assert_eq!(root["children"][1]["path"], "/steps");
+    // The longest deadline: this checks the result, not the time limit, and the worker starts
+    // slowly while the other tests of this binary run (TSK-155).
     tab.call(
         5,
         "langgraph.values.query",
-        json!({ "connId": conn, "payloadId": id, "jq": ".steps[0]" }),
+        json!({ "connId": conn, "payloadId": id, "jq": ".steps[0]", "timeoutMs": 30000 }),
     )
     .await;
     assert_eq!(tab.result(5).await["results"], json!(["plan"]));

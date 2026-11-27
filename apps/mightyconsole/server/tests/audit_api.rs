@@ -2,12 +2,10 @@
 //! filter and cursor, `audit.get`, `audit.verify` and `audit.status`, all under `audit.read`
 //! (administrators only), and reading the log is itself recorded.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::StartOptions;
 use serde_json::{Value, json};
-use support::*;
 
 fn admin_id(t: &TestServer) -> String {
     t.server

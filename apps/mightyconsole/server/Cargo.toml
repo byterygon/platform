@@ -7,6 +7,9 @@ edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 publish = false
+# The integration tests are one binary, tests/integration.rs, plus the three that need a process
+# of their own (TSK-155; see that file): no binary per file of tests/.
+autotests = false
 
 [lints]
 workspace = true
@@ -22,6 +25,25 @@ lab-tests = []
 [[bin]]
 name = "mightyconsole-server"
 path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+# The process's outbound policy (core::outbound::set_policy at start).
+[[test]]
+name = "outbound"
+path = "tests/outbound.rs"
+
+# It counts the process's jq filter workers (core::messaging::jq_filter::live_workers).
+[[test]]
+name = "filter_worker"
+path = "tests/filter_worker.rs"
+
+# It keeps the process's jq query slots busy (core::jq::MAX_RUNNING).
+[[test]]
+name = "messaging"
+path = "tests/messaging.rs"
 
 [dependencies]
 # The secret store (DOC-25 §3.4.3, §3.4.4): AES-256-GCM envelopes and Argon2id passphrase keys,

@@ -2,11 +2,9 @@
 //! roles, group mappings and local groups, sessions; the last-administrator rule; sessions end when
 //! their user loses a permission; `app.me` shows the roles and permissions in force.
 
-mod support;
-
+use crate::support::*;
 use ambidex::Code;
 use serde_json::{Value, json};
-use support::*;
 
 /// The default administrator's principal id.
 fn admin_id(t: &TestServer) -> String {

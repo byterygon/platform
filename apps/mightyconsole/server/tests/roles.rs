@@ -2,16 +2,14 @@
 //! `PermissionDenied` with the permission, the target the server built and the reason; the
 //! default role, group mappings and disabled users apply to the next call.
 
-mod support;
-
 use std::collections::BTreeSet;
 
+use crate::support::*;
 use ambidex::Code;
 use mightyconsole_server::StartOptions;
 use mightyconsole_server::authz::policy::{CustomRole, GroupMapping};
 use security_types::Scope;
 use serde_json::{Value, json};
-use support::*;
 
 fn details(err: &ambidex::ErrorPayload) -> Value {
     err.details.clone().expect("PermissionDenied details")

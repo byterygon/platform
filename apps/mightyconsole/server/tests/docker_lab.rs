@@ -1,21 +1,20 @@
 //! The `docker` tool against the test lab's Docker host (OpenSSH in front of Docker in Docker,
 //! Mightyconsole spec §14 and §18, TSK-81). Needs
 //! `pnpm --filter @byterygon/mightyconsole lab up docker`; run with
-//! `cargo test -p mightyconsole-server --features lab-tests --test docker_lab`. The lab's
-//! credentials come from `lab/.generated/credentials.json` (or `MIGHTYCONSOLE_LAB_GENERATED`).
+//! `cargo test -p mightyconsole-server --features lab-tests --test integration docker_lab::`.
+//! The lab's credentials come from `lab/.generated/credentials.json` (or
+//! `MIGHTYCONSOLE_LAB_GENERATED`).
 //!
 //! The ssh-agent case needs an agent holding the lab key in this process's `SSH_AUTH_SOCK` and
 //! `MIGHTYCONSOLE_LAB_DOCKER_AGENT=1` (the acceptance checklist starts one); without them it
 //! says so and passes.
 #![cfg(feature = "lab-tests")]
 
-mod support;
-
 use std::path::PathBuf;
 
+use crate::support::*;
 use ambidex::Code;
 use serde_json::{Value, json};
-use support::*;
 
 fn generated() -> PathBuf {
     std::env::var_os("MIGHTYCONSOLE_LAB_GENERATED")

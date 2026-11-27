@@ -6,13 +6,12 @@
 //! Host page and a session the host ends. The real sshd and Docker are `tests/docker_lab.rs`
 //! (feature `lab-tests`). Runs in CI's network namespace: loopback only.
 
-mod support;
-
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::support::*;
 use ambidex::{Code, ErrorPayload};
 use bytes::Bytes;
 use http_body_util::Full;
@@ -24,7 +23,6 @@ use russh::keys::{HashAlg, PrivateKey, PublicKey};
 use russh::server::{self, Auth, Msg, Server as _, Session};
 use russh::{Channel, ChannelOpenFailure, Disconnect};
 use serde_json::{Value, json};
-use support::*;
 
 const USER: &str = "lab";
 const PASSWORD: &str = "correct horse";

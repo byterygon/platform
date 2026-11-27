@@ -389,7 +389,12 @@ impl Running {
             .await
             .unwrap()
             .unwrap();
-        assert!(status.success(), "{status}");
+        let mut rest = String::new();
+        while let Ok(line) = self.lines.try_recv() {
+            rest.push_str(&line);
+            rest.push('\n');
+        }
+        assert!(status.success(), "{status}; its last lines:\n{rest}");
     }
 }
 
