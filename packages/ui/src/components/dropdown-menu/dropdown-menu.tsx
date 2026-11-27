@@ -20,10 +20,10 @@ export const dropdownMenuVariants = {} as const;
 /** The classes DropdownMenu, ContextMenu, Menubar and SplitButton share. */
 export const menuClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: ["flex min-w-panel-xs flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
+  popup: ["flex min-w-panel-xs flex-col overflow-y-auto overflow-x-hidden overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
   item: [
     flyoutItem,
-    "gap-inline-md whitespace-nowrap data-popup-open:bg-hover",
+    "gap-inline-md [overflow-wrap:anywhere] data-popup-open:bg-hover",
     "data-highlighted:[&_svg]:text-accent-subtle-fg",
     "data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle data-danger:data-highlighted:[&_svg]:text-danger-fg",
   ],
@@ -34,9 +34,14 @@ export const menuClasses = {
   chevron: "ms-auto flex shrink-0 text-fg-muted",
 } as const;
 
-/** Base UI's run-time variables for the popup: not tokens, so they go in `style`. */
+/**
+ * Base UI's run-time variables for the popup: not tokens, so they go in `style`. The popup grows
+ * with its widest item up to the room the viewport leaves (`--available-width`), then the item's
+ * text wraps, so a long name never pushes the menu past the window's edge.
+ */
 export const menuPopupStyle: CSSProperties = {
   maxHeight: "var(--available-height)",
+  maxWidth: "var(--available-width)",
   transformOrigin: "var(--transform-origin)",
 };
 

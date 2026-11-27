@@ -152,6 +152,16 @@ describe("DropdownMenu", () => {
     }
   });
 
+  test("the popup is capped to the room the viewport leaves, in width as in height, and a long label wraps inside it", async () => {
+    render(<Example />);
+    await click(trigger());
+    const popup = $('[data-slot="dropdown-menu-content"]') as HTMLElement;
+    expect(popup.style.maxWidth).toBe("var(--available-width)");
+    expect(popup.style.maxHeight).toBe("var(--available-height)");
+    expect(popup.className).toContain("overflow-x-hidden");
+    expect(popup.querySelector('[role="menuitem"]')?.className).not.toContain("whitespace-nowrap");
+  });
+
   test("honours reduced motion", async () => {
     render(<Example />);
     await click(trigger());
