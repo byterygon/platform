@@ -46,6 +46,8 @@ describe("acceptance checklists", () => {
       ["langgraph", "TSK-84", 10],
       // DOC-23 section 12 (TSK-117).
       ["routes", "TSK-117", 8],
+      // DOC-23 section 10 (TSK-145).
+      ["network-map", "TSK-145", 6],
       ["packaging", "TSK-87", 2],
       // DOC-25 section 6, run with the idp profile; TSK-136 wired the login items, the other
       // security tasks add theirs (TSK-141 attaches the evidence); TSK-137 added the three audit items,

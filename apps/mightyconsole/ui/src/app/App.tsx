@@ -43,6 +43,7 @@ import { HostKeyDialog } from "./dialogs/HostKeyDialog";
 import { MoveDialog, type MovePlan, type MoveRun } from "./dialogs/MoveDialog";
 import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { moveToServer } from "@/profiles/move";
+import { reloadLinks } from "@/profiles/links";
 import { proxies as savedProxies, reloadRoutes, routeById, routes as savedRoutes } from "@/profiles/routes";
 import { targetOf as routeTargetOf } from "./routes/ConnectThrough";
 import { reloadSshHosts, sshHosts } from "@/profiles/ssh-hosts";
@@ -337,6 +338,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     reloadSshHosts(client).catch(() => {});
     // Routes list the hosts and proxies they pass, and a host's change shows in a route's hops.
     reloadRoutes(client).catch(() => {});
+    // The network map draws the links between them (TSK-145).
+    reloadLinks(client).catch(() => {});
   }, [client]);
 
   useEffect(() => {
@@ -449,7 +452,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   const handleEvent = (event: AppEvent) => {
     if (event.kind === "StreamProgress") return services.progress.publish(event);
-    if (event.kind === "SshHostChanged" || event.kind === "RouteChanged" || event.kind === "ProxyChanged") return reloadHosts();
+    if (event.kind === "SshHostChanged" || event.kind === "RouteChanged" || event.kind === "ProxyChanged" || event.kind === "LinkChanged") return reloadHosts();
     if (event.kind === "ProfileChanged") {
       // A host lists the profiles that use it.
       reloadHosts();
@@ -1610,6 +1613,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         onExportAll={() => exportIds(null)}
         onImport={() => perform("importProfiles")}
         client={client}
+        profiles={profiles}
         onOpenProfile={(id, tool) => dispatch({ type: "dialog", dialog: { kind: "profile", tool, editId: id } })}
         onForgetEverything={async () => {
           for (const [id, conn] of Object.entries(stateRef.current.conns)) if (conn.connId) disconnectProfile(id);

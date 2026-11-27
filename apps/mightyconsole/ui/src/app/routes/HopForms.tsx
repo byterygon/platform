@@ -101,7 +101,7 @@ export function ProxyHopForm({ client, kind, proxyId, shared, onChange }: ProxyH
   );
 }
 
-interface ProxyFormProps {
+export interface ProxyFormProps {
   client: MightyClient;
   kind: ProxyKind;
   shared: boolean;
@@ -111,7 +111,7 @@ interface ProxyFormProps {
 }
 
 /** A proxy's editor, inside the hop it is made for (DOC-23 (ac)). */
-function ProxyForm({ client, kind, shared, base, onSaved, onCancel }: ProxyFormProps) {
+export function ProxyForm({ client, kind, shared, base, onSaved, onCancel }: ProxyFormProps) {
   const [draft, setDraft] = useState<ProxyDraft>(() => (base ? proxyDraftOf(base) : { ...emptyProxyDraft(kind), shared }));
   const [errors, setErrors] = useState<ProxyErrors>({});
   const [saving, setSaving] = useState(false);
