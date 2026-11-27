@@ -34,6 +34,7 @@ use hyper::Uri;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 
+use super::route::Via;
 use super::{ToolError, ToolErrorKind};
 
 /// The addresses refused unless an operator allows them by network: link-local (where the cloud
@@ -438,24 +439,116 @@ pub async fn connect_local(path: &std::path::Path) -> std::io::Result<net_route:
     }
 }
 
-/// A connector for hyper's client and tonic's channel that connects through the policy (plain
-/// TCP: the TLS of `hyper_rustls` or tonic wraps it).
+/// The one connector for hyper's client and tonic's channel (DOC-23 §7): plain TCP through the
+/// policy, or a stream through the profile's route ([`Via`]). The TLS of `hyper_rustls` or
+/// tonic wraps it, so TLS runs end to end to the target and no hop opens it.
 #[derive(Debug, Clone)]
 pub struct Connector {
     system: &'static str,
     timeout: Option<Duration>,
+    via: Via,
 }
 
 impl Connector {
     pub fn new(system: &'static str, timeout: Option<Duration>) -> Connector {
-        Connector { system, timeout }
+        Connector {
+            system,
+            timeout,
+            via: Via::Direct,
+        }
+    }
+
+    /// Connects through `via` (the profile's route) instead of Direct.
+    pub fn via(mut self, via: Via) -> Connector {
+        self.via = via;
+        self
     }
 }
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+/// A route's failure as the error a connector returns: hyper and tonic wrap it, and
+/// [`route_failure`] finds it again, so the tool's error keeps the hop (`ToolError.hop`).
+#[derive(Debug)]
+pub struct RouteFailure(pub ToolError);
+
+impl std::fmt::Display for RouteFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.message)
+    }
+}
+
+impl std::error::Error for RouteFailure {}
+
+/// The route's failure inside an error chain, if a route failed.
+pub fn route_failure(error: &(dyn std::error::Error + 'static)) -> Option<ToolError> {
+    let mut at = Some(error);
+    while let Some(e) = at {
+        if let Some(found) = e.downcast_ref::<RouteFailure>() {
+            return Some(found.0.clone());
+        }
+        at = e.source();
+    }
+    None
+}
+
+/// What a [`Connector`] connects: a TCP connection, or a route's stream.
+pub enum Conn {
+    Tcp(TcpStream),
+    Routed(net_route::BoxStream),
+}
+
+impl tokio::io::AsyncRead for Conn {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            Conn::Tcp(s) => Pin::new(s).poll_read(cx, buf),
+            Conn::Routed(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for Conn {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            Conn::Tcp(s) => Pin::new(s).poll_write(cx, buf),
+            Conn::Routed(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            Conn::Tcp(s) => Pin::new(s).poll_flush(cx),
+            Conn::Routed(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            Conn::Tcp(s) => Pin::new(s).poll_shutdown(cx),
+            Conn::Routed(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+impl hyper_util::client::legacy::connect::Connection for Conn {
+    fn connected(&self) -> hyper_util::client::legacy::connect::Connected {
+        match self {
+            Conn::Tcp(s) => s.connected(),
+            Conn::Routed(_) => hyper_util::client::legacy::connect::Connected::new(),
+        }
+    }
+}
+
 impl tower_service::Service<Uri> for Connector {
-    type Response = TokioIo<TcpStream>;
+    type Response = TokioIo<Conn>;
     type Error = BoxError;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -464,17 +557,25 @@ impl tower_service::Service<Uri> for Connector {
     }
 
     fn call(&mut self, uri: Uri) -> Self::Future {
-        let (system, timeout) = (self.system, self.timeout);
+        let (system, timeout, via) = (self.system, self.timeout, self.via.clone());
         Box::pin(async move {
             let host = uri.host().ok_or("the URL has no host")?.to_owned();
+            let host = host.trim_matches(['[', ']']).to_owned();
             let port = uri.port_u16().unwrap_or(match uri.scheme_str() {
                 Some("https") => 443,
                 _ => 80,
             });
-            connect_tcp(system, &host, port, timeout)
-                .await
-                .map(TokioIo::new)
-                .map_err(|e| BoxError::from(e.message))
+            match via.routed() {
+                None => connect_tcp(system, &host, port, timeout)
+                    .await
+                    .map(|tcp| TokioIo::new(Conn::Tcp(tcp)))
+                    .map_err(|e| BoxError::from(e.message)),
+                Some(routed) => routed
+                    .dial(&host, port, timeout)
+                    .await
+                    .map(|stream| TokioIo::new(Conn::Routed(stream)))
+                    .map_err(|e| BoxError::from(RouteFailure(e))),
+            }
         })
     }
 }

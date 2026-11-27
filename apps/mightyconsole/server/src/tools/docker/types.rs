@@ -132,6 +132,10 @@ pub struct HostInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub ssh: Option<SshFacts>,
+    /// The route the connection goes through, by name; absent for Direct (DOC-23 §10).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub route: Option<String>,
     /// The API version the connection speaks (the host's, at least 1.41).
     pub api_version: String,
     /// The host's own maximum and minimum API versions.

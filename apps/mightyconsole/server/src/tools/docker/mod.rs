@@ -44,6 +44,7 @@ use std::time::Duration;
 use ambidex::{BinarySink, Ctx, rpc};
 use serde_json::Value;
 
+use crate::core::route::Via;
 use crate::core::stored::ToolTestInput;
 use crate::core::{ConnectionState, Empty, Hub, ToolError, ToolResult};
 use engine::{Engine, Ping};
@@ -76,6 +77,8 @@ pub struct ConnectionFacts {
     pub tls: bool,
     pub unencrypted: bool,
     pub ssh: Option<SshFacts>,
+    /// The route the connection goes through, by name (DOC-23 §10: the status bar says it).
+    pub route: Option<String>,
 }
 
 /// A connected Docker host.
@@ -170,6 +173,7 @@ fn host_info(
         tls: facts.tls,
         unencrypted: facts.unencrypted,
         ssh: facts.ssh.clone(),
+        route: facts.route.clone(),
         api_version: engine.api.to_string(),
         server_api_version: ping.server_api.to_string(),
         min_api_version: optional_text(version, "MinAPIVersion"),
@@ -278,15 +282,25 @@ fn socket_path(profile: &ConnectDockerProfile) -> Result<String, ToolError> {
 /// facts for the Host page. Errors as `docker.connect` lists them.
 pub(crate) async fn open(
     profile: &ConnectDockerProfile,
+    via: Via,
 ) -> Result<(Engine, Ping, ConnectionFacts), ToolError> {
     let kind = profile.transport.unwrap_or_default();
+    let route = via.routed().map(|r| r.name.clone());
+    if kind == DockerTransportKind::Socket && route.is_some() {
+        // The profile store refuses this already (DOC-23 (t)); never dial a local socket "through".
+        return Err(ToolError::invalid(
+            TOOL,
+            "routeId",
+            "a local socket is on this server's own machine: it takes no route",
+        ));
+    }
     let (transport, facts): (Arc<dyn DockerTransport>, ConnectionFacts) = match kind {
         DockerTransportKind::Ssh => {
             let target = target(profile)?;
             let socket = socket_path(profile)?;
             let auth = profile.auth.unwrap_or_default();
             let display = target.display();
-            let session = SshSession::connect(target).await?;
+            let session = SshSession::connect_via(target, &via).await?;
             let ssh = SshFacts {
                 target: display.clone(),
                 host_key: session.host_key.clone(),
@@ -304,6 +318,7 @@ pub(crate) async fn open(
                 tls: false,
                 unencrypted: false,
                 ssh: Some(ssh),
+                route: route.clone(),
             };
             (Arc::new(transport), facts)
         }
@@ -315,17 +330,20 @@ pub(crate) async fn open(
                 tls: false,
                 unencrypted: false,
                 ssh: None,
+                route: None,
             };
             (Arc::new(transport), facts)
         }
         DockerTransportKind::Tcp => {
-            let transport = tcp_transport(profile)?;
+            let mut transport = tcp_transport(profile)?;
+            transport.via = via;
             let facts = ConnectionFacts {
                 transport: kind,
                 endpoint: transport.describe(),
                 tls: transport.tls.is_some(),
                 unencrypted: transport.tls.is_none(),
                 ssh: None,
+                route,
             };
             (Arc::new(transport), facts)
         }
@@ -426,6 +444,7 @@ pub(crate) fn tcp_transport(profile: &ConnectDockerProfile) -> Result<TcpTranspo
         host: host.to_owned(),
         port,
         tls,
+        via: Via::Direct,
     })
 }
 
@@ -451,8 +470,11 @@ impl DockerApi {
         ctx: Ctx,
         input: DockerConnectInput,
     ) -> ToolResult<DockerConnectOutput> {
-        let (profile, acts_on) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
-        let (engine, ping, facts) = open(&profile).await?;
+        let (profile, acts_on, via) = self
+            .0
+            .connect_profile_via(&ctx, TOOL, input.profile_id)
+            .await?;
+        let (engine, ping, facts) = open(&profile, via).await?;
         let client = Arc::new(DockerClient {
             engine,
             facts,
@@ -487,11 +509,11 @@ impl DockerApi {
     /// to trust.
     #[rpc::mutation(perm = "docker.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
     async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
-        let (profile, _) = self
+        let (profile, _, via) = self
             .0
-            .test_profile::<ConnectDockerProfile>(&ctx, TOOL, input)
+            .test_profile_via::<ConnectDockerProfile>(&ctx, TOOL, input)
             .await?;
-        let (engine, _, _) = open(&profile).await?;
+        let (engine, _, _) = open(&profile, via).await?;
         engine.transport.close().await;
         Ok(Empty {})
     }

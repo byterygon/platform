@@ -37,6 +37,7 @@ mod profiles;
 mod redaction;
 mod roles;
 mod routes;
+mod routes_lab;
 mod secrets;
 mod sign_in;
 mod sign_in_lab;

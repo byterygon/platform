@@ -63,7 +63,9 @@ if [ -n "$security" ]; then
   run cargo test -p audit-jsonl --locked --no-run
   run cargo test -p security-types --locked --no-run
 fi
-# mightyconsole-lab.yml: net-route through the lab's proxies (TSK-115)
+# mightyconsole-lab.yml: net-route through the lab's proxies (TSK-115), and the tools through routes
+# (TSK-117).
 if [ -n "$routes" ]; then
   run cargo test -p net-route --locked --features lab-tests --test lab --no-run
+  run cargo test -p mightyconsole-server --locked --features lab-tests --test integration --no-run
 fi

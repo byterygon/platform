@@ -837,8 +837,11 @@ impl LanggraphApi {
         ctx: Ctx,
         input: LanggraphConnectInput,
     ) -> ToolResult<LanggraphConnectOutput> {
-        let (profile, target) = self.0.connect_profile(&ctx, TOOL, input.profile_id).await?;
-        let client = LangGraphClient::new(&profile)?;
+        let (profile, target, via) = self
+            .0
+            .connect_profile_via(&ctx, TOOL, input.profile_id)
+            .await?;
+        let client = LangGraphClient::new_via(&profile, via)?;
         let info = server_info(&client).await?;
         let handle = self
             .0
@@ -852,11 +855,11 @@ impl LanggraphApi {
     /// Test connection of the profile form: the draft's server answers; nothing is kept.
     #[rpc::mutation(perm = "langgraph.read", risk = Risk::Read, redact = ["draft.secrets"], audit = "always")]
     async fn test(&self, ctx: Ctx, input: ToolTestInput) -> ToolResult<Empty> {
-        let (profile, _) = self
+        let (profile, _, via) = self
             .0
-            .test_profile::<ConnectLanggraphProfile>(&ctx, TOOL, input)
+            .test_profile_via::<ConnectLanggraphProfile>(&ctx, TOOL, input)
             .await?;
-        server_info(&LangGraphClient::new(&profile)?).await?;
+        server_info(&LangGraphClient::new_via(&profile, via)?).await?;
         Ok(Empty {})
     }
 

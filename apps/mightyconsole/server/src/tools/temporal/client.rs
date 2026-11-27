@@ -14,6 +14,7 @@ use super::TOOL;
 use super::proto::temporal::api::operatorservice::v1::operator_service_client::OperatorServiceClient;
 use super::proto::temporal::api::workflowservice::v1::workflow_service_client::WorkflowServiceClient;
 use super::types::{ConnectTemporalProfile, TemporalTlsOptions};
+use crate::core::route::Via;
 use crate::core::{RemoteError, ToolError, ToolErrorKind};
 
 /// The address of a local dev server, used when the profile leaves it empty.
@@ -102,9 +103,22 @@ fn invalid(field: &str, message: impl Into<String>) -> ToolError {
     ToolError::invalid(TOOL, field, message)
 }
 
-/// Opens the channel to the profile's frontend. The first call that follows (GetSystemInfo)
-/// proves the server speaks Temporal.
+/// Opens the channel to the profile's frontend, Direct. The first call that follows
+/// (GetSystemInfo) proves the server speaks Temporal.
+#[cfg_attr(
+    not(all(test, feature = "lab-tests")),
+    allow(dead_code, reason = "the lab tests connect Direct")
+)]
 pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient, ToolError> {
+    connect_via(profile, Via::Direct).await
+}
+
+/// [`connect`] through the profile's route (DOC-23 §7): the frontend, the codec server and S3
+/// all go through it, and the tool's TLS runs end to end over the route's stream.
+pub async fn connect_via(
+    profile: &ConnectTemporalProfile,
+    via: Via,
+) -> Result<TemporalClient, ToolError> {
     let address = profile
         .address
         .as_deref()
@@ -154,6 +168,7 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
             secret_access_key: profile.s3_secret_access_key.clone(),
             session_token: profile.s3_session_token.clone(),
         },
+        via.clone(),
     )
     .map_err(|(field, message)| invalid(field, message))?
     .map(std::sync::Arc::new);
@@ -172,15 +187,16 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
     }
     // Through the server's outbound policy (TSK-141); tonic wraps its TLS around it.
     let channel = endpoint
-        .connect_with_connector(crate::core::outbound::Connector::new(
-            super::TOOL,
-            Some(CONNECT_TIMEOUT),
-        ))
+        .connect_with_connector(
+            crate::core::outbound::Connector::new(super::TOOL, Some(CONNECT_TIMEOUT))
+                .via(via.clone()),
+        )
         .await
         .map_err(|e| connect_error(&address, tls.enabled, &e))?;
     let payload_codec = super::codec_client::PayloadCodec::from_profile(
         profile.codec.as_ref(),
         profile.codec_authorization.as_deref(),
+        via,
     )?
     .map(std::sync::Arc::new);
     let headers = CallHeaders { bearer };
@@ -296,6 +312,9 @@ fn tls_error(error: &tonic::transport::Error) -> ToolError {
 }
 
 fn connect_error(address: &str, tls: bool, error: &tonic::transport::Error) -> ToolError {
+    if let Some(e) = crate::core::outbound::route_failure(error) {
+        return e;
+    }
     let text = chain(error);
     if tls && is_tls_failure(&text) {
         return ToolError::new(
@@ -314,6 +333,10 @@ fn connect_error(address: &str, tls: bool, error: &tonic::transport::Error) -> T
 /// A gRPC failure as the tool's error (spec §2.6). The status message is the server's own text;
 /// it never holds the credentials we sent.
 pub fn status_error(address: &str, status: &Status) -> ToolError {
+    // A channel that reconnects through a route fails with the hop it stopped at.
+    if let Some(e) = crate::core::outbound::route_failure(status) {
+        return e;
+    }
     let remote = RemoteError {
         code: format!("{:?}", status.code()),
         name: None,

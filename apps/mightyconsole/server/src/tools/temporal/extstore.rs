@@ -229,6 +229,7 @@ impl ExternalStore {
     pub fn from_profile(
         options: Option<&ExternalStorageOptions>,
         secrets: S3Secrets,
+        via: crate::core::route::Via,
     ) -> Result<Option<ExternalStore>, (&'static str, String)> {
         let Some(o) = options.filter(|o| o.enabled.unwrap_or(false)) else {
             return Ok(None);
@@ -257,6 +258,7 @@ impl ExternalStore {
             access_key_id,
             secret_access_key,
             session_token: non_empty(secrets.session_token.as_deref()),
+            via,
         })
         .map_err(|e| ("externalStorage.endpoint", e.message))?;
         Ok(Some(ExternalStore {
