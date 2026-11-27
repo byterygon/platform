@@ -609,6 +609,29 @@ impl SshSession {
         &self.who
     }
 
+    /// Whether the host still answers: a keepalive that wants a reply, answered within `within`
+    /// (TSK-166). A host that does not answer ends the session, which then counts as lost
+    /// ([`SshSession::lost`] fires) with that reason.
+    pub async fn check_alive(&self, within: Duration) -> bool {
+        if self.is_lost() {
+            return false;
+        }
+        let answered = tokio::time::timeout(within, self.handle.send_ping())
+            .await
+            .is_ok_and(|sent| sent.is_ok());
+        if answered && !self.is_lost() {
+            return true;
+        }
+        lock(&self.lost_reason).get_or_insert(format!(
+            "{} stopped answering (no reply to a keepalive within {} s)",
+            self.who,
+            within.as_secs()
+        ));
+        self.lost.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(1), self.close()).await;
+        false
+    }
+
     /// Ends the session now.
     pub async fn close(&self) {
         let _ = self

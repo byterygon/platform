@@ -378,3 +378,73 @@ pub async fn flood_target() -> SocketAddr {
     });
     addr
 }
+
+/// A TCP relay to `target` that a test can freeze (it stops passing bytes and keeps the
+/// connections open, as a dead NAT entry or a suspended host does) or cut (it closes them, as a
+/// host that went away does).
+pub struct Relay {
+    pub addr: SocketAddr,
+    frozen: Arc<std::sync::atomic::AtomicBool>,
+    cut: Arc<tokio::sync::Notify>,
+}
+
+impl Relay {
+    pub async fn start(target: SocketAddr) -> Relay {
+        let (listener, addr) = listen().await;
+        let frozen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cut = Arc::new(tokio::sync::Notify::new());
+        let (f, c) = (Arc::clone(&frozen), Arc::clone(&cut));
+        tokio::spawn(async move {
+            loop {
+                let Ok((client, _)) = listener.accept().await else {
+                    return;
+                };
+                let Ok(upstream) = TcpStream::connect(target).await else {
+                    continue;
+                };
+                let (f, c) = (Arc::clone(&f), Arc::clone(&c));
+                tokio::spawn(async move {
+                    let (cr, cw) = client.into_split();
+                    let (ur, uw) = upstream.into_split();
+                    tokio::select! {
+                        () = pass(cr, uw, Arc::clone(&f)) => {}
+                        () = pass(ur, cw, f) => {}
+                        () = c.notified() => {}
+                    }
+                });
+            }
+        });
+        Relay { addr, frozen, cut }
+    }
+
+    pub fn freeze(&self) {
+        self.frozen.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn cut(&self) {
+        self.cut.notify_waiters();
+    }
+}
+
+async fn pass(
+    mut from: tokio::net::tcp::OwnedReadHalf,
+    mut to: tokio::net::tcp::OwnedWriteHalf,
+    frozen: Arc<std::sync::atomic::AtomicBool>,
+) {
+    let mut buf = vec![0u8; 16 * 1024];
+    loop {
+        let Ok(n) = from.read(&mut buf).await else {
+            return;
+        };
+        if n == 0 {
+            return;
+        }
+        if frozen.load(std::sync::atomic::Ordering::SeqCst) {
+            // Swallow everything from now on; keep the connection open.
+            std::future::pending::<()>().await;
+        }
+        if to.write_all(&buf[..n]).await.is_err() {
+            return;
+        }
+    }
+}

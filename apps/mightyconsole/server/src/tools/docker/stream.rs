@@ -1,7 +1,9 @@
 //! Forwarding a Docker body that streams (logs, events) as `jsonl` chunks (Mightyconsole spec
 //! §2.5): whole lines only, a chunk sent at 256 KiB or 50 ms after its first line, one credit
 //! per chunk. The body is read only while the client holds a credit, so a paused view stops
-//! the reading and the SSH channel's window holds the host back.
+//! the reading. Over SSH the host is not held back by the channel's window (russh grants it on
+//! arrival): the channel's stream holds what arrives, and a view paused while more than
+//! [`net_route::CHANNEL_BACKLOG`] arrived loses its stream, not the session (TSK-166).
 
 use std::time::Duration;
 
