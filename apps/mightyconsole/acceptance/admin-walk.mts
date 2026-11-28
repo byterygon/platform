@@ -412,8 +412,9 @@ async function main(server: string, evidence: string): Promise<number> {
     // Carol (Temporal readers: temporal.read, no profiles.personal) lists the shared profile her
     // role covers and connects with it (TSK-172, DOC-25 §3.4.7).
     await temporalPane(carol);
-    check(!(await run<boolean>(carol, `__mc.has("Could not read the profiles")`)), "Carol's Temporal pane reads the profiles");
     must(await connect(carol, SHARED), `Carol (${ROLE}) connects with the shared ${SHARED}`);
+    // The pane listed it, so the profiles were read: no toast says otherwise.
+    check(!(await run<boolean>(carol, `__mc.has("Could not read the profiles")`)), "Carol's Temporal pane read the profiles with no Could not read the profiles toast");
     must(await workflow(carol, SHARED, "fulfilment-long-running"), "Carol opens the running workflow through it");
     await shot(carol, "carol-shared-profile");
 

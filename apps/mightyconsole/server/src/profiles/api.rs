@@ -6,7 +6,7 @@
 //! decided per profile ([`super::ProfileService::access`]). The reads of
 //! [`crate::authz::catalogue::PROFILE_READS`] (`profiles.list` / `get`, `sshHosts.list` / `get`)
 //! also let in a person holding some `<tool>.read` without `profiles.personal` (DOC-25 §3.4.7),
-//! who is answered the shared rows their roles cover and none of their own ([`shown`]).
+//! who is answered the shared rows their roles cover and none of their own (`shown`).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
