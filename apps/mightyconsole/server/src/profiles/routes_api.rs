@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::api::{OwnerWire, SecretRow, SshHostUser};
+use super::api::{OwnerWire, SecretRow, SshHostUser, shown};
 use super::routes::{
     Graph, HopInput, LinkConfirmation, LinkFields, Method, Node, ProxyFields, ProxyKind,
     RouteFields, RouteKind, User,
@@ -728,15 +728,20 @@ pub struct RoutesApi(
 
 #[rpc::router(namespace = "routes")]
 impl RoutesApi {
-    /// The routes the caller sees, with the profiles that name each.
+    /// The routes the caller sees, with the profiles that name each: their own personal ones
+    /// (with `profiles.personal`) and the shared ones a profile they may use names ("as
+    /// profiles", DOC-25 §3.4.7), which also lets a person with `<tool>.read` and no
+    /// `profiles.personal` call this.
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn list(&self, ctx: Ctx, _input: Empty) -> ToolResult<RoutesOutput> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
         Ok(blocking(move || {
+            let own = s.reads_own(&p);
             let (routes, graph) = s.list_routes(&p)?;
             let routes = routes
                 .into_iter()
+                .filter(|(_, access, _)| shown(own, *access))
                 .map(|(route, access, users)| route_view(&s, route, access, users, &graph))
                 .collect::<Result<_, _>>()?;
             Ok(RoutesOutput { routes })
@@ -744,11 +749,20 @@ impl RoutesApi {
         .await?)
     }
 
+    /// One route, as the caller may see it (as `list` shows it).
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn get(&self, ctx: Ctx, input: IdInput) -> ToolResult<RouteView> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
-        Ok(blocking(move || route_view_of(&s, &p, &input.id)).await?)
+        Ok(blocking(move || {
+            let (route, access, graph) = s.get_route(&p, &input.id)?;
+            if !shown(s.reads_own(&p), access) {
+                return Err(ProfileError::NotFound);
+            }
+            let users = s.route_users(&p, &input.id, &graph);
+            route_view(&s, route, access, users, &graph)
+        })
+        .await?)
     }
 
     /// A new route. A local command hop or the System route needs `profiles.hostAccess`; a

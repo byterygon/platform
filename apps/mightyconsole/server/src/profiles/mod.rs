@@ -321,6 +321,15 @@ impl ProfileService {
         }
     }
 
+    /// Whether the reads of [`crate::authz::catalogue::PROFILE_READS`] show `p` their own
+    /// personal rows: only with `profiles.personal` (DOC-25 §3.4.7, "the owner's
+    /// `profiles.personal`"). A person let in by `<tool>.read` alone sees the shared rows their
+    /// roles cover and nothing else.
+    pub fn reads_own(&self, p: &Principal) -> bool {
+        self.authorizer
+            .permits(p, crate::authz::catalogue::PROFILES_PERSONAL, None)
+    }
+
     /// What `p` may do with `profile`.
     pub fn access(&self, p: &Principal, profile: &StoredProfile) -> Access {
         match &profile.owner {

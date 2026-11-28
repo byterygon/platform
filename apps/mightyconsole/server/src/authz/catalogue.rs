@@ -59,6 +59,29 @@ pub const TERM_WRITE: &str = "term.write";
 /// that profile's tool on it (DOC-25 §3.3.4 step 4).
 pub const PROFILES_PERSONAL: &str = "profiles.personal";
 
+/// The reads of profiles and what they name that DOC-25 §3.4.7 allows with `<tool>.read` **or**
+/// the owner's `profiles.personal` (`profiles.list` / `get`; `routes.*` "as profiles"; SSH hosts
+/// as DOC-23 (ae): seen by whoever may use a profile that names one). A procedure carries one
+/// permission, so these carry `profiles.personal` and the Authorizer also lets them through for
+/// a person holding some `<tool>.read` (any scope); the handler then answers only the rows that
+/// person may see: shared ones by `<tool>.read` on each, their own personal ones only with
+/// `profiles.personal`. Keyed by procedure name, never by permission, so
+/// [`super::RoleAuthorizer::permits`] (`profiles.personal` for creating one's own) is unchanged.
+/// The completeness test checks each is a Read query carrying `profiles.personal`.
+pub const PROFILE_READS: [&str; 6] = [
+    "profiles.list",
+    "profiles.get",
+    "routes.list",
+    "routes.get",
+    "sshHosts.list",
+    "sshHosts.get",
+];
+
+/// `<tool>.read` of every tool.
+pub fn tool_reads() -> impl Iterator<Item = String> {
+    TOOLS.iter().map(|t| format!("{t}.read"))
+}
+
 /// The administrator role's id.
 pub const ADMIN_ROLE: &str = "admin";
 /// The role every user gets (`auth.default_role`).

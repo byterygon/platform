@@ -17,7 +17,10 @@
 //!   which needed `<tool>.read` to open, with `messaging.read` (target kind any, DOC-25 §3.3.1);
 //! - it is Destructive and declares no confirmation subject ([`confirm::SUBJECTS`]), or its
 //!   subject's field is not in its input (the person would have nothing to type);
-//! - it is exposed to agents.
+//! - it is exposed to agents;
+//! - it is in [`catalogue::PROFILE_READS`] (also granted by some `<tool>.read`, DOC-25 §3.4.7)
+//!   and is not a Read query of `profiles`, `routes` or `sshHosts` carrying `profiles.personal`,
+//!   or no procedure has that name.
 //!
 //! The secret-field rule (every secret of a tool's profile goes through the secret store) is
 //! `tests/codegen.rs`'s `every_secret_field_goes_through_the_secret_store`; the redaction test
@@ -128,8 +131,20 @@ fn expected_tool_perm(tool: &str, risk: &str) -> Option<String> {
     Some(format!("{tool}.{level}"))
 }
 
+/// The namespaces whose reads may be in [`catalogue::PROFILE_READS`].
+pub const PROFILE_READ_NAMESPACES: [&str; 3] = ["profiles", "routes", "sshHosts"];
+
 /// Every broken rule, one line each (`<procedure>: <what>`); empty when the API is complete.
 pub fn problems(manifest: &Value) -> Vec<String> {
+    problems_with(manifest, &catalogue::PROFILE_READS)
+}
+
+/// [`problems`] with `profile_reads` for [`catalogue::PROFILE_READS`] (the procedures the
+/// Authorizer also lets through with some `<tool>.read`, DOC-25 §3.4.7). Each must be in the
+/// manifest, a query, Read, carry `profiles.personal`, and belong to
+/// [`PROFILE_READ_NAMESPACES`]: the either-permission rule never reaches a write, a destroy or
+/// another namespace.
+pub fn problems_with(manifest: &Value, profile_reads: &[&str]) -> Vec<String> {
     let mut out = Vec::new();
     let Some(procedures) = manifest["procedures"].as_array() else {
         return vec!["the manifest has no procedures".into()];
@@ -214,6 +229,23 @@ pub fn problems(manifest: &Value) -> Vec<String> {
             }
         }
     }
+    for name in profile_reads {
+        let mut problem = |what: &str| out.push(format!("{name}: {what}"));
+        let Some(p) = procedures.iter().find(|p| p["name"].as_str() == Some(name)) else {
+            problem("is in authz::catalogue::PROFILE_READS but no procedure has this name");
+            continue;
+        };
+        let namespace = name.rsplit_once('.').map_or("", |(ns, _)| ns);
+        if !PROFILE_READ_NAMESPACES.contains(&namespace) {
+            problem("is in PROFILE_READS but not a read of profiles, routes or SSH hosts");
+        }
+        if p["kind"].as_str() != Some("query") || p["risk"].as_str() != Some("Read") {
+            problem("is in PROFILE_READS but is not a Read query (<tool>.read may only read)");
+        }
+        if p["perm"].as_str() != Some(catalogue::PROFILES_PERSONAL) {
+            problem("is in PROFILE_READS but does not carry profiles.personal");
+        }
+    }
     out
 }
 
@@ -261,8 +293,19 @@ mod tests {
             procedure("app.account.changePassword", "app.self", "Write", "Empty"),
             procedure("messaging.decode", "messaging.read", "Read", "ConnInput"),
             procedure("admin.users.list", "admin.users.read", "Read", "Empty"),
+            query("profiles.list", "profiles.personal", "Empty"),
+            query("sshHosts.get", "profiles.personal", "Empty"),
         ]));
-        assert_eq!(problems(&m), Vec::<String>::new());
+        assert_eq!(
+            problems_with(&m, &["profiles.list", "sshHosts.get"]),
+            Vec::<String>::new()
+        );
+    }
+
+    fn query(name: &str, perm: &str, input: &str) -> Value {
+        let mut p = procedure(name, perm, "Read", input);
+        p["kind"] = json!("query");
+        p
     }
 
     #[test]
@@ -291,8 +334,21 @@ mod tests {
             procedure("billing.invoices.list", "app.read", "Read", "Empty"),
             procedure("term.write", "app.read", "Write", "Empty"),
             exposed,
+            // Reads let through with `<tool>.read` (PROFILE_READS): a write, another namespace,
+            // another permission, and a name no procedure has.
+            procedure("profiles.create", "profiles.personal", "Write", "Empty"),
+            query("secrets.status", "profiles.personal", "Empty"),
+            query("sshHosts.list", "profiles.manage", "Empty"),
         ]));
-        let found = problems(&m);
+        let found = problems_with(
+            &m,
+            &[
+                "profiles.create",
+                "secrets.status",
+                "sshHosts.list",
+                "routes.gone",
+            ],
+        );
         let names: Vec<&str> = found.iter().map(|p| p.split(':').next().unwrap()).collect();
         assert_eq!(
             names,
@@ -307,6 +363,10 @@ mod tests {
                 "billing.invoices.list",
                 "term.write",
                 "nats.kv.keys",
+                "profiles.create",
+                "secrets.status",
+                "sshHosts.list",
+                "routes.gone",
             ],
             "{found:#?}"
         );

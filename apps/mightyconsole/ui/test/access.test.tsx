@@ -281,10 +281,20 @@ describe("the shell for a person with narrow roles", () => {
     const page = document.querySelector('[data-testid="access-page"]')!;
     expect(page.textContent).toContain("docker.read");
     expect(page.querySelector("h2")?.textContent).toBe("You can't use Docker");
+    // The workspace shows why (TSK-172), not "Add a Docker connection" and its button; the
+    // sidebar's Add connection stays, off, with the reason.
+    expect(page.closest('[data-pane="tab"]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid="access-page"]')).toHaveLength(1);
+    expect(document.body.textContent).not.toContain("Add a Docker connection");
+    expect([...document.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Add connection")).toBe(false);
+    const add = document.querySelector<HTMLButtonElement>('[data-pane="sidebar"] button[aria-label="Add connection"]')!;
+    expect(add.getAttribute("data-denied")).toBe("docker.read");
+    expect(document.querySelector('[data-testid="tool-locked"]')?.textContent).toContain("docker.read");
     expect(await axeViolations()).toEqual([]);
     // A tool the roles cover shows its connections as before.
     await click(navItem("echo"));
     await waitFor(() => document.querySelector('[data-testid="access-page"]') === null, "the connections");
+    expect(document.querySelector('[data-pane="sidebar"] button[aria-label="Add connection"]')?.getAttribute("data-denied")).toBeNull();
   });
 
   test("a person who keeps personal profiles has no locked tool", async () => {

@@ -23,7 +23,9 @@
 //!    groups and of the user's local groups, pinned ones ([`policy::Policy::in_force`]).
 //! 6. No assignment grants the permission → Deny `MissingPermission`; only assignments whose
 //!    scope does not cover the target → Deny `OutOfScope`; a procedure that needs a target and
-//!    has none → Deny ("no target").
+//!    has none → Deny ("no target"). The reads of [`catalogue::PROFILE_READS`] carry
+//!    `profiles.personal` and are also granted by some `<tool>.read` (DOC-25 §3.4.7: "`<tool>.read`
+//!    or the owner's `profiles.personal`"); their handlers answer only the rows the caller sees.
 //! 7. A Destructive call (the caller's own profile included) → Allow when a confirmed challenge
 //!    matches it ([`confirm`]), else `NeedsApproval`.
 //! 8. Allow.
@@ -232,6 +234,21 @@ impl RoleAuthorizer {
         }
     }
 
+    /// Step 6 for [`catalogue::PROFILE_READS`]: `<tool>.read` **or** `profiles.personal` (DOC-25
+    /// §3.4.7). Only those procedures by name, only as a Read carrying `profiles.personal`; the
+    /// handler answers only the rows the caller may see.
+    fn reads_profiles(
+        &self,
+        policy: &Policy,
+        in_force: &[InForce],
+        req: &AuthzRequest<'_>,
+    ) -> bool {
+        req.action.perm.as_str() == catalogue::PROFILES_PERSONAL
+            && req.risk == Risk::Read
+            && catalogue::PROFILE_READS.contains(&req.action.name.as_str())
+            && catalogue::tool_reads().any(|read| policy.holds_anywhere(in_force, &read))
+    }
+
     fn decide(&self, req: &AuthzRequest<'_>) -> Decision {
         let p = req.principal;
         // 1.
@@ -305,7 +322,7 @@ impl RoleAuthorizer {
             (TargetKind::Tenant, _) => policy.holds_everywhere(&in_force, perm),
             (TargetKind::Profile, None) => return deny("no target"),
             (TargetKind::Profile, Some(target)) => policy.holds_on(&in_force, perm, target, own),
-        };
+        } || self.reads_profiles(&policy, &in_force, req);
         if granted {
             // 7. and 8.
             return self.confirmed(req);
@@ -657,6 +674,96 @@ mod tests {
         );
         assert_eq!(
             kind(&f.check(&u, "nats.kv.put", "nats.write", Some(&nats))),
+            "missing"
+        );
+    }
+
+    #[test]
+    fn a_tool_reader_without_profiles_personal_may_read_profiles_and_nothing_more() {
+        // DOC-25 §3.4.7: `profiles.list` / `get` need `<tool>.read` or `profiles.personal`.
+        let mut parts = PolicyParts::default();
+        parts.custom_roles.push(CustomRole {
+            id: "temporal-readers".into(),
+            name: "Temporal readers".into(),
+            description: String::new(),
+            permissions: ["app.read", "messaging.read", "temporal.read"]
+                .map(str::to_owned)
+                .into(),
+        });
+        parts.direct.insert(
+            "human:account:CAROL".into(),
+            vec![Assignment {
+                role: "temporal-readers".into(),
+                scope: scope(&["profile:SHARED"]),
+            }],
+        );
+        let f = fixture(parts);
+        let carol = f.user("human:account:CAROL", &[]);
+        for name in catalogue::PROFILE_READS {
+            assert_eq!(
+                kind(&f.check(&carol, name, catalogue::PROFILES_PERSONAL, None)),
+                "allow",
+                "{name}"
+            );
+        }
+        let target = shared("SHARED");
+        assert_eq!(
+            kind(&f.check(
+                &carol,
+                "profiles.get",
+                catalogue::PROFILES_PERSONAL,
+                Some(&target)
+            )),
+            "allow"
+        );
+        // Another user's personal profile stays refused before any role is asked.
+        let alices = shared("ALICES");
+        assert_eq!(
+            kind(&f.check(
+                &carol,
+                "profiles.get",
+                catalogue::PROFILES_PERSONAL,
+                Some(&alices)
+            )),
+            "policy"
+        );
+        // Every other use of profiles.personal still needs it: writes, other reads, and what
+        // the handlers ask (`permits`, as for keeping a personal profile).
+        for name in [
+            "profiles.create",
+            "profiles.update",
+            "secrets.status",
+            "secrets.set",
+            "proxies.list",
+            "links.list",
+            "sshHosts.create",
+        ] {
+            assert_eq!(
+                kind(&f.check(&carol, name, catalogue::PROFILES_PERSONAL, None)),
+                "missing",
+                "{name}"
+            );
+        }
+        assert!(!f.authz.permits(&carol, catalogue::PROFILES_PERSONAL, None));
+        // Only as a Read.
+        let action = Action::new("profiles.list", catalogue::PROFILES_PERSONAL);
+        let write = f.authz.decide(&AuthzRequest {
+            principal: &carol,
+            action: &action,
+            target: None,
+            risk: Risk::Write,
+            input_digest: Digest::ZERO,
+        });
+        assert_eq!(kind(&write), "missing");
+        // Only for profiles.personal: the name does not open another permission.
+        assert_eq!(
+            kind(&f.check(&carol, "profiles.list", "profiles.manage", None)),
+            "missing"
+        );
+        // No tool read, no profiles.personal: refused.
+        let nobody = f.user("human:account:NOBODY", &[]);
+        assert_eq!(
+            kind(&f.check(&nobody, "profiles.list", catalogue::PROFILES_PERSONAL, None)),
             "missing"
         );
     }
