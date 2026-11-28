@@ -29,8 +29,8 @@ import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport, remapHop } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
-import { AccessPage, AccessProvider, type AccessValue, DeniedTab } from "./access-ui";
-import { type Refusal, holdsAnywhere, refusalBefore, toolOpen, toolPerm } from "./access";
+import { AccessPage, AccessProvider, type AccessValue, DeniedTab, Gated } from "./access-ui";
+import { type Refusal, headline, holdsAnywhere, refusalBefore, toolOpen, toolPerm } from "./access";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AccountMenu, SessionsDialog } from "./account-menu";
 import { AdminDialog } from "./admin/AdminDialog";
@@ -1383,17 +1383,29 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                       </TooltipTrigger>
                       <TooltipContent>Import profiles</TooltipContent>
                     </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger render={<IconButton aria-label="Add connection" onClick={() => perform("addConnection")} />}>
-                        <Icon icon={Add} />
-                      </TooltipTrigger>
-                      <TooltipContent>Add connection ({bindingOf("addConnection")})</TooltipContent>
-                    </Tooltip>
+                    {toolRefusal ? (
+                      // A locked tool (TSK-172): the button stays, off, and says why.
+                      <Gated refusal={toolRefusal}>
+                        <IconButton aria-label="Add connection">
+                          <Icon icon={Add} />
+                        </IconButton>
+                      </Gated>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger render={<IconButton aria-label="Add connection" onClick={() => perform("addConnection")} />}>
+                          <Icon icon={Add} />
+                        </TooltipTrigger>
+                        <TooltipContent>Add connection ({bindingOf("addConnection")})</TooltipContent>
+                      </Tooltip>
+                    )}
                   </span>
                 </SidebarHeader>
                 <SidebarContent className="min-h-0 flex-1 p-0">
                   {toolRefusal ? (
-                    <AccessPage refusal={toolRefusal} title={`You can't use ${tool.label}`} />
+                    // The workspace beside it shows the whole refusal (TSK-172).
+                    <p className="m-0 p-inset-md text-caption-1 text-fg-muted" data-testid="tool-locked">
+                      {headline(toolRefusal)}.
+                    </p>
                   ) : (
                   <ConnectionList
                     tool={tool}
@@ -1434,7 +1446,12 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                     </section>
                   </TabsContent>
                 ) : null}
-                {state.tabs.length === 0 && !missingLink ? (
+                {state.tabs.length === 0 && !missingLink && toolRefusal ? (
+                  // A locked tool says why, not "Add a connection" (TSK-172).
+                  <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
+                    <AccessPage refusal={toolRefusal} title={`You can't use ${tool.label}`} />
+                  </section>
+                ) : state.tabs.length === 0 && !missingLink ? (
                   <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
                     <EmptyState className="m-auto">
                       <EmptyStateIcon className="size-auto bg-accent-subtle p-inset-md text-accent-subtle-fg [&_svg]:size-inset-xl!">

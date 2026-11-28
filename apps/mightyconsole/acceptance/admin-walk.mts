@@ -14,12 +14,13 @@
 //  1. Carol signs in to the no-role page; Alice's menu has Users and roles and Audit log.
 //  2. Users and roles: the people, the role matrix, a new role (Temporal readers: Temporal's read
 //     and no personal profiles), given to Carol, whose page then opens with every other tool
-//     locked and its reason.
+//     locked and its reason (the workspace too, with Add connection off).
 //  3. Alice adds a shared Temporal profile with the codec's Authorization header (a secret), sees
 //     who it reaches, and connects: the lab's encrypted payloads are decoded with it. She replaces
 //     it with a wrong one (the payloads stay as stored) and removes it.
 //  4. Bob (viewer) connects with the shared profile: Terminate is off with its reason. On a
 //     personal profile of his own he may destroy: Terminate asks him to type the name (cancelled).
+//     Carol, with Temporal's read and no personal profiles, lists the shared profile and connects.
 //  5. Alice takes Carol's role away (Carol's session ends) and turns Bob's account off (his ends).
 //  6. The Audit log: filtered by who, an entry with its digests, Verify chain, the CSV export.
 //  7. A profile kept in Alice's browser (IndexedDB, seeded here and never read back) moves to the
@@ -304,6 +305,14 @@ async function main(server: string, evidence: string): Promise<number> {
     check(locks["temporal"] === null && locks["nats"] === "nats.read" && locks["docker"] === "docker.read", `Carol's tools: Temporal open, the others locked by their read permission (${JSON.stringify(locks)})`);
     await run(carol, `document.querySelector('[data-nav-item][data-tool="nats"]').click()`);
     check(await until(carol, `document.querySelector('[data-testid="access-page"][data-perm="nats.read"]') && __mc.has("nats.read")`, 10_000), "a locked tool's page names the permission it needs and why");
+    // TSK-172: the workspace says why, with no "Add a NATS connection"; every Add connection is
+    // off with the reason; and the profiles list, though her role keeps no personal profiles.
+    const addButtons = `[...document.querySelectorAll("button")].filter((b) => b.checkVisibility() && ((b.textContent || "").trim().endsWith("Add connection") || b.getAttribute("aria-label") === "Add connection"))`;
+    check(
+      await run<boolean>(carol, `Boolean(document.querySelector('[data-pane="tab"] [data-testid="access-page"][data-perm="nats.read"]')) && !__mc.has("Add a NATS connection") && ${addButtons}.length > 0 && ${addButtons}.every((b) => b.dataset.denied === "nats.read")`),
+      "the locked tool's workspace shows why it is locked, and Add connection is off with the reason",
+    );
+    check(!(await run<boolean>(carol, `__mc.has("Could not read the profiles")`)), "Carol's shell reads the profiles: no Could not read the profiles toast");
     await shot(carol, "carol-locked-tool");
 
     // --- 3. A shared profile with a secret ---------------------------------------------------
@@ -399,6 +408,14 @@ async function main(server: string, evidence: string): Promise<number> {
     await run(bob, `[...${confirm}.querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancel").click()`);
     check(await until(bob, `!(${confirm}) && __mc.has("approval required")`, 10_000), "Cancel sends nothing: the Terminate dialog keeps the server's refusal");
     await run(bob, `[...document.querySelectorAll("[role=dialog] button")].find((b) => b.checkVisibility() && b.textContent.trim() === "Cancel").click()`);
+
+    // Carol (Temporal readers: temporal.read, no profiles.personal) lists the shared profile her
+    // role covers and connects with it (TSK-172, DOC-25 §3.4.7).
+    await temporalPane(carol);
+    check(!(await run<boolean>(carol, `__mc.has("Could not read the profiles")`)), "Carol's Temporal pane reads the profiles");
+    must(await connect(carol, SHARED), `Carol (${ROLE}) connects with the shared ${SHARED}`);
+    must(await workflow(carol, SHARED, "fulfilment-long-running"), "Carol opens the running workflow through it");
+    await shot(carol, "carol-shared-profile");
 
     // --- 5. Taking a role away and turning an account off end their sessions -----------------
     await temporalPane(alice);

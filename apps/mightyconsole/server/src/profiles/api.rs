@@ -3,7 +3,10 @@
 //! redacted from the audit digest, and no procedure answers one; a record lists its secrets'
 //! status only. Every procedure carries `profiles.personal` for the router (each built-in role
 //! holds it) and the target of the profile it names; who may see, use and edit which profile is
-//! decided per profile ([`super::ProfileService::access`]).
+//! decided per profile ([`super::ProfileService::access`]). The reads of
+//! [`crate::authz::catalogue::PROFILE_READS`] (`profiles.list` / `get`, `sshHosts.list` / `get`)
+//! also let in a person holding some `<tool>.read` without `profiles.personal` (DOC-25 §3.4.7),
+//! who is answered the shared rows their roles cover and none of their own ([`shown`]).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -447,6 +450,12 @@ fn now() -> u64 {
     security_types::unix_now_ms()
 }
 
+/// Whether a read of [`crate::authz::catalogue::PROFILE_READS`] answers a row of `access`: the
+/// caller's own personal rows only when `own` ([`ProfileService::reads_own`]).
+pub(crate) fn shown(own: bool, access: Access) -> bool {
+    own || access != Access::Owner
+}
+
 // ---- procedures ------------------------------------------------------------------------------
 
 /// `profiles.*`. `None` only in the codegen router.
@@ -454,16 +463,20 @@ pub struct ProfilesApi(pub Option<Arc<ProfileService>>);
 
 #[rpc::router(namespace = "profiles")]
 impl ProfilesApi {
-    /// The profiles the caller sees: their own personal ones, the shared ones their roles let
-    /// them use, and (with `profiles.manage`) other users' personal ones as metadata.
+    /// The profiles the caller sees: their own personal ones (with `profiles.personal`), the
+    /// shared ones their roles let them use (`<tool>.read` on each, which also lets a person
+    /// without `profiles.personal` call this, DOC-25 §3.4.7), and (with `profiles.manage`) other
+    /// users' personal ones as metadata.
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn list(&self, ctx: Ctx, input: ProfilesListInput) -> ToolResult<ProfilesOutput> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
         Ok(blocking(move || {
+            let own = s.reads_own(&p);
             let profiles = s
                 .list(&p, input.tool.as_deref())?
                 .into_iter()
+                .filter(|(_, access)| shown(own, *access))
                 .map(|(profile, access)| view(&s, profile, access))
                 .collect::<Result<_, _>>()?;
             Ok(ProfilesOutput { profiles })
@@ -471,13 +484,16 @@ impl ProfilesApi {
         .await?)
     }
 
-    /// One profile, as the caller may see it.
+    /// One profile, as the caller may see it (as `list` shows it).
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn get(&self, ctx: Ctx, input: ProfileIdInput) -> ToolResult<ProfileView> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
         Ok(blocking(move || {
             let (profile, access) = s.get(&p, &input.id)?;
+            if !shown(s.reads_own(&p), access) {
+                return Err(ProfileError::NotFound);
+            }
             view(&s, profile, access)
         })
         .await?)
@@ -1014,15 +1030,19 @@ pub struct SshHostsApi(pub Option<Arc<ProfileService>>);
 
 #[rpc::router(namespace = "sshHosts")]
 impl SshHostsApi {
-    /// The hosts the caller sees, with who uses each.
+    /// The hosts the caller sees, with who uses each: their own personal ones (with
+    /// `profiles.personal`), and the shared ones a profile or route they may use names (DOC-23
+    /// (ae)), which also lets a person with `<tool>.read` and no `profiles.personal` call this.
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn list(&self, ctx: Ctx, _input: Empty) -> ToolResult<SshHostsOutput> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
         Ok(blocking(move || {
+            let own = s.reads_own(&p);
             let hosts = s
                 .list_hosts(&p)?
                 .into_iter()
+                .filter(|(_, access, _)| shown(own, *access))
                 .map(|(host, access, users)| host_view(&s, host, access, users))
                 .collect::<Result<_, _>>()?;
             Ok(SshHostsOutput { hosts })
@@ -1030,13 +1050,16 @@ impl SshHostsApi {
         .await?)
     }
 
-    /// One host, as the caller may see it.
+    /// One host, as the caller may see it (as `list` shows it).
     #[rpc::query(perm = "profiles.personal", risk = Risk::Read)]
     async fn get(&self, ctx: Ctx, input: SshHostIdInput) -> ToolResult<SshHostView> {
         let s = service(&self.0)?;
         let p = ctx.principal().clone();
         Ok(blocking(move || {
-            let (host, _) = s.get_host(&p, &input.id)?;
+            let (host, access) = s.get_host(&p, &input.id)?;
+            if !shown(s.reads_own(&p), access) {
+                return Err(ProfileError::NotFound);
+            }
             host_view_of(&s, &p, host)
         })
         .await?)
